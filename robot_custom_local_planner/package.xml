@@ -27,5 +27,6 @@
   <export>
     <build_type>ament_cmake</build_type>
     <nav2_core plugin="${prefix}/custom_local_planner_plugin.xml" />
+    <nav2_core plugin="${prefix}/ackermann_local_planner_plugin.xml" />
   </export>
 </package>

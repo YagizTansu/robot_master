@@ -1,0 +1,10 @@
+<library path="ackermann_local_planner">
+  <class type="robot_custom_local_planner::AckermannLocalPlanner" base_class_type="nav2_core::Controller">
+    <description>
+      Custom local planner for Ackermann (car-like) robots.
+      Uses a bicycle kinematic model with DWA-style trajectory sampling.
+      Enforces steering-angle constraints and includes heading-alignment
+      scoring suited for non-holonomic, forward-driving robots.
+    </description>
+  </class>
+</library>

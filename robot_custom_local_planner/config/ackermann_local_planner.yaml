@@ -1,0 +1,51 @@
+controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "robot_custom_local_planner::AckermannLocalPlanner"
+
+      # ---------------------------------------------------------------
+      # Velocity limits  [m/s]
+      # ---------------------------------------------------------------
+      max_linear_vel:  0.5     # Maximum forward speed
+      min_linear_vel:  0.05    # Minimum forward speed (keeps robot moving)
+      max_reverse_vel: 0.0     # Set > 0 to allow reversing; 0 = forward only
+      max_angular_vel: 0.6     # Maximum yaw rate [rad/s]
+      min_angular_vel: -0.6    # Minimum yaw rate [rad/s]
+
+      # ---------------------------------------------------------------
+      # Acceleration limits
+      # ---------------------------------------------------------------
+      linear_acc_limit:  0.5   # [m/s²]
+      angular_acc_limit: 1.0   # [rad/s²]
+
+      # ---------------------------------------------------------------
+      # Ackermann geometry  — MUST match your robot hardware
+      # ---------------------------------------------------------------
+      wheelbase:          0.5   # Front-to-rear axle distance [m]
+      max_steering_angle: 0.6   # Physical limit of front wheel [rad] (~34°)
+
+      # ---------------------------------------------------------------
+      # Trajectory sampling
+      # ---------------------------------------------------------------
+      linear_samples:  5    # Number of forward-speed samples
+      angular_samples: 11   # Number of angular-velocity samples (odd = includes 0)
+      sim_time:        2.0  # Simulation horizon [s]
+      sim_granularity: 0.1  # Time step [s]
+
+      # ---------------------------------------------------------------
+      # Cost function weights  (higher = more influence)
+      # ---------------------------------------------------------------
+      path_distance_weight:     32.0   # Follow the global path closely
+      goal_distance_weight:     20.0   # Move toward the goal
+      obstacle_weight:           1.0   # Avoid costmap inflation
+      heading_alignment_weight: 16.0   # Align heading with path direction
+                                        #   (critical for Ackermann robots)
+
+      # ---------------------------------------------------------------
+      # Tolerances / look-ahead
+      # ---------------------------------------------------------------
+      transform_tolerance: 0.5    # TF lookup tolerance [s]
+      xy_goal_tolerance:   0.25   # Position goal tolerance [m]
+      yaw_goal_tolerance:  0.25   # Orientation goal tolerance [rad]
+      prune_plan_distance: 3.0    # Local look-ahead window on global plan [m]
