@@ -1,0 +1,48 @@
+robot_bringup:
+  ros__parameters:
+    robot_name: "agv001"
+    robot_type: "mobile"
+    robot_version: "1.0"
+    location:
+      start_position:
+        x: 0.0
+        y: 0.0
+        theta: 0.0
+      map_reference: "factory_map_v2"
+    network:
+      ip_address: "192.168.1.101"
+      connection_type: "wifi"
+      mac_address: "00:1A:2B:3C:4D:5E"
+    power:
+      battery_type: "Li-Ion"
+      capacity_Ah: 20
+      current_charge_percent: 100
+    security:
+      access_level: "admin"
+      encryption: "AES256"
+    software:
+      os: "Ubuntu 24.04"
+      ros_version: "jazzy"
+      installed_packages:
+        - "navigation2"
+    maintenance:
+      last_service_date: "2024-05-01"
+      service_interval_days: 90
+    sensors:
+      lidar:
+        model: "LIDAR-X200"
+        range: 30.0
+        resolution: 0.5
+      camera:
+        model: "CAM-360"
+        resolution: "4K"
+        field_of_view: "120"
+      imu:
+        model: "IMU-500"
+        gyroscope: true
+        accelerometer: true
+    actuators:
+      wheels:
+        type: "omni"
+        count: 4
+        max_speed: 2.5

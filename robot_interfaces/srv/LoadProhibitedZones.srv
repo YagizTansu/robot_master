@@ -1,0 +1,8 @@
+# Request - Load zones from database
+string robot_name
+
+---
+# Response
+bool success
+string message
+string zones_json  # JSON array of zones

@@ -1,0 +1,8 @@
+# Request
+# Empty - just list all zones
+
+---
+# Response
+string[] zone_names
+string[] zone_types
+string zones_json  # JSON formatted zone data

@@ -1,0 +1,10 @@
+<library path="navigate_to_charge_station_action">
+  <class name="robot_custom_behaviour_tree_nodes::NavigateToChargeStationAction" 
+         type="robot_custom_behaviour_tree_nodes::NavigateToChargeStationAction" 
+         base_class_type="BT::ActionNodeBase">
+    <description>
+      Navigates the robot to the charge station using Nav2's NavigateToPose action.
+      Takes charge station pose from blackboard and sends it to Nav2 for navigation.
+    </description>
+  </class>
+</library>

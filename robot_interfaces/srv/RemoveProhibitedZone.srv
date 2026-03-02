@@ -1,0 +1,7 @@
+# Request
+string zone_name
+
+---
+# Response
+bool success
+string message

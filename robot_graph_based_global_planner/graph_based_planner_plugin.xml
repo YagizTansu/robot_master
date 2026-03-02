@@ -1,0 +1,8 @@
+<library path="graph_based_planner">
+  <class type="robot_graph_based_global_planner::GraphBasedPlanner" base_class_type="nav2_core::GlobalPlanner">
+    <description>
+      Graph-based global planner that uses predefined nodes and edges for navigation.
+      Suitable for structured environments with known topology.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,10 @@
+<library path="get_charge_station_pose_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/GetChargeStationPose" 
+         type="robot_custom_behaviour_tree_nodes::GetChargeStationPoseAction" 
+         base_class_type="BT::ActionNodeBase">
+    <description>
+      Gets the charge station pose either from parameters or TF.
+      Outputs a geometry_msgs::msg::PoseStamped to the blackboard.
+    </description>
+  </class>
+</library>

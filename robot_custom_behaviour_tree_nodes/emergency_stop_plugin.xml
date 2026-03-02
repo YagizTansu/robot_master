@@ -1,0 +1,10 @@
+<library path="emergency_stop_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/EmergencyStop" 
+         type="robot_custom_behaviour_tree_nodes::EmergencyStopAction" 
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks if emergency stop button is pressed.
+      Returns SUCCESS if button is released (safe), FAILURE if pressed (emergency).
+    </description>
+  </class>
+</library>

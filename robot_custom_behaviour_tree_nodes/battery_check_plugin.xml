@@ -1,0 +1,10 @@
+<library path="battery_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/BatteryCheck" 
+         type="robot_custom_behaviour_tree_nodes::BatteryCheckAction" 
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks if battery level is above minimum threshold.
+      Returns SUCCESS if battery is sufficient, FAILURE otherwise.
+    </description>
+  </class>
+</library>

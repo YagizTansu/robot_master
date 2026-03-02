@@ -1,0 +1,10 @@
+<library path="custom_local_planner">
+  <class type="robot_custom_local_planner::CustomLocalPlanner" base_class_type="nav2_core::Controller">
+    <description>
+      Custom local planner for mecanum and omni-directional robots.
+      Supports holonomic motion with full 3-DOF control (X, Y, Theta).
+      Uses trajectory sampling and scoring for optimal path following and obstacle avoidance.
+      Ideal for robots with lateral movement capabilities.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="MainTree">
+    <BehaviorTree ID="MainTree">
+        <Sequence name="MonitorSequence">
+            <!-- Emergency Stop Check - Highest priority -->
+            <EmergencyStop name="CheckEmergency"
+                emergency_topic="/emergency_stop"
+                button_pressed_value="true" />
+
+            <!-- Fallback: Continue if battery is sufficient, otherwise go to charging station -->
+            <Fallback name="BatteryManagement">
+                <!-- Battery Check - SUCCESS if battery is above 10% -->
+                <BatteryCheck name="CheckBatteryLow"
+                    battery_topic="/battery_status"
+                    min_battery_percentage="10.0" />
+
+                <!-- This sequence runs if battery is low -->
+                <Sequence name="GoToCharge">
+                    <!-- Get Charge Station Pose -->
+                    <GetChargeStationPose name="GetChargeStation"
+                        use_tf="false"
+                        charge_station_x="0.8"
+                        charge_station_y="-8.0"
+                        charge_station_yaw="1.0"
+                        frame_id="map"
+                        charge_station_pose="{charge_pose}" />
+
+                    <!-- Navigate to Charge Station -->
+                    <NavigateToChargeStation name="NavigateToChargeStation"
+                        charge_station_pose="{charge_pose}"
+                        server_timeout="10.0"
+                        action_timeout="300.0" />
+
+                    <!-- Wait Until Battery is Charged -->
+                    <RetryUntilSuccessful name="ChargingLoop" num_attempts="-1">
+                        <BatteryCheck name="CheckBatteryCharged"
+                            battery_topic="/battery_status"
+                            min_battery_percentage="80.0" />
+                    </RetryUntilSuccessful>
+
+                </Sequence>
+            </Fallback>
+
+            <!-- Monitoring completed -->
+            <AlwaysSuccess name="MonitoringComplete" />
+        </Sequence>
+    </BehaviorTree>
+</root>

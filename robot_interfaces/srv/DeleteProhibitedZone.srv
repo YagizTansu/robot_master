@@ -1,0 +1,8 @@
+# Request - Delete zone from database
+string robot_name
+string zone_name
+
+---
+# Response
+bool success
+string message

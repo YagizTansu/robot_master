@@ -1,0 +1,8 @@
+<library path="prohibited_layer">
+  <class name="robot_custom_layers/ProhibitedLayer" type="robot_custom_layers::ProhibitedLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>
+      A costmap layer that marks prohibited zones as lethal obstacles.
+      Supports both polygon and circular prohibited zones.
+    </description>
+  </class>
+</library>
