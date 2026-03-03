@@ -1,0 +1,33 @@
+fgo_localization_node:
+  ros__parameters:
+    # ── Frame IDs ─────────────────────────────────────────────────────────────
+    map_frame:  map
+    odom_frame: odom
+    base_frame: base_footprint
+
+    # ── Odometry noise (BetweenFactor sigmas, metres / radians) ───────────────
+    # Lower = we trust odometry more
+    odom_noise_x:   0.05   # lateral/forward position noise
+    odom_noise_y:   0.05   # lateral position noise (mecanum can slide)
+    odom_noise_yaw: 0.02   # heading noise
+
+    # ── IMU noise (yaw-only constraint sigma, radians) ────────────────────────
+    imu_noise_yaw: 0.01
+
+    # ── Scan match noise (ICP result sigma) ───────────────────────────────────
+    scan_noise_x:   0.10
+    scan_noise_y:   0.10
+    scan_noise_yaw: 0.05
+    # ICP fitness threshold: lower value = stricter acceptance.
+    # scan is accepted only if ICP fitness score < this value.
+    # ICP fitness = mean squared distance of correspondences (metres²)
+    scan_min_fitness: 0.30
+
+    # ── iSAM2 parameters ──────────────────────────────────────────────────────
+    isam2_relinearize_threshold: 0.1
+    isam2_relinearize_skip: 10
+
+    # ── Initial pose uncertainty (prior factor sigmas) ────────────────────────
+    initial_cov_x:   0.5
+    initial_cov_y:   0.5
+    initial_cov_yaw: 0.2
