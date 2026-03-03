@@ -88,7 +88,9 @@ private:
   void optimize();
 
   // ─── TF Publishing ─────────────────────────────────────────────────────────
-  void publishTFs(const gtsam::Pose2 & map_pose, const rclcpp::Time & stamp);
+  void publishTFs(const gtsam::Pose2 & map_pose,
+                  const gtsam::Pose2 & odom_pose,
+                  const rclcpp::Time & stamp);
   void publishFGOPose(const gtsam::Pose2 & pose, const rclcpp::Time & stamp);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -121,15 +123,19 @@ private:
   bool                          graph_initialized_{false};
 
   // ─── State ─────────────────────────────────────────────────────────────────
-  std::optional<gtsam::Pose2>   last_odom_pose_;   // previous odom reading (for delta)
-  std::optional<double>         latest_imu_yaw_;   // most recent IMU yaw (rad)
+  std::optional<gtsam::Pose2>   last_odom_pose_;      // previous odom reading (for delta)
+  gtsam::Pose2                  last_raw_odom_pose_;   // raw odom pose for odom→base_footprint TF
+  gtsam::Pose2                  last_map_pose_;        // last FGO result for map→odom TF
+  std::optional<double>         latest_imu_yaw_;       // most recent IMU yaw (rad)
   bool                          imu_yaw_pending_{false};
   bool                          scan_factor_pending_{false};
-  gtsam::Pose2                  pending_scan_pose_; // scan match result
+  gtsam::Pose2                  pending_scan_pose_;
   std::mutex                    state_mutex_;
 
   // Auto-init timer: başlangıç pose gelmezse 5 sn sonra origin'den başla
   rclcpp::TimerBase::SharedPtr  auto_init_timer_;
+  // 20 Hz TF yayıncısı: robot hareket etmese de map→odom ve odom→base_footprint sürekli yayınlı
+  rclcpp::TimerBase::SharedPtr  tf_publish_timer_;
 
   // ─── Scan Matcher ──────────────────────────────────────────────────────────
   std::shared_ptr<ScanMatcher> scan_matcher_;

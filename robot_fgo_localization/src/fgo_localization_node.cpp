@@ -50,7 +50,6 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
   RCLCPP_INFO(get_logger(), "[FGO] Node initialized. Waiting for map and initial pose...");
 
   // Auto-init: 5 saniye içinde ne map ne initialpose gelmezse (0,0,0)'dan başla.
-  // Bu timer mapCallback veya initialPoseCallback tetiklenince iptal edilir.
   auto_init_timer_ = create_wall_timer(
     std::chrono::seconds(5),
     [this]() {
@@ -59,9 +58,19 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
         RCLCPP_WARN(get_logger(),
           "[FGO] No map / initial pose received in 5s — auto-starting at origin (0,0,0)");
         addPriorFactor(gtsam::Pose2(0.0, 0.0, 0.0));
-        publishTFs(gtsam::Pose2(0.0, 0.0, 0.0), now());
+        publishTFs(gtsam::Pose2(0.0, 0.0, 0.0), last_raw_odom_pose_, now());
       }
       auto_init_timer_->cancel();
+    });
+
+  // 20Hz TF yayıncısı: robot dursa bile map→odom ve odom→base_footprint sürekli yayınlanır.
+  // Bu Nav2'nin “stale TF” hatalarını önler.
+  tf_publish_timer_ = create_wall_timer(
+    std::chrono::milliseconds(20),  // 50 Hz — gerçek robot odom hızıyla eşleşiyor
+    [this]() {
+      if (!graph_initialized_) return;
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      publishTFs(last_map_pose_, last_raw_odom_pose_, now());
     });
 }
 
@@ -148,16 +157,12 @@ void FGOLocalizationNode::mapCallback(const nav_msgs::msg::OccupancyGrid::Shared
     msg->info.width, msg->info.height, msg->info.resolution);
   scan_matcher_->setMap(*msg);
 
-  // Harita geldi — auto-init timer'a gerek yok, iptal et
-  if (auto_init_timer_) {
-    auto_init_timer_->cancel();
-  }
+  if (auto_init_timer_) { auto_init_timer_->cancel(); }
 
-  // initialpose gelmediıyse direkt origin'den başla
   if (!graph_initialized_) {
     RCLCPP_INFO(get_logger(), "[FGO] No initial pose yet — starting at map origin (0,0,0)");
     addPriorFactor(gtsam::Pose2(0.0, 0.0, 0.0));
-    publishTFs(gtsam::Pose2(0.0, 0.0, 0.0), now());
+    publishTFs(gtsam::Pose2(0.0, 0.0, 0.0), last_raw_odom_pose_, now());
   }
 }
 
@@ -165,11 +170,7 @@ void FGOLocalizationNode::initialPoseCallback(
   const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(state_mutex_);
-
-  // initialpose geldi — auto-init timer'a gerek yok
-  if (auto_init_timer_) {
-    auto_init_timer_->cancel();
-  }
+  if (auto_init_timer_) { auto_init_timer_->cancel(); }
 
   const double yaw = quaternionToYaw(msg->pose.pose.orientation);
   const gtsam::Pose2 new_pose(
@@ -181,9 +182,9 @@ void FGOLocalizationNode::initialPoseCallback(
     new_pose.x(), new_pose.y(), new_pose.theta());
 
   addPriorFactor(new_pose);
+  last_map_pose_ = new_pose;
 
-  // Publish immediately so map→odom TF is available
-  publishTFs(new_pose, now());
+  publishTFs(new_pose, last_raw_odom_pose_, now());
   publishFGOPose(new_pose, now());
 }
 
@@ -221,13 +222,18 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
 
 void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
-  if (!graph_initialized_) {
-    return;
-  }
+  const gtsam::Pose2 current_odom = odomToPose2(*msg);
+  const rclcpp::Time stamp        = msg->header.stamp;
 
   std::lock_guard<std::mutex> lock(state_mutex_);
 
-  const gtsam::Pose2 current_odom = odomToPose2(*msg);
+  // Her zaman ham odom pozunu sakla — TF timer bunu kullanacak
+  last_raw_odom_pose_ = current_odom;
+
+  if (!graph_initialized_) {
+    last_odom_pose_ = current_odom;
+    return;
+  }
 
   // ── First odometry: just store, nothing to diff against ──────────────────
   if (!last_odom_pose_.has_value()) {
@@ -235,48 +241,41 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
     return;
   }
 
-  // ── Compute pose delta in body frame ─────────────────────────────────────
-  // Δpose = last_odom⁻¹ · current_odom  (relative motion since last step)
+  // ── Compute pose delta in body frame ─────────────────────────────────
   const gtsam::Pose2 delta = last_odom_pose_->between(current_odom);
   last_odom_pose_ = current_odom;
 
-  // Skip near-zero motion (reduces drift during standstill)
+  // Küçük hareket eşiği: FGO graph güncellemesini atla (ama TF timer her zaman yayınlıyor)
   if (std::abs(delta.x())     < 1e-4 &&
       std::abs(delta.y())     < 1e-4 &&
       std::abs(delta.theta()) < 1e-4)
   {
-    return;
+    return;  // Graph güncellemesi atlanır; TF timer zaten odom→base_footprint'i yayınlıyor
   }
 
-  // ── Advance to next pose key ───────────────────────────────────────────────
+  // ── Advance to next pose key ─────────────────────────────────────────
   const uint64_t prev_key    = pose_key_;
   const uint64_t current_key = pose_key_ + 1;
 
-  // Odometry between factor
   auto odom_noise = gtsam::noiseModel::Diagonal::Sigmas(
     gtsam::Vector3(odom_noise_x_, odom_noise_y_, odom_noise_yaw_));
   new_factors_.add(
     gtsam::BetweenFactor<gtsam::Pose2>(X(prev_key), X(current_key), delta, odom_noise));
 
-  // Initial value for new key: dead-reckoning prediction
   const gtsam::Pose2 predicted = current_estimate_.at<gtsam::Pose2>(X(prev_key)).compose(delta);
   new_values_.insert(X(current_key), predicted);
 
-  // ── IMU yaw factor ────────────────────────────────────────────────────────
+  // ── IMU yaw factor ──────────────────────────────────────────────────────────
   if (imu_yaw_pending_ && latest_imu_yaw_.has_value()) {
-    // We model the IMU yaw as a unary factor on the current key.
-    // Use a custom PriorFactor on orientation (yaw only, x/y left unconstrained
-    // via large sigma). GTSAM's PriorFactor<Pose2> constrains all 3 DOF —
-    // we set large sigmas on x/y and tight sigma on yaw.
     auto imu_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector3(1000.0, 1000.0, imu_noise_yaw_));  // x/y unconstrained
+      gtsam::Vector3(1000.0, 1000.0, imu_noise_yaw_));
     const gtsam::Pose2 imu_pose(predicted.x(), predicted.y(), *latest_imu_yaw_);
     new_factors_.add(
       gtsam::PriorFactor<gtsam::Pose2>(X(current_key), imu_pose, imu_noise));
     imu_yaw_pending_ = false;
   }
 
-  // ── Scan match factor ─────────────────────────────────────────────────────
+  // ── Scan match factor ──────────────────────────────────────────────────────────
   if (scan_factor_pending_) {
     auto scan_noise = gtsam::noiseModel::Diagonal::Sigmas(
       gtsam::Vector3(scan_noise_x_, scan_noise_y_, scan_noise_yaw_));
@@ -287,10 +286,9 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
 
   pose_key_ = current_key;
 
-  // ── Update iSAM2 ──────────────────────────────────────────────────────────
+  // ── iSAM2 güncelleme ────────────────────────────────────────────────────────
   try {
     isam_.update(new_factors_, new_values_);
-    // Extra update pass to improve linearization
     isam_.update();
     current_estimate_ = isam_.calculateBestEstimate();
   } catch (const std::exception & e) {
@@ -303,35 +301,43 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
   new_factors_.resize(0);
   new_values_.clear();
 
-  // ── Publish ───────────────────────────────────────────────────────────────
-  const gtsam::Pose2 map_pose = current_estimate_.at<gtsam::Pose2>(X(pose_key_));
-  const rclcpp::Time stamp    = msg->header.stamp;
-  publishTFs(map_pose, stamp);
-  publishFGOPose(map_pose, stamp);
+  // ── FGO sonuç → map pozu ──────────────────────────────────────────────────────
+  last_map_pose_ = current_estimate_.at<gtsam::Pose2>(X(pose_key_));
+
+  // TF ve pose publish (odom mesajının stamp'iyle)
+  publishTFs(last_map_pose_, last_raw_odom_pose_, stamp);
+  publishFGOPose(last_map_pose_, stamp);
 }
 
-// ─── TF Publishing ────────────────────────────────────────────────────────────
-void FGOLocalizationNode::publishTFs(const gtsam::Pose2 & map_pose, const rclcpp::Time & stamp)
+// ─── TF Publishing ─────────────────────────────────────────────────────────────────
+void FGOLocalizationNode::publishTFs(
+  const gtsam::Pose2 & map_pose,
+  const gtsam::Pose2 & odom_pose,
+  const rclcpp::Time & stamp)
 {
-  // FGO gives us the robot pose in the map frame: map_T_base
-  // We need to publish:
-  //   map → odom  (map_T_odom)
-  //   odom → base_footprint  (odom_T_base)   kept at identity — FGO is our odom
+  // Mimari:
+  //   odom_T_base  = ham odometry pozu (her zaman güncellenir)
+  //   map_T_base   = FGO optimize edilmiş poz
+  //   map_T_odom   = map_T_base · (odom_T_base)⁻¹  (düzeltme faktörü)
   //
-  // Since FGO directly computes map_T_base, we set odom_T_base = identity
-  // and map_T_odom = map_T_base.
+  // TF zinciri: map → odom → base_footprint
+  //   map→odom:           FGO düzeltmesi
+  //   odom→base_footprint: ham odometry
+
+  // map_T_odom = map_T_base · base_T_odom
+  const gtsam::Pose2 map_T_odom = map_pose.compose(odom_pose.inverse());
 
   std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
-  // map → odom  =  map_T_base pose
+  // map → odom  (FGO düzeltmesi)
   transforms.push_back(makeTransform(
     map_frame_, odom_frame_,
-    map_pose.x(), map_pose.y(), map_pose.theta(), stamp));
+    map_T_odom.x(), map_T_odom.y(), map_T_odom.theta(), stamp));
 
-  // odom → base_footprint  =  identity (FGO subsumes odom)
+  // odom → base_footprint  (ham odometry pozu)
   transforms.push_back(makeTransform(
     odom_frame_, base_frame_,
-    0.0, 0.0, 0.0, stamp));
+    odom_pose.x(), odom_pose.y(), odom_pose.theta(), stamp));
 
   tf_broadcaster_->sendTransform(transforms);
 }

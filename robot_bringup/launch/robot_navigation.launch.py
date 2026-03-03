@@ -29,12 +29,17 @@ def generate_launch_description():
 
     # ── Nav2 Navigation Stack ─────────────────────────────────────────────────
     # (previously included by robot_amcl_navigation2.launch.py via custom_navigation_launch.py)
+    nav2_params_file = os.path.join(
+        robot_navigation_dir, "config", "robot_move_base.yaml"
+    )
+
     custom_navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(robot_navigation_dir, "launch", "custom_navigation_launch.py")
         ),
         launch_arguments={
             "use_sim_time": "true",
+            "params_file": nav2_params_file,  # GraphBasedPlanner + CustomLocalPlanner
         }.items(),
     )
 
