@@ -19,26 +19,60 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
   tf_buffer_      = std::make_shared<tf2_ros::Buffer>(get_clock());
   tf_listener_    = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-  // ── Subscribers ─────────────────────────────────────────────────────────────
+  // ── Odometry (zorunlu — graph backbone) ─────────────────────────────────────
+  if (!odom_cfg_.enabled) {
+    RCLCPP_WARN(get_logger(),
+      "[FGO] sensors.odometry.enabled=false! "
+      "Odometry graphın backbone'udur; diğer sensörler çalışmaz.");
+  }
   odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-    "/odometry", rclcpp::QoS(10),
+    odom_cfg_.topic, rclcpp::QoS(10),
     std::bind(&FGOLocalizationNode::odometryCallback, this, std::placeholders::_1));
+  RCLCPP_INFO(get_logger(), "[FGO] Odometry → %s  (enabled=%s)",
+    odom_cfg_.topic.c_str(), odom_cfg_.enabled ? "true" : "false");
 
-  imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-    "/imu", rclcpp::QoS(50),
-    std::bind(&FGOLocalizationNode::imuCallback, this, std::placeholders::_1));
+  // ── IMU (opsiyonel — yaw kısıtı) ────────────────────────────────────────────
+  if (imu_cfg_.enabled) {
+    imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+      imu_cfg_.topic, rclcpp::QoS(50),
+      std::bind(&FGOLocalizationNode::imuCallback, this, std::placeholders::_1));
+    RCLCPP_INFO(get_logger(), "[FGO] IMU     → %s  (enabled=true, noise_yaw=%.4f)",
+      imu_cfg_.topic.c_str(), imu_cfg_.noise_yaw);
+  } else {
+    RCLCPP_INFO(get_logger(), "[FGO] IMU     → DEVRE DIŞI (sensors.imu.enabled=false)");
+  }
 
-  scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-    "/scan", rclcpp::SensorDataQoS(),
-    std::bind(&FGOLocalizationNode::scanCallback, this, std::placeholders::_1));
+  // ── Lidar / Scan matcher (opsiyonel — ICP kısıtı) ───────────────────────────
+  if (lidar_cfg_.enabled) {
+    scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
+      lidar_cfg_.topic, rclcpp::SensorDataQoS(),
+      std::bind(&FGOLocalizationNode::scanCallback, this, std::placeholders::_1));
+    RCLCPP_INFO(get_logger(), "[FGO] Lidar   → %s  (enabled=true, min_fitness=%.3f)",
+      lidar_cfg_.topic.c_str(), lidar_cfg_.min_fitness);
+  } else {
+    RCLCPP_INFO(get_logger(), "[FGO] Lidar   → DEVRE DIŞI (sensors.lidar.enabled=false)");
+  }
 
-  // Map is latched (transient_local) from map_server
+  // ── GPS (opsiyonel — NavSatFix → yerel XY) ──────────────────────────────
+  if (gps_cfg_.enabled) {
+    gps_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
+      gps_cfg_.topic, rclcpp::SensorDataQoS(),
+      std::bind(&FGOLocalizationNode::gpsCallback, this, std::placeholders::_1));
+    RCLCPP_INFO(get_logger(),
+      "[FGO] GPS     → %s  (enabled=true, datum=%.6f,%.6f, noise=%.2fm)",
+      gps_cfg_.topic.c_str(), gps_cfg_.datum_lat, gps_cfg_.datum_lon, gps_cfg_.noise_x);
+  } else {
+    RCLCPP_INFO(get_logger(), "[FGO] GPS     → DEVRE DISI (sensors.gps.enabled=false)");
+  }
+
+  // ── Map (latched) ────────────────────────────────────────────────────────────
   rclcpp::QoS map_qos(10);
   map_qos.transient_local();
   map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
     "/map", map_qos,
     std::bind(&FGOLocalizationNode::mapCallback, this, std::placeholders::_1));
 
+  // ── Initial Pose ─────────────────────────────────────────────────────────────
   initial_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "/initialpose", rclcpp::QoS(10),
     std::bind(&FGOLocalizationNode::initialPoseCallback, this, std::placeholders::_1));
@@ -49,7 +83,7 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
 
   RCLCPP_INFO(get_logger(), "[FGO] Node initialized. Waiting for map and initial pose...");
 
-  // Auto-init: 5 saniye içinde ne map ne initialpose gelmezse (0,0,0)'dan başla.
+  // ── Auto-init timer (5 sn) ───────────────────────────────────────────────────
   auto_init_timer_ = create_wall_timer(
     std::chrono::seconds(5),
     [this]() {
@@ -63,10 +97,9 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
       auto_init_timer_->cancel();
     });
 
-  // 20Hz TF yayıncısı: robot dursa bile map→odom ve odom→base_footprint sürekli yayınlanır.
-  // Bu Nav2'nin “stale TF” hatalarını önler.
+  // ── TF yayın timer (50 Hz) ───────────────────────────────────────────────────
   tf_publish_timer_ = create_wall_timer(
-    std::chrono::milliseconds(20),  // 50 Hz — gerçek robot odom hızıyla eşleşiyor
+    std::chrono::milliseconds(20),
     [this]() {
       if (!graph_initialized_) return;
       std::lock_guard<std::mutex> lock(state_mutex_);
@@ -77,27 +110,47 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
 // ─── Parameter Declaration ────────────────────────────────────────────────────
 void FGOLocalizationNode::declareParameters()
 {
-  map_frame_   = declare_parameter<std::string>("map_frame",  "map");
-  odom_frame_  = declare_parameter<std::string>("odom_frame", "odom");
-  base_frame_  = declare_parameter<std::string>("base_frame", "base_footprint");
+  // Frame IDs
+  map_frame_  = declare_parameter<std::string>("map_frame",  "map");
+  odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
+  base_frame_ = declare_parameter<std::string>("base_frame", "base_footprint");
 
-  odom_noise_x_   = declare_parameter<double>("odom_noise_x",   0.05);
-  odom_noise_y_   = declare_parameter<double>("odom_noise_y",   0.05);
-  odom_noise_yaw_ = declare_parameter<double>("odom_noise_yaw", 0.02);
-
-  imu_noise_yaw_  = declare_parameter<double>("imu_noise_yaw",  0.01);
-
-  scan_noise_x_       = declare_parameter<double>("scan_noise_x",       0.10);
-  scan_noise_y_       = declare_parameter<double>("scan_noise_y",       0.10);
-  scan_noise_yaw_     = declare_parameter<double>("scan_noise_yaw",     0.05);
-  scan_min_fitness_   = declare_parameter<double>("scan_min_fitness",   0.30);  // ICP: lower = better
-
+  // iSAM2
   isam2_relinearize_threshold_ = declare_parameter<double>("isam2_relinearize_threshold", 0.1);
   isam2_relinearize_skip_      = declare_parameter<int>("isam2_relinearize_skip", 10);
 
-  initial_cov_x_   = declare_parameter<double>("initial_cov_x",   0.1);
-  initial_cov_y_   = declare_parameter<double>("initial_cov_y",   0.1);
-  initial_cov_yaw_ = declare_parameter<double>("initial_cov_yaw", 0.05);
+  // Initial covariance
+  initial_cov_x_   = declare_parameter<double>("initial_cov_x",   0.5);
+  initial_cov_y_   = declare_parameter<double>("initial_cov_y",   0.5);
+  initial_cov_yaw_ = declare_parameter<double>("initial_cov_yaw", 0.2);
+
+  // ── Odometry sensor ──────────────────────────────────────────────────────────
+  odom_cfg_.enabled   = declare_parameter<bool>       ("sensors.odometry.enabled",   true);
+  odom_cfg_.topic     = declare_parameter<std::string>("sensors.odometry.topic",     "/odometry");
+  odom_cfg_.noise_x   = declare_parameter<double>     ("sensors.odometry.noise_x",   0.05);
+  odom_cfg_.noise_y   = declare_parameter<double>     ("sensors.odometry.noise_y",   0.05);
+  odom_cfg_.noise_yaw = declare_parameter<double>     ("sensors.odometry.noise_yaw", 0.02);
+
+  // ── IMU sensor ───────────────────────────────────────────────────────────────
+  imu_cfg_.enabled   = declare_parameter<bool>       ("sensors.imu.enabled",   true);
+  imu_cfg_.topic     = declare_parameter<std::string>("sensors.imu.topic",     "/imu");
+  imu_cfg_.noise_yaw = declare_parameter<double>     ("sensors.imu.noise_yaw", 0.01);
+
+  // ── Lidar sensor ─────────────────────────────────────────────────────────────
+  lidar_cfg_.enabled      = declare_parameter<bool>       ("sensors.lidar.enabled",      true);
+  lidar_cfg_.topic        = declare_parameter<std::string>("sensors.lidar.topic",        "/scan");
+  lidar_cfg_.noise_x      = declare_parameter<double>     ("sensors.lidar.noise_x",      0.10);
+  lidar_cfg_.noise_y      = declare_parameter<double>     ("sensors.lidar.noise_y",      0.10);
+  lidar_cfg_.noise_yaw    = declare_parameter<double>     ("sensors.lidar.noise_yaw",    0.05);
+  lidar_cfg_.min_fitness  = declare_parameter<double>     ("sensors.lidar.min_fitness",  0.30);
+
+  // ── GPS sensor ────────────────────────────────────────────────────
+  gps_cfg_.enabled    = declare_parameter<bool>       ("sensors.gps.enabled",    false);
+  gps_cfg_.topic      = declare_parameter<std::string>("sensors.gps.topic",      "/gps/fix");
+  gps_cfg_.datum_lat  = declare_parameter<double>     ("sensors.gps.datum_lat",  0.0);
+  gps_cfg_.datum_lon  = declare_parameter<double>     ("sensors.gps.datum_lon",  0.0);
+  gps_cfg_.noise_x    = declare_parameter<double>     ("sensors.gps.noise_x",    2.0);
+  gps_cfg_.noise_y    = declare_parameter<double>     ("sensors.gps.noise_y",    2.0);
 }
 
 // ─── ISAM2 Setup ─────────────────────────────────────────────────────────────
@@ -118,7 +171,6 @@ void FGOLocalizationNode::initISAM2()
 // ─── Prior Factor ─────────────────────────────────────────────────────────────
 void FGOLocalizationNode::addPriorFactor(const gtsam::Pose2 & initial_pose)
 {
-  // Reset graph state
   new_factors_.resize(0);
   new_values_.clear();
   pose_key_ = 0;
@@ -126,8 +178,8 @@ void FGOLocalizationNode::addPriorFactor(const gtsam::Pose2 & initial_pose)
   last_odom_pose_.reset();
   imu_yaw_pending_ = false;
   scan_factor_pending_ = false;
+  gps_factor_pending_ = false;
 
-  // Re-initialize iSAM2 with fresh graph
   initISAM2();
 
   auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
@@ -190,6 +242,7 @@ void FGOLocalizationNode::initialPoseCallback(
 
 void FGOLocalizationNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
+  // Bu callback sadece imu_cfg_.enabled == true ise oluşturuldu
   std::lock_guard<std::mutex> lock(state_mutex_);
   latest_imu_yaw_ = quaternionToYaw(msg->orientation);
   imu_yaw_pending_ = true;
@@ -197,11 +250,11 @@ void FGOLocalizationNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg
 
 void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
+  // Bu callback sadece lidar_cfg_.enabled == true ise oluşturuldu
   if (!graph_initialized_ || !scan_matcher_->hasMap()) {
     return;
   }
 
-  // Get current pose estimate as initial guess for ICP
   gtsam::Pose2 guess(0, 0, 0);
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -211,12 +264,52 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
   }
 
   const auto result = scan_matcher_->match(
-    *msg, guess.x(), guess.y(), guess.theta(), scan_min_fitness_);
+    *msg, guess.x(), guess.y(), guess.theta(), lidar_cfg_.min_fitness);
 
   if (result.success) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     pending_scan_pose_ = gtsam::Pose2(result.x, result.y, result.yaw);
     scan_factor_pending_ = true;
+  }
+}
+
+void FGOLocalizationNode::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
+{
+  // Bu callback sadece gps_cfg_.enabled == true ise oluşturuldu
+
+  // Fix kalitesini kontrol et (STATUS_NO_FIX = -1, STATUS_FIX = 0, SBAS/GBAS daha iyi)
+  if (msg->status.status < sensor_msgs::msg::NavSatStatus::STATUS_FIX) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+      "[FGO] GPS: No fix (status=%d) — skipping", msg->status.status);
+    return;
+  }
+
+  // ── Equirectangular projection: lat/lon → yerel metre (X, Y) ───────────────
+  // Küçük alanlar için yeterli hassasiyet. Büyük alanlar için UTM kullanılabilir.
+  //
+  //   x = (lon - datum_lon) * cos(datum_lat) * R_earth
+  //   y = (lat - datum_lat) * R_earth
+  //
+  constexpr double R_EARTH = 6378137.0;  // metre (WGS-84 yarıçapı)
+  constexpr double DEG2RAD = M_PI / 180.0;
+
+  const double dlat = (msg->latitude  - gps_cfg_.datum_lat) * DEG2RAD;
+  const double dlon = (msg->longitude - gps_cfg_.datum_lon) * DEG2RAD;
+  const double cos_lat = std::cos(gps_cfg_.datum_lat * DEG2RAD);
+
+  const double local_x = dlon * cos_lat * R_EARTH;
+  const double local_y = dlat * R_EARTH;
+
+  RCLCPP_DEBUG(get_logger(),
+    "[FGO] GPS fix: lat=%.7f lon=%.7f → x=%.2f y=%.2f (cov=%.2f)",
+    msg->latitude, msg->longitude, local_x, local_y,
+    msg->position_covariance[0]);
+
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    // Pose2'nin yaw'ı graph tarafından belirlenir; GPS sadece x/y kısıtı sağlar
+    pending_gps_pose_ = gtsam::Pose2(local_x, local_y, 0.0);
+    gps_factor_pending_ = true;
   }
 }
 
@@ -227,7 +320,6 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
 
   std::lock_guard<std::mutex> lock(state_mutex_);
 
-  // Her zaman ham odom pozunu sakla — TF timer bunu kullanacak
   last_raw_odom_pose_ = current_odom;
 
   if (!graph_initialized_) {
@@ -235,53 +327,60 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
     return;
   }
 
-  // ── First odometry: just store, nothing to diff against ──────────────────
   if (!last_odom_pose_.has_value()) {
     last_odom_pose_ = current_odom;
     return;
   }
 
-  // ── Compute pose delta in body frame ─────────────────────────────────
   const gtsam::Pose2 delta = last_odom_pose_->between(current_odom);
   last_odom_pose_ = current_odom;
 
-  // Küçük hareket eşiği: FGO graph güncellemesini atla (ama TF timer her zaman yayınlıyor)
   if (std::abs(delta.x())     < 1e-4 &&
       std::abs(delta.y())     < 1e-4 &&
       std::abs(delta.theta()) < 1e-4)
   {
-    return;  // Graph güncellemesi atlanır; TF timer zaten odom→base_footprint'i yayınlıyor
+    return;
   }
 
-  // ── Advance to next pose key ─────────────────────────────────────────
   const uint64_t prev_key    = pose_key_;
   const uint64_t current_key = pose_key_ + 1;
 
+  // ── Odometry BetweenFactor ─────────────────────────────────────────────────
   auto odom_noise = gtsam::noiseModel::Diagonal::Sigmas(
-    gtsam::Vector3(odom_noise_x_, odom_noise_y_, odom_noise_yaw_));
+    gtsam::Vector3(odom_cfg_.noise_x, odom_cfg_.noise_y, odom_cfg_.noise_yaw));
   new_factors_.add(
     gtsam::BetweenFactor<gtsam::Pose2>(X(prev_key), X(current_key), delta, odom_noise));
 
   const gtsam::Pose2 predicted = current_estimate_.at<gtsam::Pose2>(X(prev_key)).compose(delta);
   new_values_.insert(X(current_key), predicted);
 
-  // ── IMU yaw factor ──────────────────────────────────────────────────────────
+  // ── IMU yaw factor (sadece imu_cfg_.enabled ise callback var) ───────────────
   if (imu_yaw_pending_ && latest_imu_yaw_.has_value()) {
     auto imu_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector3(1000.0, 1000.0, imu_noise_yaw_));
+      gtsam::Vector3(1000.0, 1000.0, imu_cfg_.noise_yaw));
     const gtsam::Pose2 imu_pose(predicted.x(), predicted.y(), *latest_imu_yaw_);
     new_factors_.add(
       gtsam::PriorFactor<gtsam::Pose2>(X(current_key), imu_pose, imu_noise));
     imu_yaw_pending_ = false;
   }
 
-  // ── Scan match factor ──────────────────────────────────────────────────────────
+  // ── Scan factor (sadece lidar_cfg_.enabled ise callback var) ────────────────
   if (scan_factor_pending_) {
     auto scan_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector3(scan_noise_x_, scan_noise_y_, scan_noise_yaw_));
+      gtsam::Vector3(lidar_cfg_.noise_x, lidar_cfg_.noise_y, lidar_cfg_.noise_yaw));
     new_factors_.add(
       gtsam::PriorFactor<gtsam::Pose2>(X(current_key), pending_scan_pose_, scan_noise));
     scan_factor_pending_ = false;
+  }
+
+  // ── GPS factor (sadece gps_cfg_.enabled ise callback var) ────────────────────
+  if (gps_factor_pending_) {
+    // Sadece x/y kısıtı: yaw'a 1000.0 sigma vererek "önemseme" diyoruz
+    auto gps_noise = gtsam::noiseModel::Diagonal::Sigmas(
+      gtsam::Vector3(gps_cfg_.noise_x, gps_cfg_.noise_y, 1000.0));
+    new_factors_.add(
+      gtsam::PriorFactor<gtsam::Pose2>(X(current_key), pending_gps_pose_, gps_noise));
+    gps_factor_pending_ = false;
   }
 
   pose_key_ = current_key;
@@ -301,40 +400,26 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
   new_factors_.resize(0);
   new_values_.clear();
 
-  // ── FGO sonuç → map pozu ──────────────────────────────────────────────────────
   last_map_pose_ = current_estimate_.at<gtsam::Pose2>(X(pose_key_));
 
-  // TF ve pose publish (odom mesajının stamp'iyle)
   publishTFs(last_map_pose_, last_raw_odom_pose_, stamp);
   publishFGOPose(last_map_pose_, stamp);
 }
 
-// ─── TF Publishing ─────────────────────────────────────────────────────────────────
+// ─── TF Publishing ────────────────────────────────────────────────────────────
 void FGOLocalizationNode::publishTFs(
   const gtsam::Pose2 & map_pose,
   const gtsam::Pose2 & odom_pose,
   const rclcpp::Time & stamp)
 {
-  // Mimari:
-  //   odom_T_base  = ham odometry pozu (her zaman güncellenir)
-  //   map_T_base   = FGO optimize edilmiş poz
-  //   map_T_odom   = map_T_base · (odom_T_base)⁻¹  (düzeltme faktörü)
-  //
-  // TF zinciri: map → odom → base_footprint
-  //   map→odom:           FGO düzeltmesi
-  //   odom→base_footprint: ham odometry
-
-  // map_T_odom = map_T_base · base_T_odom
   const gtsam::Pose2 map_T_odom = map_pose.compose(odom_pose.inverse());
 
   std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
-  // map → odom  (FGO düzeltmesi)
   transforms.push_back(makeTransform(
     map_frame_, odom_frame_,
     map_T_odom.x(), map_T_odom.y(), map_T_odom.theta(), stamp));
 
-  // odom → base_footprint  (ham odometry pozu)
   transforms.push_back(makeTransform(
     odom_frame_, base_frame_,
     odom_pose.x(), odom_pose.y(), odom_pose.theta(), stamp));
@@ -360,11 +445,9 @@ void FGOLocalizationNode::publishFGOPose(
   msg.pose.pose.orientation.z = q.z();
   msg.pose.pose.orientation.w = q.w();
 
-  // Covariance from iSAM2 marginals (diagonal approximation)
-  // Full marginals are expensive — we use a fixed diagonal based on noise params
-  msg.pose.covariance[0]  = scan_noise_x_ * scan_noise_x_;   // xx
-  msg.pose.covariance[7]  = scan_noise_y_ * scan_noise_y_;   // yy
-  msg.pose.covariance[35] = scan_noise_yaw_ * scan_noise_yaw_; // yawyaw
+  msg.pose.covariance[0]  = lidar_cfg_.noise_x   * lidar_cfg_.noise_x;
+  msg.pose.covariance[7]  = lidar_cfg_.noise_y   * lidar_cfg_.noise_y;
+  msg.pose.covariance[35] = lidar_cfg_.noise_yaw * lidar_cfg_.noise_yaw;
 
   fgo_pose_pub_->publish(msg);
 }
@@ -381,7 +464,6 @@ gtsam::Pose2 FGOLocalizationNode::odomToPose2(const nav_msgs::msg::Odometry & od
 
 double FGOLocalizationNode::quaternionToYaw(const geometry_msgs::msg::Quaternion & q)
 {
-  // yaw = atan2(2*(w*z + x*y), 1 - 2*(y² + z²))
   const double sinr = 2.0 * (q.w * q.z + q.x * q.y);
   const double cosr = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
   return std::atan2(sinr, cosr);

@@ -5,24 +5,6 @@ fgo_localization_node:
     odom_frame: odom
     base_frame: base_footprint
 
-    # ── Odometry noise (BetweenFactor sigmas, metres / radians) ───────────────
-    # Lower = we trust odometry more
-    odom_noise_x:   0.05   # lateral/forward position noise
-    odom_noise_y:   0.05   # lateral position noise (mecanum can slide)
-    odom_noise_yaw: 0.02   # heading noise
-
-    # ── IMU noise (yaw-only constraint sigma, radians) ────────────────────────
-    imu_noise_yaw: 0.01
-
-    # ── Scan match noise (ICP result sigma) ───────────────────────────────────
-    scan_noise_x:   0.10
-    scan_noise_y:   0.10
-    scan_noise_yaw: 0.05
-    # ICP fitness threshold: lower value = stricter acceptance.
-    # scan is accepted only if ICP fitness score < this value.
-    # ICP fitness = mean squared distance of correspondences (metres²)
-    scan_min_fitness: 0.30
-
     # ── iSAM2 parameters ──────────────────────────────────────────────────────
     isam2_relinearize_threshold: 0.1
     isam2_relinearize_skip: 10
@@ -31,3 +13,35 @@ fgo_localization_node:
     initial_cov_x:   0.5
     initial_cov_y:   0.5
     initial_cov_yaw: 0.2
+
+    # ── Odometry (BetweenFactor — graph backbone) ─────────────────────────────
+    sensors.odometry.enabled:   true
+    sensors.odometry.topic:     "/odometry"
+    sensors.odometry.noise_x:   0.05   # metre
+    sensors.odometry.noise_y:   0.05   # metre
+    sensors.odometry.noise_yaw: 0.02   # radyan
+
+    # ── IMU (yaw-only PriorFactor) ────────────────────────────────────────────
+    # Kapatmak için: enabled: false
+    sensors.imu.enabled:   true
+    sensors.imu.topic:     "/imu"
+    sensors.imu.noise_yaw: 0.01   # radyan
+
+    # ── Lidar / Scan matcher (ICP PriorFactor) ────────────────────────────────
+    # Topic'i değiştirmek için örn: "/scan_merged"
+    sensors.lidar.enabled:      true
+    sensors.lidar.topic:        "/scan"
+    sensors.lidar.noise_x:      0.10   # metre
+    sensors.lidar.noise_y:      0.10   # metre
+    sensors.lidar.noise_yaw:    0.05   # radyan
+    sensors.lidar.min_fitness:  0.30   # ICP: küçük = daha sıkı
+
+    # ── GPS (opsiyonel — NavSatFix → yerel XY dönüşümü) ─────────────────────────
+    # Kullanmak için: enabled: true yapıp datum'ı robotun başlangıç pozisyonuna ayarla.
+    # datum_lat / datum_lon: yerel koordinat sisteminin referans noktası (0,0 kabul edilir)
+    sensors.gps.enabled:     false
+    sensors.gps.topic:       "/gps/fix"
+    sensors.gps.datum_lat:   0.0    # referans enlem (başlangıç noktası)
+    sensors.gps.datum_lon:   0.0    # referans boylam (başlangıç noktası)
+    sensors.gps.noise_x:     2.0    # metre (GPS tipik yatay hata)
+    sensors.gps.noise_y:     2.0    # metre
