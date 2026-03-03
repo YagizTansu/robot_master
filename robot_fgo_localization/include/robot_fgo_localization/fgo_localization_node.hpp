@@ -13,6 +13,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <Eigen/Core>
 
 // ─── GTSAM ────────────────────────────────────────────────────────────────────
 #include <gtsam/geometry/Pose2.h>
@@ -63,6 +64,10 @@ struct LidarConfig {
   double      noise_y{0.10};
   double      noise_yaw{0.05};
   double      min_fitness{0.30};
+  // ICP ayar parametreleri
+  double      icp_max_correspondence_dist{0.5};
+  int         icp_max_iterations{50};
+  double      icp_voxel_leaf_size{0.05};
 };
 
 struct GpsConfig {

@@ -9,6 +9,7 @@
 #include <pcl/point_types.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
+#include <Eigen/Geometry>
 
 
 namespace robot_fgo_localization
@@ -46,15 +47,22 @@ public:
    * @param guess_x      Initial guess X (from FGO predict step), metres.
    * @param guess_y      Initial guess Y.
    * @param guess_yaw    Initial guess yaw (rad).
-   * @param min_fitness  Minimum ICP fitness score to accept (0–1, lower = better).
-   * @return ScanMatchResult with pose correction and success flag.
+   * @param min_fitness  ICP fitness threshold (lower = stricter).
+   * @param scan_to_base Optional rigid transform from scan frame to base_footprint.
+   *                     Pass identity (default) when scan is already in base_footprint frame.
    */
   ScanMatchResult match(
     const sensor_msgs::msg::LaserScan & scan,
     double guess_x, double guess_y, double guess_yaw,
-    double min_fitness = 0.85);
+    double min_fitness = 0.85,
+    const Eigen::Matrix4f & scan_to_base = Eigen::Matrix4f::Identity());
 
   bool hasMap() const { return map_cloud_ != nullptr && !map_cloud_->empty(); }
+
+  /**
+   * @brief ICP ve voxel parametrelerini dışarıdan ayarla (YAML'dan okunur).
+   */
+  void configure(double max_correspondence_dist, int max_iterations, double voxel_leaf_size);
 
 private:
   using PointT = pcl::PointXYZ;  // ICP internals require z — set to 0.0 for 2D

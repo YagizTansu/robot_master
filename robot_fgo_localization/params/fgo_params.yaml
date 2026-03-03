@@ -35,6 +35,10 @@ fgo_localization_node:
     sensors.lidar.noise_y:      0.10   # metre
     sensors.lidar.noise_yaw:    0.05   # radyan
     sensors.lidar.min_fitness:  0.30   # ICP: küçük = daha sıkı
+    # ICP ayar parametreleri
+    sensors.lidar.icp_max_correspondence_dist: 0.5   # metre: eşleşme mesafesi eşiği
+    sensors.lidar.icp_max_iterations:          50    # maksimum iterasyon
+    sensors.lidar.icp_voxel_leaf_size:         0.05  # metre: voxel downsample
 
     # ── GPS (opsiyonel — NavSatFix → yerel XY dönüşümü) ─────────────────────────
     # Kullanmak için: enabled: true yapıp datum'ı robotun başlangıç pozisyonuna ayarla.

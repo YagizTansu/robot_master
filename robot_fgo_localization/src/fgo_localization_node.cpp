@@ -13,6 +13,10 @@ FGOLocalizationNode::FGOLocalizationNode(const rclcpp::NodeOptions & options)
   initISAM2();
 
   scan_matcher_ = std::make_shared<ScanMatcher>(get_logger());
+  scan_matcher_->configure(
+    lidar_cfg_.icp_max_correspondence_dist,
+    lidar_cfg_.icp_max_iterations,
+    lidar_cfg_.icp_voxel_leaf_size);
 
   // ── TF ──────────────────────────────────────────────────────────────────────
   tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
@@ -143,6 +147,12 @@ void FGOLocalizationNode::declareParameters()
   lidar_cfg_.noise_y      = declare_parameter<double>     ("sensors.lidar.noise_y",      0.10);
   lidar_cfg_.noise_yaw    = declare_parameter<double>     ("sensors.lidar.noise_yaw",    0.05);
   lidar_cfg_.min_fitness  = declare_parameter<double>     ("sensors.lidar.min_fitness",  0.30);
+  lidar_cfg_.icp_max_correspondence_dist =
+    declare_parameter<double>("sensors.lidar.icp_max_correspondence_dist", 0.5);
+  lidar_cfg_.icp_max_iterations =
+    declare_parameter<int>   ("sensors.lidar.icp_max_iterations",          50);
+  lidar_cfg_.icp_voxel_leaf_size =
+    declare_parameter<double>("sensors.lidar.icp_voxel_leaf_size",         0.05);
 
   // ── GPS sensor ────────────────────────────────────────────────────
   gps_cfg_.enabled    = declare_parameter<bool>       ("sensors.gps.enabled",    false);
@@ -255,6 +265,43 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
     return;
   }
 
+  // ── Lidar frame → base_footprint dönüşümü (otomatik) ────────────────────────
+  // Scan zaten base_footprint'te yayınlanıyorsa (örn. dual lidar merger) identity kullanılır.
+  // Tek lidar senaryosunda frame_id farklıysa TF'ten otomatik alınır.
+  Eigen::Matrix4f scan_to_base = Eigen::Matrix4f::Identity();
+  if (msg->header.frame_id != base_frame_) {
+    try {
+      const auto tf = tf_buffer_->lookupTransform(
+        base_frame_, msg->header.frame_id,
+        msg->header.stamp,
+        rclcpp::Duration::from_seconds(0.05));
+
+      const auto & t = tf.transform.translation;
+      const auto & q = tf.transform.rotation;
+      // Quaternion → rotation matrix (sadece Z dönüşü için)
+      const double yaw = std::atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+      const float cy = static_cast<float>(std::cos(yaw));
+      const float sy = static_cast<float>(std::sin(yaw));
+
+      scan_to_base(0, 0) = cy;  scan_to_base(0, 1) = -sy;
+      scan_to_base(1, 0) = sy;  scan_to_base(1, 1) =  cy;
+      scan_to_base(0, 3) = static_cast<float>(t.x);
+      scan_to_base(1, 3) = static_cast<float>(t.y);
+
+      RCLCPP_DEBUG(get_logger(),
+        "[FGO] Scan frame '%s' → '%s': tx=%.3f ty=%.3f yaw=%.3f",
+        msg->header.frame_id.c_str(), base_frame_.c_str(), t.x, t.y, yaw);
+
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+        "[FGO] TF lookup '%s'→'%s' failed: %s — skipping scan",
+        msg->header.frame_id.c_str(), base_frame_.c_str(), ex.what());
+      return;
+    }
+  }
+
   gtsam::Pose2 guess(0, 0, 0);
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -264,7 +311,7 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
   }
 
   const auto result = scan_matcher_->match(
-    *msg, guess.x(), guess.y(), guess.theta(), lidar_cfg_.min_fitness);
+    *msg, guess.x(), guess.y(), guess.theta(), lidar_cfg_.min_fitness, scan_to_base);
 
   if (result.success) {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -272,6 +319,7 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
     scan_factor_pending_ = true;
   }
 }
+
 
 void FGOLocalizationNode::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
 {

@@ -11,6 +11,18 @@ ScanMatcher::ScanMatcher(rclcpp::Logger logger)
 : logger_(logger), map_cloud_(nullptr)
 {}
 
+// ─── Configure ────────────────────────────────────────────────────────────
+void ScanMatcher::configure(
+  double max_correspondence_dist, int max_iterations, double voxel_leaf_size)
+{
+  icp_max_correspondence_dist_ = max_correspondence_dist;
+  icp_max_iterations_          = max_iterations;
+  voxel_leaf_size_             = voxel_leaf_size;
+  RCLCPP_INFO(logger_,
+    "[ScanMatcher] ICP configured: max_corr=%.2fm, max_iter=%d, voxel=%.3fm",
+    icp_max_correspondence_dist_, icp_max_iterations_, voxel_leaf_size_);
+}
+
 // ─── Map Loading ─────────────────────────────────────────────────────────────
 void ScanMatcher::setMap(const nav_msgs::msg::OccupancyGrid & map)
 {
@@ -87,7 +99,8 @@ ScanMatcher::mapToCloud(const nav_msgs::msg::OccupancyGrid & map) const
 ScanMatchResult ScanMatcher::match(
   const sensor_msgs::msg::LaserScan & scan,
   double guess_x, double guess_y, double guess_yaw,
-  double min_fitness)
+  double min_fitness,
+  const Eigen::Matrix4f & scan_to_base)
 {
   ScanMatchResult result;
 
@@ -100,6 +113,19 @@ ScanMatchResult ScanMatcher::match(
   auto scan_cloud = scanToCloud(scan);
   if (scan_cloud->empty()) {
     return result;
+  }
+
+  // ── scan frame → base_footprint dönüşümü (gerekirse) ──────────────────────
+  // scan zaten base_footprint frame'inde ise scan_to_base Identity'dir — overhead yok.
+  if (!scan_to_base.isIdentity(1e-6f)) {
+    auto transformed = std::make_shared<Cloud>();
+    transformed->reserve(scan_cloud->size());
+    for (const auto & p : *scan_cloud) {
+      Eigen::Vector4f pt(p.x, p.y, p.z, 1.0f);
+      Eigen::Vector4f pt_base = scan_to_base * pt;
+      transformed->emplace_back(pt_base.x(), pt_base.y(), 0.0f);
+    }
+    scan_cloud = transformed;
   }
 
   // ── Transform scan cloud to map frame using current guess ──────────────────
