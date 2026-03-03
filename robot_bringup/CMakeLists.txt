@@ -20,6 +20,7 @@ install(TARGETS
 install(DIRECTORY 
   robot_startup_param
   launch
+  config
   DESTINATION share/${PROJECT_NAME}
 )
 
