@@ -74,6 +74,7 @@ def generate_launch_description():
                 executable="save_amcl_pose.py",
                 name="fgo_pose_saver",
                 output="screen",
+                parameters=[{"use_sim_time": use_sim_time}],
                 remappings=[("/amcl_pose", "/fgo_pose")],
             ),
             # 3 seconds after start: publish last saved pose as /initialpose
@@ -85,6 +86,7 @@ def generate_launch_description():
                         executable="publish_initial_pose.py",
                         name="initial_pose_publisher",
                         output="screen",
+                        parameters=[{"use_sim_time": use_sim_time}],
                     ),
                 ],
             ),

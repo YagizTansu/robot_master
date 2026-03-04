@@ -1,6 +1,7 @@
 #include "robot_fgo_localization/fgo_localization_node.hpp"
 
 #include <cmath>
+#include <gtsam/nonlinear/Marginals.h>
 
 namespace robot_fgo_localization
 {
@@ -217,6 +218,12 @@ void FGOLocalizationNode::mapCallback(const nav_msgs::msg::OccupancyGrid::Shared
 {
   RCLCPP_INFO(get_logger(), "[FGO] Map received (%ux%u @ %.3fm/cell)",
     msg->info.width, msg->info.height, msg->info.resolution);
+
+  // FIX 3: state_mutex_ ile korunuyoruz — scan callback aynı anda
+  // scan_matcher_->match() çağırabilir; setMap() sırasında map_cloud_
+  // yeniden inşa edildiğinden data race oluşurdu.
+  std::lock_guard<std::mutex> lock(state_mutex_);
+
   scan_matcher_->setMap(*msg);
 
   if (auto_init_timer_) { auto_init_timer_->cancel(); }
@@ -302,21 +309,28 @@ void FGOLocalizationNode::scanCallback(const sensor_msgs::msg::LaserScan::Shared
     }
   }
 
+  // FIX 4: pose_key_ snapshot — scan ile odom arasındaki race condition'ı önler.
+  // ICP hesabı mutex dışında (blocking) yapılır; bu süre içinde odometryCallback
+  // pose_key_'i artırabilir. Snapshot alınarak scan sonucu doğru node'a bağlanır.
   gtsam::Pose2 guess(0, 0, 0);
+  uint64_t scan_target_key = 0;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    if (current_estimate_.exists(X(pose_key_))) {
-      guess = current_estimate_.at<gtsam::Pose2>(X(pose_key_));
+    scan_target_key = pose_key_;  // snapshot
+    if (current_estimate_.exists(X(scan_target_key))) {
+      guess = current_estimate_.at<gtsam::Pose2>(X(scan_target_key));
     }
   }
 
+  // ICP hesabı — mutex dışında, blocking olabilir
   const auto result = scan_matcher_->match(
     *msg, guess.x(), guess.y(), guess.theta(), lidar_cfg_.min_fitness, scan_to_base);
 
   if (result.success) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    pending_scan_pose_ = gtsam::Pose2(result.x, result.y, result.yaw);
-    scan_factor_pending_ = true;
+    pending_scan_pose_    = gtsam::Pose2(result.x, result.y, result.yaw);
+    pending_scan_key_     = scan_target_key;  // hangi node'a bağlanacağı kayıt altına alındı
+    scan_factor_pending_  = true;
   }
 }
 
@@ -403,9 +417,14 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
   new_values_.insert(X(current_key), predicted);
 
   // ── IMU yaw factor (sadece imu_cfg_.enabled ise callback var) ───────────────
+  // FIX 2: IMU sadece yaw ölçer — x/y bilgisi yoktur. x/y sigma'sı için odom
+  // noise'unun %100 büyüğünü kullanıyoruz (yani IMU x/y'ye hiç katkı yapmaz
+  // ama 1000.0 gibi uç değerler sayısal instabiliteye yol açabilir).
+  // Robust yöntem: x/y sigması = odom sigması * büyük_çarpan (örn. 50x).
   if (imu_yaw_pending_ && latest_imu_yaw_.has_value()) {
+    const double imu_xy_sigma = std::max(odom_cfg_.noise_x, odom_cfg_.noise_y) * 50.0;
     auto imu_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector3(1000.0, 1000.0, imu_cfg_.noise_yaw));
+      gtsam::Vector3(imu_xy_sigma, imu_xy_sigma, imu_cfg_.noise_yaw));
     const gtsam::Pose2 imu_pose(predicted.x(), predicted.y(), *latest_imu_yaw_);
     new_factors_.add(
       gtsam::PriorFactor<gtsam::Pose2>(X(current_key), imu_pose, imu_noise));
@@ -413,11 +432,24 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
   }
 
   // ── Scan factor (sadece lidar_cfg_.enabled ise callback var) ────────────────
+  // FIX 4: Scan faktörü snapshot'taki key'e bağlanır (current_key değil).
+  // Eğer scan arrival sırasında current_key > pending_scan_key_ ise
+  // (yani odom callback araya girdi), scan faktörü kaçırılır — bir sonrak
+  // scan zaten doğru key'i taşıyacak. Bu sayede yanlış node'a bağlama olmaz.
   if (scan_factor_pending_) {
-    auto scan_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector3(lidar_cfg_.noise_x, lidar_cfg_.noise_y, lidar_cfg_.noise_yaw));
-    new_factors_.add(
-      gtsam::PriorFactor<gtsam::Pose2>(X(current_key), pending_scan_pose_, scan_noise));
+    if (pending_scan_key_ == current_key ||
+        (pending_scan_key_ < current_key && current_estimate_.exists(X(pending_scan_key_))))
+    {
+      const uint64_t target_key = (pending_scan_key_ <= current_key) ? pending_scan_key_ : current_key;
+      auto scan_noise = gtsam::noiseModel::Diagonal::Sigmas(
+        gtsam::Vector3(lidar_cfg_.noise_x, lidar_cfg_.noise_y, lidar_cfg_.noise_yaw));
+      new_factors_.add(
+        gtsam::PriorFactor<gtsam::Pose2>(X(target_key), pending_scan_pose_, scan_noise));
+    } else {
+      RCLCPP_DEBUG(get_logger(),
+        "[FGO] Scan factor dropped: snapshot key=%lu, current_key=%lu (stale)",
+        pending_scan_key_, current_key);
+    }
     scan_factor_pending_ = false;
   }
 
@@ -493,9 +525,38 @@ void FGOLocalizationNode::publishFGOPose(
   msg.pose.pose.orientation.z = q.z();
   msg.pose.pose.orientation.w = q.w();
 
-  msg.pose.covariance[0]  = lidar_cfg_.noise_x   * lidar_cfg_.noise_x;
-  msg.pose.covariance[7]  = lidar_cfg_.noise_y   * lidar_cfg_.noise_y;
-  msg.pose.covariance[35] = lidar_cfg_.noise_yaw * lidar_cfg_.noise_yaw;
+  // FIX 1: iSAM2'den gerçek marginal covariance — Nav2 için doğru belirsizlik bilgisi.
+  // Hardcoded lidar noise değerleri yerine graph'ın hesapladığı covariance kullanılır.
+  // Marginals hesabı pahalıdır — sadece publish anında (odometryCallback hızında) yapılır.
+  bool cov_ok = false;
+  try {
+    const gtsam::Marginals marginals(
+      isam_.getFactorsUnsafe(), current_estimate_,
+      gtsam::Marginals::Factorization::CHOLESKY);
+    const gtsam::Matrix33 cov = marginals.marginalCovariance(X(pose_key_));
+    // Pose2 covariance sırası: [x, y, theta]
+    // nav_msgs covariance: 6×6 [x, y, z, roll, pitch, yaw] — düz sıra
+    msg.pose.covariance[0]  = cov(0, 0);  // x-x
+    msg.pose.covariance[1]  = cov(0, 1);  // x-y
+    msg.pose.covariance[5]  = cov(0, 2);  // x-yaw
+    msg.pose.covariance[6]  = cov(1, 0);  // y-x
+    msg.pose.covariance[7]  = cov(1, 1);  // y-y
+    msg.pose.covariance[11] = cov(1, 2);  // y-yaw
+    msg.pose.covariance[30] = cov(2, 0);  // yaw-x
+    msg.pose.covariance[31] = cov(2, 1);  // yaw-y
+    msg.pose.covariance[35] = cov(2, 2);  // yaw-yaw
+    cov_ok = true;
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+      "[FGO] Marginals failed (%s) — using noise model as fallback", e.what());
+  }
+
+  if (!cov_ok) {
+    // Fallback: lidar noise sigma^2 — graph yeni başladıysa veya degenerate ise
+    msg.pose.covariance[0]  = lidar_cfg_.noise_x   * lidar_cfg_.noise_x;
+    msg.pose.covariance[7]  = lidar_cfg_.noise_y   * lidar_cfg_.noise_y;
+    msg.pose.covariance[35] = lidar_cfg_.noise_yaw * lidar_cfg_.noise_yaw;
+  }
 
   fgo_pose_pub_->publish(msg);
 }
