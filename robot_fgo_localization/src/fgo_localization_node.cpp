@@ -161,6 +161,10 @@ void FGOLocalizationNode::declareParameters()
   gps_cfg_.datum_lon  = declare_parameter<double>     ("sensors.gps.datum_lon",  0.0);
   gps_cfg_.noise_x    = declare_parameter<double>     ("sensors.gps.noise_x",    2.0);
   gps_cfg_.noise_y    = declare_parameter<double>     ("sensors.gps.noise_y",    2.0);
+  // ── Keyframe thresholds ───────────────────────────────────────────────
+  keyframe_dist_th_ = declare_parameter<double>("keyframe_dist_th", 0.5); // metre
+  keyframe_yaw_th_  = declare_parameter<double>("keyframe_yaw_th", 0.15); // rad
+  keyframe_time_th_ = declare_parameter<double>("keyframe_time_th", 1.0); // saniye
 }
 
 // ─── ISAM2 Setup ─────────────────────────────────────────────────────────────

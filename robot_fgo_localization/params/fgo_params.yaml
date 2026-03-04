@@ -15,7 +15,7 @@ fgo_localization_node:
     initial_cov_yaw: 0.2
 
     # ── Odometry (BetweenFactor — graph backbone) ─────────────────────────────
-    sensors.odometry.enabled:   true
+    sensors.odometry.enabled:   false
     sensors.odometry.topic:     "/odometry"
     sensors.odometry.noise_x:   0.05   # meters
     sensors.odometry.noise_y:   0.05   # meters
@@ -23,13 +23,13 @@ fgo_localization_node:
 
     # ── IMU (yaw-only PriorFactor) ────────────────────────────────────────────
     # To disable: enabled: false
-    sensors.imu.enabled:   true
+    sensors.imu.enabled:   false
     sensors.imu.topic:     "/imu"
     sensors.imu.noise_yaw: 0.01   # radians
 
     # ── Lidar / Scan matcher (ICP PriorFactor) ────────────────────────────────
     # To change the topic, e.g.: "/scan_merged"
-    sensors.lidar.enabled:      true
+    sensors.lidar.enabled:      false
     sensors.lidar.topic:        "/scan"
     sensors.lidar.noise_x:      0.10   # meters
     sensors.lidar.noise_y:      0.10   # meters
