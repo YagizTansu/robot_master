@@ -17,35 +17,35 @@ fgo_localization_node:
     # ── Odometry (BetweenFactor — graph backbone) ─────────────────────────────
     sensors.odometry.enabled:   true
     sensors.odometry.topic:     "/odometry"
-    sensors.odometry.noise_x:   0.05   # metre
-    sensors.odometry.noise_y:   0.05   # metre
-    sensors.odometry.noise_yaw: 0.02   # radyan
+    sensors.odometry.noise_x:   0.05   # meters
+    sensors.odometry.noise_y:   0.05   # meters
+    sensors.odometry.noise_yaw: 0.02   # radians
 
     # ── IMU (yaw-only PriorFactor) ────────────────────────────────────────────
-    # Kapatmak için: enabled: false
+    # To disable: enabled: false
     sensors.imu.enabled:   true
     sensors.imu.topic:     "/imu"
-    sensors.imu.noise_yaw: 0.01   # radyan
+    sensors.imu.noise_yaw: 0.01   # radians
 
     # ── Lidar / Scan matcher (ICP PriorFactor) ────────────────────────────────
-    # Topic'i değiştirmek için örn: "/scan_merged"
+    # To change the topic, e.g.: "/scan_merged"
     sensors.lidar.enabled:      true
     sensors.lidar.topic:        "/scan"
-    sensors.lidar.noise_x:      0.10   # metre
-    sensors.lidar.noise_y:      0.10   # metre
-    sensors.lidar.noise_yaw:    0.05   # radyan
-    sensors.lidar.min_fitness:  0.30   # ICP: küçük = daha sıkı
-    # ICP ayar parametreleri
-    sensors.lidar.icp_max_correspondence_dist: 0.5   # metre: eşleşme mesafesi eşiği
-    sensors.lidar.icp_max_iterations:          50    # maksimum iterasyon
-    sensors.lidar.icp_voxel_leaf_size:         0.05  # metre: voxel downsample
+    sensors.lidar.noise_x:      0.10   # meters
+    sensors.lidar.noise_y:      0.10   # meters
+    sensors.lidar.noise_yaw:    0.05   # radians
+    sensors.lidar.min_fitness:  0.30   # ICP: lower = stricter matching
+    # ICP tuning parameters
+    sensors.lidar.icp_max_correspondence_dist: 0.5   # meters: correspondence distance threshold
+    sensors.lidar.icp_max_iterations:          50    # maximum iterations
+    sensors.lidar.icp_voxel_leaf_size:         0.05  # meters: voxel downsample size
 
-    # ── GPS (opsiyonel — NavSatFix → yerel XY dönüşümü) ─────────────────────────
-    # Kullanmak için: enabled: true yapıp datum'ı robotun başlangıç pozisyonuna ayarla.
-    # datum_lat / datum_lon: yerel koordinat sisteminin referans noktası (0,0 kabul edilir)
+    # ── GPS (optional — NavSatFix → local XY conversion) ─────────────────────────
+    # To enable: set enabled: true and configure datum to the robot's starting position.
+    # datum_lat / datum_lon: reference point of the local coordinate system (treated as 0,0)
     sensors.gps.enabled:     false
     sensors.gps.topic:       "/gps/fix"
-    sensors.gps.datum_lat:   0.0    # referans enlem (başlangıç noktası)
-    sensors.gps.datum_lon:   0.0    # referans boylam (başlangıç noktası)
-    sensors.gps.noise_x:     2.0    # metre (GPS tipik yatay hata)
-    sensors.gps.noise_y:     2.0    # metre
+    sensors.gps.datum_lat:   0.0    # reference latitude (origin point)
+    sensors.gps.datum_lon:   0.0    # reference longitude (origin point)
+    sensors.gps.noise_x:     2.0    # meters (typical GPS horizontal error)
+    sensors.gps.noise_y:     2.0    # meters
