@@ -186,6 +186,7 @@ void FGOLocalizationNode::addPriorFactor(const gtsam::Pose2 & initial_pose)
   pose_key_ = 0;
   graph_initialized_ = false;
   last_odom_pose_.reset();
+  last_graph_odom_pose_.reset();
   imu_yaw_pending_ = false;
   scan_factor_pending_ = false;
   gps_factor_pending_ = false;
@@ -205,6 +206,7 @@ void FGOLocalizationNode::addPriorFactor(const gtsam::Pose2 & initial_pose)
 
   pose_key_ = 0;
   graph_initialized_ = true;
+  last_graph_update_time_ = now();
 
   RCLCPP_INFO(get_logger(),
     "[FGO] Graph initialized. Prior at x=%.3f y=%.3f yaw=%.3f",
@@ -218,14 +220,6 @@ void FGOLocalizationNode::mapCallback(const nav_msgs::msg::OccupancyGrid::Shared
   RCLCPP_INFO(get_logger(), "[FGO] Map received (%ux%u @ %.3fm/cell)",
     msg->info.width, msg->info.height, msg->info.resolution);
   scan_matcher_->setMap(*msg);
-
-  if (auto_init_timer_) { auto_init_timer_->cancel(); }
-
-  if (!graph_initialized_) {
-    RCLCPP_INFO(get_logger(), "[FGO] No initial pose yet — starting at map origin (0,0,0)");
-    addPriorFactor(gtsam::Pose2(0.0, 0.0, 0.0));
-    publishTFs(gtsam::Pose2(0.0, 0.0, 0.0), last_raw_odom_pose_, now());
-  }
 }
 
 void FGOLocalizationNode::initialPoseCallback(
@@ -377,16 +371,27 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
 
   if (!last_odom_pose_.has_value()) {
     last_odom_pose_ = current_odom;
+    last_graph_odom_pose_ = current_odom;
+    last_graph_update_time_ = stamp;
     return;
   }
 
-  const gtsam::Pose2 delta = last_odom_pose_->between(current_odom);
   last_odom_pose_ = current_odom;
 
-  if (std::abs(delta.x())     < 1e-4 &&
-      std::abs(delta.y())     < 1e-4 &&
-      std::abs(delta.theta()) < 1e-4)
-  {
+  const gtsam::Pose2 delta_since_graph = last_graph_odom_pose_->between(current_odom);
+  const double dist = std::hypot(delta_since_graph.x(), delta_since_graph.y());
+  const double dyaw = std::abs(delta_since_graph.theta());
+  const double dt = (stamp - last_graph_update_time_).seconds();
+
+  const bool has_sensor_update = (imu_yaw_pending_ && latest_imu_yaw_.has_value()) ||
+                                 scan_factor_pending_ ||
+                                 gps_factor_pending_;
+
+  const bool is_keyframe = (dist >= keyframe_dist_th_ || dyaw >= keyframe_yaw_th_);
+
+  if (!is_keyframe && (!has_sensor_update || dt < keyframe_time_th_)) {
+    // Only update TF, don't add to graph
+    publishTFs(last_map_pose_, last_raw_odom_pose_, stamp);
     return;
   }
 
@@ -397,10 +402,13 @@ void FGOLocalizationNode::odometryCallback(const nav_msgs::msg::Odometry::Shared
   auto odom_noise = gtsam::noiseModel::Diagonal::Sigmas(
     gtsam::Vector3(odom_cfg_.noise_x, odom_cfg_.noise_y, odom_cfg_.noise_yaw));
   new_factors_.add(
-    gtsam::BetweenFactor<gtsam::Pose2>(X(prev_key), X(current_key), delta, odom_noise));
+    gtsam::BetweenFactor<gtsam::Pose2>(X(prev_key), X(current_key), delta_since_graph, odom_noise));
 
-  const gtsam::Pose2 predicted = current_estimate_.at<gtsam::Pose2>(X(prev_key)).compose(delta);
+  const gtsam::Pose2 predicted = current_estimate_.at<gtsam::Pose2>(X(prev_key)).compose(delta_since_graph);
   new_values_.insert(X(current_key), predicted);
+
+  last_graph_odom_pose_ = current_odom;
+  last_graph_update_time_ = stamp;
 
   // ── IMU yaw factor (sadece imu_cfg_.enabled ise callback var) ───────────────
   if (imu_yaw_pending_ && latest_imu_yaw_.has_value()) {

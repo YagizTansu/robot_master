@@ -90,5 +90,13 @@ def generate_launch_description():
                     ),
                 ],
             ),
+            # ── FGO Localization Node ──────────────────────────────────────────────────
+            Node(
+                package="robot_fgo_localization",
+                executable="fgo_localization_node",
+                name="fgo_localization_node",
+                output="screen",
+                parameters=[fgo_params_file, {"use_sim_time": use_sim_time}],
+            ),
         ]
     )

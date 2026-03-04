@@ -161,9 +161,16 @@ private:
   bool                          graph_initialized_{false};
 
   // ─── State ─────────────────────────────────────────────────────────────────
-  std::optional<gtsam::Pose2>   last_odom_pose_;      // previous odom reading (for delta)
-  gtsam::Pose2                  last_raw_odom_pose_;   // raw odom pose for odom→base_footprint TF
+  std::optional<gtsam::Pose2>   last_odom_pose_;       // previous odom reading
+  gtsam::Pose2                  last_raw_odom_pose_;   // raw odom pose for TF
   gtsam::Pose2                  last_map_pose_;        // last FGO result for map→odom TF
+
+  // ─── Keyframe Tracking ─────────────────────────────────────────────────────
+  std::optional<gtsam::Pose2>   last_graph_odom_pose_; // Odom pose when the last graph node was added
+  rclcpp::Time                  last_graph_update_time_{0, 0, RCL_ROS_TIME};
+  double                        keyframe_dist_th_{0.1};
+  double                        keyframe_yaw_th_{0.05};
+  double                        keyframe_time_th_{1.0};
 
   // IMU pending state
   std::optional<double>         latest_imu_yaw_;
