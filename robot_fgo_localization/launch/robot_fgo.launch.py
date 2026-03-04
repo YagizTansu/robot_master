@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -13,15 +13,16 @@ def generate_launch_description():
     robot_fgo_dir = get_package_share_directory("robot_fgo_localization")
     robot_navigation_dir = get_package_share_directory("robot_navigation")
 
+    # Params
     fgo_params_file = os.path.join(robot_fgo_dir, "params", "fgo_params.yaml")
+
+    # Map — reuse existing aws_warehouse map
     map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
-                "use_sim_time",
-                default_value="true",
-                description="Use Gazebo sim clock",
+                "use_sim_time", default_value="true", description="Use Gazebo sim clock"
             ),
             DeclareLaunchArgument("autostart", default_value="true"),
             # ── Map Server ────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ def generate_launch_description():
                     }
                 ],
             ),
-            # Lifecycle manager — yalnızca map_server için
+            # Lifecycle manager for map_server only
             Node(
                 package="nav2_lifecycle_manager",
                 executable="lifecycle_manager",
@@ -54,20 +55,6 @@ def generate_launch_description():
                     }
                 ],
             ),
-            # ── FGO Localization Node ─────────────────────────────────────────────
-            Node(
-                package="robot_fgo_localization",
-                executable="fgo_localization_node",
-                name="fgo_localization_node",
-                output="screen",
-                parameters=[
-                    fgo_params_file,
-                    {"use_sim_time": use_sim_time},
-                ],
-            ),
-            # ── Pose Persistence: Kaydet ──────────────────────────────────────────
-            # /fgo_pose topic'ini dinler, 5sn'de bir ~/.ros/last_fgo_pose.json'a
-            # atomik olarak yazar (eski save_amcl_pose.py'nin düzeltilmiş hali).
             Node(
                 package="robot_navigation",
                 executable="save_amcl_pose.py",
@@ -76,11 +63,6 @@ def generate_launch_description():
                 parameters=[{"use_sim_time": use_sim_time}],
                 remappings=[("/amcl_pose", "/fgo_pose")],
             ),
-            # ── Pose Persistence: Yükle ───────────────────────────────────────────
-            # Node başladıktan publish_delay_sec sonra (varsayılan: 2s) kayıtlı
-            # pose'u /initialpose olarak yayınlar ve kapanır.
-            # Not: TimerAction kaldırıldı — bekleme artık ROS2 timer ile node içinde
-            # yönetiliyor (use_sim_time'a uyumlu).
             Node(
                 package="robot_navigation",
                 executable="publish_initial_pose.py",
@@ -94,6 +76,18 @@ def generate_launch_description():
                         "cov_y": 0.25,
                         "cov_yaw": 0.06854,
                     }
+                ],
+            ),
+            # 3 seconds after start: publish last saved pose as /initialpose
+            TimerAction(
+                period=3.0,
+                actions=[
+                    Node(
+                        package="robot_navigation",
+                        executable="publish_initial_pose.py",
+                        name="initial_pose_publisher",
+                        output="screen",
+                    ),
                 ],
             ),
         ]

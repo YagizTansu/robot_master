@@ -172,7 +172,6 @@ private:
   // Lidar pending state
   bool                          scan_factor_pending_{false};
   gtsam::Pose2                  pending_scan_pose_;
-  uint64_t                      pending_scan_key_{0};  // FIX 4: scan arrival anındaki pose_key snapshot'ı
 
   // GPS pending state
   bool                          gps_factor_pending_{false};
