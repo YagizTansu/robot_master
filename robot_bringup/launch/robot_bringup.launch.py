@@ -15,7 +15,9 @@ def generate_launch_description():
     robot_gazebo_dir = get_package_share_directory("robot_gazebo")
     robot_description_dir = get_package_share_directory("robot_description")
     dual_laser_merger_dir = get_package_share_directory("dual_laser_merger")
-    robot_localization_dir = get_package_share_directory("robot_localization")
+    # NOTE: robot_localization (EKF) removed — FGO node replaces it.
+    # robot_fgo_localization is launched from robot_navigation.launch.py
+    # together with the rest of the Nav2 stack.
 
     # Launch configurations
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
@@ -44,22 +46,15 @@ def generate_launch_description():
     )
 
     # Include demo_laser_merger.launch.py
+    # Merges dual lidar scans → /scan topic consumed by FGO node
     demo_laser_merger_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(dual_laser_merger_dir, "launch", "demo_laser_merger.launch.py")
         )
     )
 
-    # Include EKF localization for sensor fusion (odometry + IMU)
-    ekf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(robot_localization_dir, "launch", "ekf.launch.py")
-        )
-    )
-
     ld.add_action(robot_warehouse_launch)
     ld.add_action(robot_state_publisher_node)
     ld.add_action(demo_laser_merger_launch)
-    ld.add_action(ekf_launch)
 
     return ld

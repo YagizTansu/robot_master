@@ -3206,7 +3206,7 @@
     <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
       <odom_frame>odom</odom_frame>
       <robot_base_frame>base_footprint</robot_base_frame>
-      <odom_publish_frequency>20.0</odom_publish_frequency>
+      <odom_publish_frequency>50.0</odom_publish_frequency>
       <odom_topic>odometry</odom_topic>
     </plugin>
     <plugin filename="gz-sim-mecanum-drive-system" name="gz::sim::systems::MecanumDrive">
