@@ -9,10 +9,10 @@ import os
 def generate_launch_description():
     ld = LaunchDescription()
 
-    # Get the robot_navigation package directory
+    # Package directories
     robot_navigation_dir = get_package_share_directory("robot_navigation")
     robot_database_dir = get_package_share_directory("robot_database")
-    robot_fgo_dir = get_package_share_directory("robot_fgo_localization")
+    fgo_dir = get_package_share_directory("factor_graph_optimization")
 
     # Path to the robot map graph JSON file
     graph_json_file = os.path.join(
@@ -20,15 +20,14 @@ def generate_launch_description():
     )
 
     # ── FGO Localization (replaces AMCL + EKF) ────────────────────────────────
-    # Launches: map_server, fgo_localization_node, pose saver/publisher
-    robot_fgo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(robot_fgo_dir, "launch", "robot_fgo.launch.py")
-        )
+    # Provides:
+    #   map → odom           (iSAM2 optimised result — replaces AMCL)
+    #   odom → base_footprint (raw odom pass-through    — replaces EKF)
+    fgo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(fgo_dir, "launch", "fgo.launch.py"))
     )
 
     # ── Nav2 Navigation Stack ─────────────────────────────────────────────────
-    # (previously included by robot_amcl_navigation2.launch.py via custom_navigation_launch.py)
     nav2_params_file = os.path.join(
         robot_navigation_dir, "config", "robot_move_base.yaml"
     )
@@ -72,7 +71,7 @@ def generate_launch_description():
         )
     )
 
-    ld.add_action(robot_fgo_launch)
+    ld.add_action(fgo_launch)
     ld.add_action(custom_navigation_launch)
     ld.add_action(rviz_node)
     ld.add_action(graph_visualizer_node)

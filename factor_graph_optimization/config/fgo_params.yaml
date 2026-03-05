@@ -1,0 +1,182 @@
+# ============================================================
+#  factor_graph_optimization — FGO Parameter File
+#  All parameters used by both fgo_node and scan_matcher_node.
+#  NO hardcoded values are present in the C++ source code.
+# ============================================================
+
+fgo_node:
+  ros__parameters:
+
+    # ── Sensor Toggles ──────────────────────────────────────
+    sensors:
+      enable_odom:  true
+      enable_imu:   true
+      enable_lidar: true
+
+    # ── Topic Names ─────────────────────────────────────────
+    topics:
+      odom_topic:             "/odometry"
+      imu_topic:              "/imu"
+      lidar_topic:            "/scan"
+      scan_match_pose_topic:  "/scan_match_pose"
+      initial_pose_topic:     "/initialpose"
+      map_topic:              "/map"
+
+    # ── Frame IDs ───────────────────────────────────────────
+    frames:
+      map_frame:    "map"
+      odom_frame:   "odom"
+      base_frame:   "base_footprint"
+      lidar_frame:  "base_footprint"   # merged LiDAR scan arrives in base_footprint
+      imu_frame:    "base_footprint"
+
+    # ── TF Publishing ───────────────────────────────────────
+    tf:
+      publish_map_to_odom:    true
+      publish_odom_to_base:   true
+      tf_publish_rate_hz:     50.0
+
+    # ── Initial Pose ────────────────────────────────────────
+    initial_pose:
+      x:     0.0
+      y:     0.0
+      z:     0.0
+      roll:  0.0
+      pitch: 0.0
+      yaw:   0.0
+
+    # ── Noise Models ────────────────────────────────────────
+    noise:
+      odometry:
+        x:     0.05
+        y:     0.05
+        z:     999.0   # unconstrained — flat surface
+        roll:  999.0   # unconstrained — flat surface
+        pitch: 999.0   # unconstrained — flat surface
+        yaw:   0.05
+
+      imu:
+        gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
+        x:     999.0                # unconstrained (no translation from IMU)
+        y:     999.0                # unconstrained
+        z:     999.0                # unconstrained
+        roll:  999.0                # unconstrained
+        pitch: 999.0                # unconstrained
+
+      lidar:
+        x:     0.1
+        y:     0.1
+        z:     999.0   # unconstrained — flat surface
+        roll:  999.0   # unconstrained — flat surface
+        pitch: 999.0   # unconstrained — flat surface
+        yaw:   0.1
+        icp_fitness_score_threshold: 0.5
+        icp_covariance_threshold:    0.3
+
+    # ── iSAM2 ───────────────────────────────────────────────
+    isam2:
+      relinearize_threshold:  0.1
+      relinearize_skip:       1
+      optimization_rate_hz:   10.0
+
+    # ── Keyframe Strategy ───────────────────────────────────
+    keyframe:
+      translation_threshold:  0.2    # metres
+      rotation_threshold:     0.1    # radians
+
+    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
+    scan_matcher:
+      type:                    "NDT"
+      max_iterations:          50
+      max_correspondence_dist: 1.0
+      transformation_epsilon:  1.0e-6
+      map_z_height:            0.0
+
+
+scan_matcher_node:
+  ros__parameters:
+
+    # ── Sensor Toggles ──────────────────────────────────────
+    sensors:
+      enable_odom:  true
+      enable_imu:   true
+      enable_lidar: true
+
+    # ── Topic Names ─────────────────────────────────────────
+    topics:
+      odom_topic:             "/odometry"
+      imu_topic:              "/imu"
+      lidar_topic:            "/scan"
+      scan_match_pose_topic:  "/scan_match_pose"
+      initial_pose_topic:     "/initialpose"
+      map_topic:              "/map"
+
+    # ── Frame IDs ───────────────────────────────────────────
+    frames:
+      map_frame:    "map"
+      odom_frame:   "odom"
+      base_frame:   "base_footprint"
+      lidar_frame:  "base_footprint"
+      imu_frame:    "base_footprint"
+
+    # ── TF Publishing ───────────────────────────────────────
+    tf:
+      publish_map_to_odom:    true
+      publish_odom_to_base:   true
+      tf_publish_rate_hz:     50.0
+
+    # ── Initial Pose ────────────────────────────────────────
+    initial_pose:
+      x:     0.0
+      y:     0.0
+      z:     0.0
+      roll:  0.0
+      pitch: 0.0
+      yaw:   0.0
+
+    # ── Noise Models ────────────────────────────────────────
+    noise:
+      odometry:
+        x:     0.05
+        y:     0.05
+        z:     999.0
+        roll:  999.0
+        pitch: 999.0
+        yaw:   0.05
+
+      imu:
+        gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
+        x:     999.0                # unconstrained (no translation from IMU)
+        y:     999.0                # unconstrained
+        z:     999.0                # unconstrained
+        roll:  999.0                # unconstrained
+        pitch: 999.0                # unconstrained
+
+      lidar:
+        x:     0.1
+        y:     0.1
+        z:     999.0
+        roll:  999.0
+        pitch: 999.0
+        yaw:   0.1
+        icp_fitness_score_threshold: 0.5
+        icp_covariance_threshold:    0.3
+
+    # ── iSAM2 ───────────────────────────────────────────────
+    isam2:
+      relinearize_threshold:  0.1
+      relinearize_skip:       1
+      optimization_rate_hz:   10.0
+
+    # ── Keyframe Strategy ───────────────────────────────────
+    keyframe:
+      translation_threshold:  0.2
+      rotation_threshold:     0.1
+
+    # ── Scan Matcher ─────────────────────────────────────────
+    scan_matcher:
+      type:                    "NDT"
+      max_iterations:          50
+      max_correspondence_dist: 1.0
+      transformation_epsilon:  1.0e-6
+      map_z_height:            0.0

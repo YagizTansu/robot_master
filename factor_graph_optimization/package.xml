@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>factor_graph_optimization</name>
+  <version>1.0.0</version>
+  <description>
+    Factor Graph Optimization (FGO) localization node using GTSAM iSAM2.
+    Replaces both AMCL and EKF in the navigation stack.
+    Provides: fgo_node (pose-graph optimizer) and scan_matcher_node (NDT/ICP).
+  </description>
+
+  <maintainer email="yagiz@robot.local">Yagiz Tansu</maintainer>
+  <license>Apache License 2.0</license>
+
+  <!-- Build toolchain -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Core ROS 2 -->
+  <depend>rclcpp</depend>
+
+  <!-- Messages / services -->
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <!-- TF2 -->
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_sensor_msgs</depend>
+
+  <!-- LiDAR projection -->
+  <depend>laser_geometry</depend>
+
+  <!-- PCL bridging -->
+  <depend>pcl_ros</depend>
+  <depend>pcl_conversions</depend>
+
+  <!-- Linting -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
