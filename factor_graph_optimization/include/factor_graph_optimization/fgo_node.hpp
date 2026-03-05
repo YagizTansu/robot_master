@@ -197,6 +197,8 @@ private:
   double noise_lidar_roll_, noise_lidar_pitch_, noise_lidar_yaw_;
   double icp_fitness_score_threshold_;
   double icp_covariance_threshold_;
+  double lidar_rotation_gate_rad_;    ///< skip scan prior if batch |dyaw| > this (rad)
+  double lidar_fitness_noise_scale_;  ///< sigma *= (1 + scale * fitness_score)
 
   // iSAM2
   double isam2_relinearize_threshold_;

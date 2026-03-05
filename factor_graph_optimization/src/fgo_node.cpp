@@ -155,6 +155,12 @@ void FgoNode::declareParameters()
   declare_parameter("noise.lidar.yaw",   0.1);
   declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
   declare_parameter("noise.lidar.icp_covariance_threshold",    0.3);
+  // Skip scan prior if total batch |dyaw| exceeds this value (rad).
+  // NDT becomes unreliable during fast in-place rotation.
+  declare_parameter("noise.lidar.rotation_gate_rad",   0.02);
+  // Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
+  // Poor matches (high fitness) contribute a much weaker constraint.
+  declare_parameter("noise.lidar.fitness_noise_scale", 5.0);
 
   // iSAM2
   declare_parameter("isam2.relinearize_threshold", 0.1);
@@ -214,6 +220,8 @@ void FgoNode::loadParameters()
 
   icp_fitness_score_threshold_ = get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
   icp_covariance_threshold_    = get_parameter("noise.lidar.icp_covariance_threshold").as_double();
+  lidar_rotation_gate_rad_     = get_parameter("noise.lidar.rotation_gate_rad").as_double();
+  lidar_fitness_noise_scale_   = get_parameter("noise.lidar.fitness_noise_scale").as_double();
 
   isam2_relinearize_threshold_ = get_parameter("isam2.relinearize_threshold").as_double();
   isam2_relinearize_skip_      = get_parameter("isam2.relinearize_skip").as_int();
@@ -530,6 +538,9 @@ void FgoNode::optimizationStep()
   // The first delta is computed from last_consumed_odom_pose_ (the keyframe
   // that corresponds to the last optimised state), so the graph is consistent.
   geometry_msgs::msg::Pose prev_pose = last_consumed_odom_pose_;
+  // Snapshot of the pose BEFORE this batch: used for rotation gate calculation.
+  // Must be captured before the loop overwrites last_consumed_odom_pose_.
+  const geometry_msgs::msg::Pose pre_batch_odom_pose = last_consumed_odom_pose_;
   const int batch_start_key = key_;  // key index BEFORE this batch
 
   for (const auto & sample : local_odom) {
@@ -606,6 +617,15 @@ void FgoNode::optimizationStep()
         ++n_integrated;
       }
 
+      // Always insert V/B initial values BEFORE any continue guard so that
+      // subsequent intervals that reference from_key=to_key find them in the graph.
+      if (!new_values_.exists(V(to_key))) {
+        new_values_.insert(V(to_key), optimized_velocity_);
+      }
+      if (!new_values_.exists(B(to_key))) {
+        new_values_.insert(B(to_key), optimized_bias_);
+      }
+
       if (n_integrated == 0) continue;
 
       // CombinedImuFactor constrains X, V, B at both ends of the interval
@@ -614,47 +634,63 @@ void FgoNode::optimizationStep()
         X(to_key),   V(to_key),
         B(from_key), B(to_key),
         preint));
-
-      // Insert initial guess for V and B at the new key (if not already there)
-      if (!new_values_.exists(V(to_key))) {
-        new_values_.insert(V(to_key), optimized_velocity_);
-      }
-      if (!new_values_.exists(B(to_key))) {
-        new_values_.insert(B(to_key), optimized_bias_);
-      }
     }
   }
 
   // ── Scan match PriorFactors ───────────────────────────────────────────────
-  // Apply each scan match result to the odom keyframe whose timestamp is
-  // closest to the scan’s timestamp.  This avoids mis-attributing a scan
-  // result to a keyframe that is significantly later in time.
+  // Rotation gate: skip ALL scan priors if the robot rotated more than
+  // lidar_rotation_gate_rad_ this batch.  NDT is unreliable during in-place
+  // rotation and converges to a wrong local minimum, permanently shifting the graph.
   if (!local_scan.empty()) {
-    auto lidar_noise = makeDiagonalNoise(
-      noise_lidar_x_, noise_lidar_y_, noise_lidar_z_,
-      noise_lidar_roll_, noise_lidar_pitch_, noise_lidar_yaw_);
+    auto get_yaw_pose = [](const geometry_msgs::msg::Pose & p) -> double {
+      tf2::Quaternion tq(p.orientation.x, p.orientation.y,
+                         p.orientation.z, p.orientation.w);
+      double r, pi, y;
+      tf2::Matrix3x3(tq).getRPY(r, pi, y);
+      return y;
+    };
+    double batch_dyaw = 0.0;
+    double yaw_prev = get_yaw_pose(pre_batch_odom_pose);
+    for (const auto & s : local_odom) {
+      double dy = std::fmod(std::fabs(get_yaw_pose(s.pose) - yaw_prev), 2.0 * M_PI);
+      if (dy > M_PI) dy = 2.0 * M_PI - dy;
+      batch_dyaw += dy;
+      yaw_prev = get_yaw_pose(s.pose);
+    }
 
-    for (const auto & scan_msg : local_scan) {
-      const rclcpp::Time scan_t(scan_msg.header.stamp);
-      const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
-
-      // Find the index inside local_odom whose timestamp is closest to scan_t.
-      // local_odom[i] corresponds to key (batch_start_key + i + 1).
-      int best_i = static_cast<int>(local_odom.size()) - 1;  // default: latest
-      double best_dt = std::numeric_limits<double>::max();
-      for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
-        const double dt = std::fabs(
-          (local_odom[i].timestamp - scan_t).seconds());
-        if (dt < best_dt) { best_dt = dt; best_i = i; }
-      }
-      const int target_key = batch_start_key + best_i + 1;
-
-      new_factors_.add(
-        gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
-
+    if (batch_dyaw > lidar_rotation_gate_rad_) {
       RCLCPP_DEBUG(get_logger(),
-        "[FgoNode] Scan prior added to X(%d), dt=%.3fs, fitness=%.3f",
-        target_key, best_dt, scan_msg.pose.covariance[34]);
+        "[FgoNode] Scan prior skipped: batch |dyaw|=%.4f rad > gate=%.4f rad",
+        batch_dyaw, lidar_rotation_gate_rad_);
+    } else {
+      for (const auto & scan_msg : local_scan) {
+        const rclcpp::Time scan_t(scan_msg.header.stamp);
+        const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
+        const double fitness = scan_msg.pose.covariance[34];
+
+        // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
+        const double scale = 1.0 + lidar_fitness_noise_scale_ * fitness;
+        auto lidar_noise = makeDiagonalNoise(
+          noise_lidar_x_ * scale, noise_lidar_y_ * scale, noise_lidar_z_,
+          noise_lidar_roll_,       noise_lidar_pitch_,
+          noise_lidar_yaw_ * scale);
+
+        // Find nearest keyframe by timestamp
+        int best_i = static_cast<int>(local_odom.size()) - 1;
+        double best_dt = std::numeric_limits<double>::max();
+        for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+          const double dt = std::fabs((local_odom[i].timestamp - scan_t).seconds());
+          if (dt < best_dt) { best_dt = dt; best_i = i; }
+        }
+        const int target_key = batch_start_key + best_i + 1;
+
+        new_factors_.add(
+          gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
+
+        RCLCPP_DEBUG(get_logger(),
+          "[FgoNode] Scan prior -> X(%d), dt=%.3fs, fitness=%.3f, scale=%.2f",
+          target_key, best_dt, fitness, scale);
+      }
     }
   }
 
