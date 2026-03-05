@@ -74,8 +74,12 @@ private:
   // ── TF publishing helpers ─────────────────────────────────────────────────
   void publishOdomToBase(const rclcpp::Time & stamp,
                          const geometry_msgs::msg::Pose & raw_pose);
-  void publishMapToOdom(const rclcpp::Time & stamp,
-                        const gtsam::Pose3 & map_T_base);
+  /// Recompute and cache the map→odom transform from the latest optimised pose
+  /// and the corresponding keyframe odom anchor (last_consumed_odom_pose_).
+  /// Must be called after iSAM2 update and before publishMapToOdom.
+  void updateMapToOdomCache();
+  /// Publish the cached map→odom transform with an updated stamp.
+  void publishMapToOdom(const rclcpp::Time & stamp);
 
   // ── Conversion helpers ────────────────────────────────────────────────────
   static gtsam::Pose3 msgToGtsam(const geometry_msgs::msg::Pose & pose);
@@ -98,6 +102,11 @@ private:
   geometry_msgs::msg::Pose  last_keyframe_odom_pose_;  ///< last pose that opened a key
   geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< last pose used for delta in opt
   geometry_msgs::msg::Pose  last_raw_odom_pose_;       ///< for odom→base TF
+
+  /// Cached map→odom transform. Recomputed only when optimisation runs.
+  /// Re-published every timer tick so Nav2 does not time out.
+  geometry_msgs::msg::TransformStamped  cached_map_to_odom_tf_;
+  bool                                  has_map_to_odom_cache_{false};
 
   // ── Thread-safe sensor buffers ────────────────────────────────────────────
   std::vector<geometry_msgs::msg::Pose>                          odom_buffer_;

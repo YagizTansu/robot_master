@@ -10,7 +10,7 @@ fgo_node:
     # ── Sensor Toggles ──────────────────────────────────────
     sensors:
       enable_odom:  true
-      enable_imu:   false
+      enable_imu:   true
       enable_lidar: false
 
     # ── Topic Names ─────────────────────────────────────────
@@ -56,12 +56,12 @@ fgo_node:
         yaw:   0.05
 
       imu:
-        gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
-        x:     999.0                # unconstrained (no translation from IMU)
-        y:     999.0                # unconstrained
-        z:     0.01                 # constrained
-        roll:  0.01                 # constrained
-        pitch: 0.01                 # constrained
+        gyroscope_z_sigma:  0.05    # yaw rate noise — match odom yaw sigma to avoid overriding it
+        x:     999.0              # unconstrained (no translation from IMU)
+        y:     999.0              # unconstrained
+        z:     999.0              # unconstrained
+        roll:  999.0              # unconstrained
+        pitch: 999.0              # unconstrained
 
       lidar:
         x:     0.1
@@ -99,7 +99,7 @@ scan_matcher_node:
     # ── Sensor Toggles ──────────────────────────────────────
     sensors:
       enable_odom:  true
-      enable_imu:   false
+      enable_imu:   true
       enable_lidar: false
 
     # ── Topic Names ─────────────────────────────────────────
@@ -145,12 +145,12 @@ scan_matcher_node:
         yaw:   0.05
 
       imu:
-        gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
-        x:     999.0                # unconstrained (no translation from IMU)
-        y:     999.0                # unconstrained
-        z:     0.01                 # constrained
-        roll:  0.01                 # constrained
-        pitch: 0.01                 # constrained
+        gyroscope_z_sigma:  0.05    # yaw rate noise — match odom yaw sigma
+        x:     999.0              # unconstrained (no translation from IMU)
+        y:     999.0              # unconstrained
+        z:     999.0              # unconstrained
+        roll:  999.0              # unconstrained
+        pitch: 999.0              # unconstrained
 
       lidar:
         x:     0.1

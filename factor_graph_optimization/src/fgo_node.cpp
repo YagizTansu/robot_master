@@ -292,10 +292,10 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   };
   const double yaw_curr = get_yaw(raw_pose.orientation);
   const double yaw_last = get_yaw(last_keyframe_odom_pose_.orientation);
-  double dyaw = std::fabs(yaw_curr - yaw_last);
-  // Wrap to [-π, π]
-  while (dyaw > M_PI) dyaw -= 2.0 * M_PI;
-  dyaw = std::fabs(dyaw);
+  // Wrap delta yaw to [0, π]
+  double dyaw = std::fmod(
+    std::fabs(yaw_curr - yaw_last), 2.0 * M_PI);
+  if (dyaw > M_PI) dyaw = 2.0 * M_PI - dyaw;
 
   const bool threshold_met = (dist > keyframe_translation_threshold_) ||
                              (dyaw > keyframe_rotation_threshold_);
@@ -403,9 +403,15 @@ void FgoNode::initialPoseCallback(
   path_msg_.poses.clear();
   path_msg_.header.stamp = now();
 
+  // Reset cached map→odom so stale transform is not republished
+  has_map_to_odom_cache_ = false;
+
   // Reset iSAM2 and re-add X(0)
   initIsam2();
   initGraph();
+
+  // After initGraph(), update the map→odom cache to the new initial pose
+  updateMapToOdomCache();
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Graph reset to (%.2f, %.2f, yaw=%.2f)",
     init_x_, init_y_, init_yaw_);
@@ -438,11 +444,13 @@ void FgoNode::optimizationStep()
     local_scan.swap(scan_pose_buffer_);
   }
 
-  // If no new keyframes, still publish TF to prevent Nav2 TF timeout.
-  // Nav2 requires map->odom to be published continuously even when stationary.
+  // If no new keyframes, re-publish the CACHED map→odom transform to prevent
+  // Nav2 TF timeout.  We must NOT recompute here: recomputing with the
+  // current (live) last_raw_odom_pose_ would cancel out the odom→base TF and
+  // freeze the robot's apparent position in the map frame.
   if (local_odom.empty()) {
-    if (has_optimized_pose_ && publish_map_to_odom_) {
-      publishMapToOdom(now(), optimized_pose_);
+    if (has_map_to_odom_cache_ && publish_map_to_odom_) {
+      publishMapToOdom(now());
     }
     return;
   }
@@ -540,9 +548,14 @@ void FgoNode::optimizationStep()
     return;
   }
 
-  // ── Publish map → odom TF ────────────────────────────────────────────────
+  // ── Update and publish map → odom TF ─────────────────────────────────────
+  // updateMapToOdomCache() anchors map→odom using last_consumed_odom_pose_
+  // (the keyframe pose that CORRESPONDS to optimized_pose_).  This ensures
+  // that between optimisation steps the raw odom dead-reckons from the
+  // keyframe correctly, instead of freezing the robot in the map frame.
   if (publish_map_to_odom_) {
-    publishMapToOdom(now(), optimized_pose_);
+    updateMapToOdomCache();
+    publishMapToOdom(now());
   }
 
   // ── Publish /fgo/odometry ─────────────────────────────────────────────────
@@ -587,34 +600,44 @@ void FgoNode::publishOdomToBase(const rclcpp::Time & stamp,
   tf_broadcaster_->sendTransform(ts);
 }
 
-void FgoNode::publishMapToOdom(const rclcpp::Time & stamp,
-                               const gtsam::Pose3 & map_T_base)
+void FgoNode::updateMapToOdomCache()
 {
-  // T(map→odom) = T(map→base)_opt × T(odom→base)_raw⁻¹
-  // T(odom→base)_raw comes from last raw odom pose
-  const gtsam::Pose3 odom_T_base = msgToGtsam(last_raw_odom_pose_);
-  const gtsam::Pose3 map_T_odom  = map_T_base.compose(odom_T_base.inverse());
+  // T(map→odom) = T(map→base)_opt × T(odom→base)_keyframe⁻¹
+  //
+  // IMPORTANT: we use last_consumed_odom_pose_ (the KEYFRAME odom pose that
+  // CORRESPONDS to optimized_pose_), NOT last_raw_odom_pose_ (the live pose).
+  //
+  // Using the live raw pose here would cause the map→odom and odom→base
+  // transforms to cancel each other out whenever no new keyframes exist,
+  // freezing the robot's apparent position in the map frame during rotation.
+  //
+  // With the keyframe anchor the TF chain works correctly:
+  //   map→base = (map→odom_cached) × (odom→base_live)
+  //            = (optimized × keyframe_odom⁻¹) × live_odom
+  //            = optimized × Δodom(keyframe → live)    ← dead-reckon ✓
+  const gtsam::Pose3 odom_T_base = msgToGtsam(last_consumed_odom_pose_);
+  const gtsam::Pose3 map_T_odom  = optimized_pose_.compose(odom_T_base.inverse());
 
   const gtsam::Point3 & t = map_T_odom.translation();
-  const gtsam::Rot3   & R = map_T_odom.rotation();
+  const gtsam::Quaternion q = map_T_odom.rotation().toQuaternion();
 
-  // Convert GTSAM rotation to quaternion
-  const gtsam::Quaternion q = R.toQuaternion();
+  cached_map_to_odom_tf_.header.frame_id = map_frame_;
+  cached_map_to_odom_tf_.child_frame_id  = odom_frame_;
+  cached_map_to_odom_tf_.transform.translation.x = t.x();
+  cached_map_to_odom_tf_.transform.translation.y = t.y();
+  cached_map_to_odom_tf_.transform.translation.z = t.z();
+  cached_map_to_odom_tf_.transform.rotation.x    = q.x();
+  cached_map_to_odom_tf_.transform.rotation.y    = q.y();
+  cached_map_to_odom_tf_.transform.rotation.z    = q.z();
+  cached_map_to_odom_tf_.transform.rotation.w    = q.w();
+  has_map_to_odom_cache_ = true;
+}
 
-  geometry_msgs::msg::TransformStamped ts;
-  ts.header.stamp    = stamp;
-  ts.header.frame_id = map_frame_;
-  ts.child_frame_id  = odom_frame_;
-
-  ts.transform.translation.x = t.x();
-  ts.transform.translation.y = t.y();
-  ts.transform.translation.z = t.z();
-  ts.transform.rotation.x    = q.x();
-  ts.transform.rotation.y    = q.y();
-  ts.transform.rotation.z    = q.z();
-  ts.transform.rotation.w    = q.w();
-
-  tf_broadcaster_->sendTransform(ts);
+void FgoNode::publishMapToOdom(const rclcpp::Time & stamp)
+{
+  if (!has_map_to_odom_cache_) return;
+  cached_map_to_odom_tf_.header.stamp = stamp;
+  tf_broadcaster_->sendTransform(cached_map_to_odom_tf_);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
