@@ -31,69 +31,94 @@ A ROS 2 workspace for an autonomous mobile robot featuring custom FGO-based loca
 
 ## Localization
 
-### `robot_fgo_localization`
+### `factor_graph_optimization`
 
 The primary localization method is a custom **Factor Graph Optimization (FGO)** node built on **GTSAM** with incremental solving via **iSAM2**.
 
 #### How It Works
 
-The node maintains a pose graph where each odometry step creates a new node. Sensor measurements are fused as probabilistic factors:
+The node maintains a pose graph where each odometry keyframe creates a new node. Three state variables are maintained per node: pose **X**, velocity **V**, and IMU bias **B**. Sensor measurements are fused as probabilistic factors:
 
-| Factor | Type | Topic |
-|---|---|---|
-| Odometry | `BetweenFactor` (graph backbone) | `/odometry` |
-| IMU | Yaw `PriorFactor` | `/imu` |
-| LiDAR (ICP scan match) | Position `PriorFactor` | `/scan` |
-| GPS *(optional)* | XY `PriorFactor` | `/gps/fix` |
+| Factor | Type | Topic | States constrained |
+|---|---|---|---|
+| Odometry | `BetweenFactor<Pose3>` (graph backbone) | `/odometry` | X(k) → X(k+1) |
+| IMU | `CombinedImuFactor` (pre-integrated) | `/imu` | X, V, B at both keyframe ends |
+| LiDAR (NDT scan match) | `PriorFactor<Pose3>` | `/scan_match_pose` | X(nearest keyframe) |
+
+#### Keyframe Strategy
+
+A new graph node is created when the robot moves more than **0.02 m** (translation) **or** rotates more than **0.02 rad** since the last keyframe. The optimization timer runs at **50 Hz** and processes all keyframes accumulated since the last cycle.
 
 #### Scan Matching
 
-LiDAR is matched against the loaded occupancy map using **ICP (Iterative Closest Point)**. The scan is automatically transformed from the laser frame to `base_footprint` via TF before matching.
+LiDAR matching is handled by a separate `scan_matcher_node` using **NDT (Normal Distributions Transform)**. The scan arrives pre-transformed into `base_footprint` frame. The resulting pose is published to `/scan_match_pose` with the NDT fitness score stored in `covariance[34]`.
 
-Key ICP parameters (tunable in `fgo_params.yaml`):
+Scan priors applied to the graph include two quality filters:
+
+1. **Age gate** — poses older than `max_scan_age_sec` (default 1.0 s) are discarded to prevent stale scans from polluting the graph after a pause.
+2. **Fitness gate** — poses with fitness score above `icp_fitness_score_threshold` (default 0.5) are discarded (higher score = worse match).
+3. **Rotation gate** — if the batch contains any rotation keyframe (`batch_dyaw > rotation_gate_rad`, default 0.02 rad), all scan priors in that batch are skipped. NDT yaw is unreliable during in-place rotation.
+4. **Adaptive noise** — accepted scan priors use `σ *= (1 + fitness_noise_scale × fitness_score)`, so noisier matches contribute a weaker constraint.
+
+Key NDT parameters (in `fgo_params.yaml`):
 
 ```yaml
-sensors.lidar.icp_max_correspondence_dist: 0.5   # meters
-sensors.lidar.icp_max_iterations:          50
-sensors.lidar.icp_voxel_leaf_size:         0.05  # meters
-sensors.lidar.min_fitness:                 0.30  # lower = stricter
+scan_matcher:
+  type:                    "NDT"
+  max_iterations:          50
+  max_correspondence_dist: 1.0       # meters
+  transformation_epsilon:  1.0e-6
+noise.lidar:
+  icp_fitness_score_threshold: 0.5   # discard if score > this
+  max_scan_age_sec:            1.0   # discard if older than this (sec)
+  rotation_gate_rad:           0.02  # skip if batch |dyaw| > this (rad)
+  fitness_noise_scale:         5.0   # adaptive noise multiplier
 ```
+
+#### IMU Pre-integration
+
+IMU samples are buffered and pre-integrated per keyframe interval using GTSAM's `CombinedImuFactor`. This factor jointly optimizes pose, velocity, and accelerometer/gyroscope bias. If the IMU sensor frame differs from `base_footprint`, the node performs a one-time static TF lookup at startup and rotates all measurements into the robot body frame automatically.
 
 #### TF Tree
 
 ```
 map
- └── odom          (published by FGO node at 50 Hz)
-      └── base_footprint  (raw odometry passthrough)
+ └── odom            (published by FGO node, re-published every cycle at 50 Hz)
+      └── base_footprint   (raw odometry passthrough, published every odom message)
 ```
 
 #### Configuration: `fgo_params.yaml`
 
 ```yaml
 # Enable/disable sensors individually
-sensors.odometry.enabled: true
-sensors.imu.enabled:      true
-sensors.lidar.enabled:    true
-sensors.gps.enabled:      false   # set true for outdoor use
+sensors:
+  enable_odom:  true
+  enable_imu:   true
+  enable_lidar: true
+
+# Frame IDs
+frames:
+  map_frame:   "map"
+  odom_frame:  "odom"
+  base_frame:  "base_footprint"
+  imu_frame:   "base_footprint"   # change if IMU has a different TF frame
 
 # iSAM2 solver
-isam2_relinearize_threshold: 0.1
-isam2_relinearize_skip:      10
-```
+isam2:
+  relinearize_threshold: 0.1
+  relinearize_skip:      1
+  optimization_rate_hz:  50.0
 
-For **GPS** (outdoor), set `sensors.gps.enabled: true` and configure the datum (reference lat/lon treated as map origin):
-
-```yaml
-sensors.gps.datum_lat: 48.123456
-sensors.gps.datum_lon: 11.654321
-sensors.gps.noise_x:   2.0   # meters, typical GPS horizontal error
+# Keyframe thresholds
+keyframe:
+  translation_threshold: 0.02   # meters
+  rotation_threshold:    0.02   # radians
 ```
 
 #### Initialization
 
-- On startup the node waits 5 seconds for a map and an `/initialpose` message.
-- If none arrives it auto-starts at the map origin `(0, 0, 0)`.
-- Sending a `2D Pose Estimate` in RViz resets the graph to the new pose.
+- On startup the node initializes the graph at the pose defined by `initial_pose` in `fgo_params.yaml` (default: map origin `(0, 0, 0)`).
+- Sending a **2D Pose Estimate** in RViz resets the graph to the new pose.
 
 ---
 
