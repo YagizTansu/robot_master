@@ -14,6 +14,9 @@ def generate_launch_description():
     robot_database_dir = get_package_share_directory("robot_database")
     fgo_dir = get_package_share_directory("factor_graph_optimization")
 
+    # Map
+    map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
+
     # Path to the robot map graph JSON file
     graph_json_file = os.path.join(
         robot_navigation_dir, "graphs", "robot_map_graph.json"
@@ -55,6 +58,36 @@ def generate_launch_description():
         output="screen",
     )
 
+    # ── Map Server ────────────────────────────────────────────────────────────
+    # A standalone map server is required because FGO relies on it, and
+    # the custom nav2 launch does not include it.
+    map_server_node = Node(
+        package="nav2_map_server",
+        executable="map_server",
+        name="map_server",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": True,  # Hardcoded to true for now since launch configs are generally used for sim
+                "yaml_filename": map_file,
+                "topic_name": "map",
+                "frame_id": "map",
+            }
+        ],
+    )
+
+    lifecycle_manager_map = Node(
+        package="nav2_lifecycle_manager",
+        executable="lifecycle_manager",
+        name="lifecycle_manager_map",
+        output="screen",
+        parameters=[
+            {"use_sim_time": True},
+            {"autostart": True},
+            {"node_names": ["map_server"]},
+        ],
+    )
+
     # ── Graph Visualization ───────────────────────────────────────────────────
     graph_visualizer_node = Node(
         package="robot_navigation",
@@ -74,6 +107,8 @@ def generate_launch_description():
     ld.add_action(fgo_launch)
     ld.add_action(custom_navigation_launch)
     ld.add_action(rviz_node)
+    ld.add_action(map_server_node)
+    ld.add_action(lifecycle_manager_map)
     ld.add_action(graph_visualizer_node)
     ld.add_action(robot_database_launch)
 

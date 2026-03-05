@@ -438,8 +438,12 @@ void FgoNode::optimizationStep()
     local_scan.swap(scan_pose_buffer_);
   }
 
-  // If no new keyframes, nothing to do
+  // If no new keyframes, still publish TF to prevent Nav2 TF timeout.
+  // Nav2 requires map->odom to be published continuously even when stationary.
   if (local_odom.empty()) {
+    if (has_optimized_pose_ && publish_map_to_odom_) {
+      publishMapToOdom(now(), optimized_pose_);
+    }
     return;
   }
 
