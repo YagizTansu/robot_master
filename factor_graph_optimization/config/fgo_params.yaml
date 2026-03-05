@@ -56,35 +56,26 @@ fgo_node:
         yaw:   0.05
 
       imu:
-        gyroscope_z_sigma:  0.05    # yaw rate noise — match odom yaw sigma to avoid overriding it
-        x:     999.0              # unconstrained (no translation from IMU)
-        y:     999.0              # unconstrained
-        z:     999.0              # unconstrained
-        roll:  999.0              # unconstrained
-        pitch: 999.0              # unconstrained
+        # Accelerometer white noise (σ in m/s²/√Hz).
+        # Typical MEMS IMU: 0.003–0.02. Higher → trust IMU less.
+        accel_sigma:       0.02
 
-      lidar:
-        x:     0.1
-        y:     0.1
-        z:     0.01   # constrained — flat surface
-        roll:  0.01   # constrained — flat surface
-        pitch: 0.01   # constrained — flat surface
-        yaw:   0.1
-        icp_fitness_score_threshold: 0.5
-        icp_covariance_threshold:    0.3
+        # Gyroscope white noise (σ in rad/s/√Hz).
+        # Typical MEMS IMU: 0.0003–0.002. Higher → trust gyro less.
+        gyro_sigma:        0.002
 
-    # ── iSAM2 ───────────────────────────────────────────────
-    isam2:
-      relinearize_threshold:  0.1
-      relinearize_skip:       1
-      optimization_rate_hz:   50.0
+        # Accelerometer bias random walk (σ in m/s³/√Hz).
+        # Slower process — keep small.
+        accel_bias_sigma:  0.0001
 
-    # ── Keyframe Strategy ───────────────────────────────────
-    keyframe:
-      translation_threshold:  0.02    # metres
-      rotation_threshold:     0.02    # radians
+        # Gyroscope bias random walk (σ in rad/s²/√Hz).
+        gyro_bias_sigma:   0.000001
 
-    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
+        # Numerical integration noise σ (trapezoidal discretisation error).
+        integration_sigma: 0.0001
+
+        # Gravity magnitude (m/s²). Used in ENU Z-up convention.
+        gravity:           9.81
     scan_matcher:
       type:                    "NDT"
       max_iterations:          50
@@ -145,12 +136,12 @@ scan_matcher_node:
         yaw:   0.05
 
       imu:
-        gyroscope_z_sigma:  0.05    # yaw rate noise — match odom yaw sigma
-        x:     999.0              # unconstrained (no translation from IMU)
-        y:     999.0              # unconstrained
-        z:     999.0              # unconstrained
-        roll:  999.0              # unconstrained
-        pitch: 999.0              # unconstrained
+        accel_sigma:       0.02
+        gyro_sigma:        0.002
+        accel_bias_sigma:  0.0001
+        gyro_bias_sigma:   0.000001
+        integration_sigma: 0.0001
+        gravity:           9.81
 
       lidar:
         x:     0.1

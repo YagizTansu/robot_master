@@ -23,7 +23,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-// GTSAM
+// GTSAM — core
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/inference/Symbol.h>
@@ -33,17 +33,32 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/linear/NoiseModel.h>
+// GTSAM — navigation / IMU preintegration
+#include <gtsam/navigation/CombinedImuFactor.h>
+#include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/NavState.h>
+#include <boost/shared_ptr.hpp>
 
 namespace factor_graph_optimization
 {
 
-using gtsam::symbol_shorthand::X;  // Pose3 keys: X(0), X(1), ...
+using gtsam::symbol_shorthand::X;  // Pose3 keys
+using gtsam::symbol_shorthand::V;  // Velocity keys  (gtsam::Vector3)
+using gtsam::symbol_shorthand::B;  // IMU-bias keys  (gtsam::imuBias::ConstantBias)
 
-/// One gyroscope sample captured by the IMU callback.
+/// Full 6-DOF IMU sample (accelerometer + gyroscope).
 struct ImuSample
 {
-  rclcpp::Time timestamp;
-  double gyro_z{0.0};
+  rclcpp::Time   timestamp;
+  gtsam::Vector3 accel{0.0, 0.0, 9.81};  ///< linear acceleration  (m/s²)
+  gtsam::Vector3 gyro {0.0, 0.0, 0.0};   ///< angular velocity      (rad/s)
+};
+
+/// Odometry keyframe stored with its ROS timestamp for IMU alignment.
+struct OdomSample
+{
+  geometry_msgs::msg::Pose pose;
+  rclcpp::Time             timestamp;
 };
 
 class FgoNode : public rclcpp::Node
@@ -58,7 +73,8 @@ private:
 
   // ── Initialisation ────────────────────────────────────────────────────────
   void initIsam2();
-  void initGraph();          ///< Adds X(0) PriorFactor and commits to iSAM2
+  void initGraph();              ///< Adds X(0)/V(0)/B(0) PriorFactors and commits to iSAM2
+  void initImuPreintegration();  ///< Builds PreintegrationCombinedParams from loaded noise params
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
@@ -94,14 +110,20 @@ private:
   gtsam::Values                               new_values_;
   int                                         key_{0};       ///< current pose key index
 
-  // ── Optimised pose (written by opt thread, read by TF publisher) ──────────
-  gtsam::Pose3                                optimized_pose_;
-  bool                                        has_optimized_pose_{false};
+  // ── Optimised states (pose, velocity, IMU bias) ───────────────────────────
+  gtsam::Pose3                         optimized_pose_;
+  bool                                 has_optimized_pose_{false};
+  gtsam::Vector3                       optimized_velocity_{gtsam::Vector3::Zero()};
+  gtsam::imuBias::ConstantBias         optimized_bias_{};
 
-  // ── Pose tracking ─────────────────────────────────────────────────────────
-  geometry_msgs::msg::Pose  last_keyframe_odom_pose_;  ///< last pose that opened a key
-  geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< last pose used for delta in opt
-  geometry_msgs::msg::Pose  last_raw_odom_pose_;       ///< for odom→base TF
+  /// IMU preintegration params (built once from YAML, reused every step).
+  boost::shared_ptr<gtsam::PreintegrationCombinedParams> imu_preint_params_;
+
+  // ── Pose / stamp tracking ─────────────────────────────────────────────────
+  geometry_msgs::msg::Pose  last_keyframe_odom_pose_;  ///< last pose that triggered a keyframe
+  geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< keyframe pose corresponding to optimized_pose_
+  geometry_msgs::msg::Pose  last_raw_odom_pose_;       ///< live odom pose for odom→base TF
+  rclcpp::Time              last_consumed_odom_stamp_;  ///< timestamp of last_consumed_odom_pose_
 
   /// Cached map→odom transform. Recomputed only when optimisation runs.
   /// Re-published every timer tick so Nav2 does not time out.
@@ -109,7 +131,7 @@ private:
   bool                                  has_map_to_odom_cache_{false};
 
   // ── Thread-safe sensor buffers ────────────────────────────────────────────
-  std::vector<geometry_msgs::msg::Pose>                          odom_buffer_;
+  std::vector<OdomSample>                                        odom_buffer_;
   std::vector<ImuSample>                                         imu_buffer_;
   std::vector<geometry_msgs::msg::PoseWithCovarianceStamped>     scan_pose_buffer_;
 
@@ -162,10 +184,13 @@ private:
   double noise_odom_x_, noise_odom_y_, noise_odom_z_;
   double noise_odom_roll_, noise_odom_pitch_, noise_odom_yaw_;
 
-  // IMU noise
-  double noise_imu_gyro_z_sigma_;
-  double noise_imu_x_, noise_imu_y_, noise_imu_z_;
-  double noise_imu_roll_, noise_imu_pitch_;
+  // IMU preintegration noise
+  double noise_imu_accel_sigma_;       ///< accelerometer white noise  σ (m/s²/√Hz)
+  double noise_imu_gyro_sigma_;        ///< gyroscope white noise       σ (rad/s/√Hz)
+  double noise_imu_accel_bias_sigma_;  ///< accelerometer bias RW       σ (m/s³/√Hz)
+  double noise_imu_gyro_bias_sigma_;   ///< gyroscope bias RW           σ (rad/s²/√Hz)
+  double noise_imu_integration_sigma_; ///< numerical integration noise σ
+  double imu_gravity_;                 ///< gravity magnitude             (m/s²)
 
   // LiDAR noise + gating
   double noise_lidar_x_, noise_lidar_y_, noise_lidar_z_;

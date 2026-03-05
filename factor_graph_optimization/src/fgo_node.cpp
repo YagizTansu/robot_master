@@ -1,5 +1,6 @@
 #include "factor_graph_optimization/fgo_node.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <chrono>
 
@@ -47,8 +48,14 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   last_keyframe_odom_pose_  = make_init_pose();
   last_consumed_odom_pose_  = make_init_pose();
   last_raw_odom_pose_       = make_init_pose();
+  last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  // ── Initialise graph: add X(0) prior ─────────────────────────────────────
+  // ── Build IMU preintegration params ──────────────────────────────────────
+  if (enable_imu_) {
+    initImuPreintegration();
+  }
+
+  // ── Initialise graph: add X(0)/V(0)/B(0) prior ────────────────────────
   initGraph();
 
   // ── Path message header ───────────────────────────────────────────────────
@@ -130,13 +137,13 @@ void FgoNode::declareParameters()
   declare_parameter("noise.odometry.pitch", 999.0);
   declare_parameter("noise.odometry.yaw",   0.05);
 
-  // IMU noise
-  declare_parameter("noise.imu.gyroscope_z_sigma", 0.001);
-  declare_parameter("noise.imu.x",     999.0);
-  declare_parameter("noise.imu.y",     999.0);
-  declare_parameter("noise.imu.z",     999.0);
-  declare_parameter("noise.imu.roll",  999.0);
-  declare_parameter("noise.imu.pitch", 999.0);
+  // IMU preintegration noise
+  declare_parameter("noise.imu.accel_sigma",       0.01);
+  declare_parameter("noise.imu.gyro_sigma",        0.001);
+  declare_parameter("noise.imu.accel_bias_sigma",  0.0001);
+  declare_parameter("noise.imu.gyro_bias_sigma",   0.000001);
+  declare_parameter("noise.imu.integration_sigma", 0.0001);
+  declare_parameter("noise.imu.gravity",           9.81);
 
   // LiDAR noise + gating
   declare_parameter("noise.lidar.x",     0.1);
@@ -190,12 +197,12 @@ void FgoNode::loadParameters()
   noise_odom_pitch_ = get_parameter("noise.odometry.pitch").as_double();
   noise_odom_yaw_   = get_parameter("noise.odometry.yaw").as_double();
 
-  noise_imu_gyro_z_sigma_ = get_parameter("noise.imu.gyroscope_z_sigma").as_double();
-  noise_imu_x_     = get_parameter("noise.imu.x").as_double();
-  noise_imu_y_     = get_parameter("noise.imu.y").as_double();
-  noise_imu_z_     = get_parameter("noise.imu.z").as_double();
-  noise_imu_roll_  = get_parameter("noise.imu.roll").as_double();
-  noise_imu_pitch_ = get_parameter("noise.imu.pitch").as_double();
+  noise_imu_accel_sigma_       = get_parameter("noise.imu.accel_sigma").as_double();
+  noise_imu_gyro_sigma_        = get_parameter("noise.imu.gyro_sigma").as_double();
+  noise_imu_accel_bias_sigma_  = get_parameter("noise.imu.accel_bias_sigma").as_double();
+  noise_imu_gyro_bias_sigma_   = get_parameter("noise.imu.gyro_bias_sigma").as_double();
+  noise_imu_integration_sigma_ = get_parameter("noise.imu.integration_sigma").as_double();
+  imu_gravity_                 = get_parameter("noise.imu.gravity").as_double();
 
   noise_lidar_x_     = get_parameter("noise.lidar.x").as_double();
   noise_lidar_y_     = get_parameter("noise.lidar.y").as_double();
@@ -228,19 +235,54 @@ void FgoNode::initIsam2()
   isam2_ = std::make_unique<gtsam::ISAM2>(params);
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// IMU preintegration setup
+// ════════════════════════════════════════════════════════════════════════════════
+
+void FgoNode::initImuPreintegration()
+{
+  // MakeSharedU: ENU (Z-up) world frame convention.
+  // Gravity acts along -Z in world frame → magnitude passed as positive scalar.
+  auto p = gtsam::PreintegrationCombinedParams::MakeSharedU(imu_gravity_);
+
+  // White-noise spectral densities (continuous time)
+  p->accelerometerCovariance =
+    gtsam::I_3x3 * (noise_imu_accel_sigma_ * noise_imu_accel_sigma_);
+  p->gyroscopeCovariance =
+    gtsam::I_3x3 * (noise_imu_gyro_sigma_ * noise_imu_gyro_sigma_);
+
+  // Numerical integration uncertainty
+  p->integrationCovariance =
+    gtsam::I_3x3 * (noise_imu_integration_sigma_ * noise_imu_integration_sigma_);
+
+  // Bias random-walk spectral densities
+  p->biasAccCovariance =
+    gtsam::I_3x3 * (noise_imu_accel_bias_sigma_ * noise_imu_accel_bias_sigma_);
+  p->biasOmegaCovariance =
+    gtsam::I_3x3 * (noise_imu_gyro_bias_sigma_ * noise_imu_gyro_bias_sigma_);
+
+  // Small uncertainty on initial bias integral (numerical stability)
+  p->biasAccOmegaInt = gtsam::I_6x6 * 1e-5;
+
+  imu_preint_params_ = p;
+
+  RCLCPP_INFO(get_logger(),
+    "[FgoNode] IMU preintegration params set. "
+    "accel_sigma=%.4f gyro_sigma=%.4f gravity=%.2f",
+    noise_imu_accel_sigma_, noise_imu_gyro_sigma_, imu_gravity_);
+}
+
 void FgoNode::initGraph()
 {
   key_ = 0;
   new_factors_.resize(0);
   new_values_.clear();
 
-  // Add X(0) with prior from initial_pose parameters
+  // ── X(0): tight prior on initial pose ───────────────────────────────────────────
   gtsam::Pose3 init_pose(
     gtsam::Rot3::RzRyRx(init_roll_, init_pitch_, init_yaw_),
     gtsam::Point3(init_x_, init_y_, init_z_));
 
-  // Use a fixed tight prior on starting pose (1 mm / 0.001 rad).
-  // A constant sigma is simpler and avoids Eigen operator-precedence pitfalls.
   constexpr double kPosSigma = 0.001;  // 1 mm
   constexpr double kRotSigma = 0.001;  // ~0.057 deg
   auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
@@ -249,6 +291,25 @@ void FgoNode::initGraph()
 
   new_factors_.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), init_pose, prior_noise));
   new_values_.insert(X(0), init_pose);
+
+  // ── V(0) and B(0): velocity and bias priors (only when IMU is enabled) ────
+  if (enable_imu_ && imu_preint_params_) {
+    optimized_velocity_ = gtsam::Vector3::Zero();
+    optimized_bias_     = gtsam::imuBias::ConstantBias();
+
+    // Robot starts from rest — 1 m/s uncertainty (generous)
+    auto vel_noise = gtsam::noiseModel::Isotropic::Sigma(3, 1.0);
+    new_factors_.add(
+      gtsam::PriorFactor<gtsam::Vector3>(V(0), optimized_velocity_, vel_noise));
+    new_values_.insert(V(0), optimized_velocity_);
+
+    // Bias assumed near-zero at startup; moderate uncertainty lets GTSAM estimate it
+    auto bias_noise = gtsam::noiseModel::Diagonal::Sigmas(
+      (gtsam::Vector6() << 0.3, 0.3, 0.3, 0.05, 0.05, 0.05).finished());
+    new_factors_.add(
+      gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), optimized_bias_, bias_noise));
+    new_values_.insert(B(0), optimized_bias_);
+  }
 
   isam2_->update(new_factors_, new_values_);
   new_factors_.resize(0);
@@ -302,7 +363,10 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 
   if (threshold_met) {
     std::lock_guard<std::mutex> lock(odom_mutex_);
-    odom_buffer_.push_back(raw_pose);
+    OdomSample s;
+    s.pose      = raw_pose;
+    s.timestamp = rclcpp::Time(msg->header.stamp);
+    odom_buffer_.push_back(s);
     last_keyframe_odom_pose_ = raw_pose;
   }
 }
@@ -315,7 +379,14 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
   ImuSample sample;
   sample.timestamp = rclcpp::Time(msg->header.stamp);
-  sample.gyro_z    = msg->angular_velocity.z;
+  sample.accel = gtsam::Vector3(
+    msg->linear_acceleration.x,
+    msg->linear_acceleration.y,
+    msg->linear_acceleration.z);
+  sample.gyro = gtsam::Vector3(
+    msg->angular_velocity.x,
+    msg->angular_velocity.y,
+    msg->angular_velocity.z);
 
   std::lock_guard<std::mutex> lock(imu_mutex_);
   imu_buffer_.push_back(sample);
@@ -399,6 +470,11 @@ void FgoNode::initialPoseCallback(
     scan_pose_buffer_.clear();
   }
 
+  // Reset IMU state
+  optimized_velocity_       = gtsam::Vector3::Zero();
+  optimized_bias_           = gtsam::imuBias::ConstantBias();
+  last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
   // Reset path
   path_msg_.poses.clear();
   path_msg_.header.stamp = now();
@@ -424,7 +500,7 @@ void FgoNode::initialPoseCallback(
 void FgoNode::optimizationStep()
 {
   // ── Drain odom buffer ─────────────────────────────────────────────────────
-  std::vector<geometry_msgs::msg::Pose> local_odom;
+  std::vector<OdomSample> local_odom;
   {
     std::lock_guard<std::mutex> lock(odom_mutex_);
     local_odom.swap(odom_buffer_);
@@ -461,13 +537,14 @@ void FgoNode::optimizationStep()
     noise_odom_roll_, noise_odom_pitch_, noise_odom_yaw_);
 
   // ── Build odometry BetweenFactors ─────────────────────────────────────────
-  // The reference for the FIRST delta is last_consumed_odom_pose_
-  // (which itself is initialized from initial_pose at startup or /initialpose reset).
+  // The first delta is computed from last_consumed_odom_pose_ (the keyframe
+  // that corresponds to the last optimised state), so the graph is consistent.
   geometry_msgs::msg::Pose prev_pose = last_consumed_odom_pose_;
+  const int batch_start_key = key_;  // key index BEFORE this batch
 
-  for (const auto & current_pose : local_odom) {
+  for (const auto & sample : local_odom) {
     const gtsam::Pose3 gtsam_prev    = msgToGtsam(prev_pose);
-    const gtsam::Pose3 gtsam_current = msgToGtsam(current_pose);
+    const gtsam::Pose3 gtsam_current = msgToGtsam(sample.pose);
     const gtsam::Pose3 delta         = gtsam_prev.between(gtsam_current);
 
     // Initial value guess for new key: propagate from last optimised pose
@@ -483,38 +560,78 @@ void FgoNode::optimizationStep()
       gtsam::BetweenFactor<gtsam::Pose3>(X(key_ - 1), X(key_), delta, odom_noise));
     new_values_.insert(X(key_), estimate);
 
-    prev_pose = current_pose;
+    prev_pose = sample.pose;
   }
-  // Update last consumed pose to the last element processed
-  last_consumed_odom_pose_ = local_odom.back();
+  last_consumed_odom_pose_  = local_odom.back().pose;
+  // Save OLD stamp before overwriting: needed as t_from for the first IMU interval
+  const rclcpp::Time prev_consumed_stamp = last_consumed_odom_stamp_;
+  last_consumed_odom_stamp_ = local_odom.back().timestamp;
 
-  // ── IMU yaw BetweenFactor (trapezoidal integration) ───────────────────────
-  if (!local_imu.empty()) {
-    double delta_yaw = 0.0;
-    for (std::size_t i = 1; i < local_imu.size(); ++i) {
-      const double dt =
-        (local_imu[i].timestamp - local_imu[i - 1].timestamp).seconds();
-      if (dt <= 0.0 || dt > 1.0) continue;  // sanity guard
-      // Trapezoidal rule
-      delta_yaw += 0.5 * (local_imu[i - 1].gyro_z + local_imu[i].gyro_z) * dt;
-    }
+  // ── CombinedImuFactor: preintegrate IMU per keyframe interval ────────────
+  // Architecture:
+  //   For each consecutive keyframe pair [X(k-1)→X(k)], we find all IMU
+  //   samples whose timestamps fall inside that interval and preintegrate them
+  //   into a PreintegratedCombinedMeasurements object.
+  //   CombinedImuFactor then jointly constrains X(k), V(k) and B(k).
+  //
+  //   This is fundamentally different from the old BetweenFactor approach:
+  //   there is NO redundancy with the odom factors because CombinedImuFactor
+  //   operates on the VELOCITY and BIAS states, not on pose deltas alone.
+  //   The graph optimises all three consistently.
+  if (enable_imu_ && imu_preint_params_ && !local_imu.empty()) {
+    // Sort IMU samples by timestamp (defensive guard)
+    std::sort(local_imu.begin(), local_imu.end(),
+      [](const ImuSample & a, const ImuSample & b) {
+        return a.timestamp < b.timestamp;
+      });
 
-    // Noise: driven entirely from YAML — typically only yaw is constrained
-    auto imu_noise = makeDiagonalNoise(
-      noise_imu_x_, noise_imu_y_, noise_imu_z_,
-      noise_imu_roll_, noise_imu_pitch_, noise_imu_gyro_z_sigma_);
+    for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+      const int from_key = batch_start_key + i;
+      const int to_key   = from_key + 1;
 
-    const gtsam::Pose3 imu_delta(
-      gtsam::Rot3::Rz(delta_yaw),
-      gtsam::Point3(0.0, 0.0, 0.0));
+      // Time window for this interval
+      const rclcpp::Time t_from =
+        (i == 0) ? prev_consumed_stamp          // OLD last-consumed stamp
+                 : local_odom[i - 1].timestamp;
+      const rclcpp::Time t_to = local_odom[i].timestamp;
 
-    // Apply between the FIRST new key in this batch and the PREVIOUS key
-    // (i.e. spanning the same interval as the odom batch)
-    const int first_new_key = key_ - static_cast<int>(local_odom.size()) + 1;
-    const int prev_key      = first_new_key - 1;
-    if (prev_key >= 0) {
-      new_factors_.add(
-        gtsam::BetweenFactor<gtsam::Pose3>(X(prev_key), X(key_), imu_delta, imu_noise));
+      // Skip if t_from not yet initialised (first ever batch after startup)
+      if (t_from.nanoseconds() == 0 || t_to <= t_from) continue;
+
+      gtsam::PreintegratedCombinedMeasurements preint(imu_preint_params_, optimized_bias_);
+      int n_integrated = 0;
+
+      for (std::size_t j = 1; j < local_imu.size(); ++j) {
+        const rclcpp::Time & t_a = local_imu[j - 1].timestamp;
+        const rclcpp::Time & t_b = local_imu[j].timestamp;
+
+        // Only integrate samples fully inside [t_from, t_to]
+        if (t_b <= t_from || t_a >= t_to) continue;
+
+        const double dt = (t_b - t_a).seconds();
+        if (dt <= 0.0 || dt > 0.5) continue;  // sanity guard
+
+        preint.integrateMeasurement(local_imu[j - 1].accel,
+                                    local_imu[j - 1].gyro, dt);
+        ++n_integrated;
+      }
+
+      if (n_integrated == 0) continue;
+
+      // CombinedImuFactor constrains X, V, B at both ends of the interval
+      new_factors_.add(gtsam::CombinedImuFactor(
+        X(from_key), V(from_key),
+        X(to_key),   V(to_key),
+        B(from_key), B(to_key),
+        preint));
+
+      // Insert initial guess for V and B at the new key (if not already there)
+      if (!new_values_.exists(V(to_key))) {
+        new_values_.insert(V(to_key), optimized_velocity_);
+      }
+      if (!new_values_.exists(B(to_key))) {
+        new_values_.insert(B(to_key), optimized_bias_);
+      }
     }
   }
 
@@ -540,6 +657,19 @@ void FgoNode::optimizationStep()
 
     // Retrieve optimised pose at current key
     optimized_pose_ = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
+
+    // Retrieve velocity and bias if IMU is active
+    if (enable_imu_ && imu_preint_params_) {
+      try {
+        optimized_velocity_ =
+          isam2_->calculateEstimate<gtsam::Vector3>(V(key_));
+        optimized_bias_ =
+          isam2_->calculateEstimate<gtsam::imuBias::ConstantBias>(B(key_));
+      } catch (...) {
+        // V/B keys may not exist if no IMU factors were added this step
+      }
+    }
+
     has_optimized_pose_ = true;
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "[FgoNode] iSAM2 update failed: %s", e.what());
