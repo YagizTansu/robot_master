@@ -85,13 +85,14 @@ fgo_node:
         pitch: 0.01
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
-        icp_covariance_threshold:    0.3
         # Skip scan prior if total batch rotation exceeds this (rad).
         # Set equal to keyframe.rotation_threshold so any rotation batch is skipped.
         rotation_gate_rad:   0.02
         # Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
         # Higher value = noisier scan matches have much less influence.
         fitness_noise_scale: 5.0
+        # Discard scan poses older than this (sec). Prevents stale scans after a pause.
+        max_scan_age_sec:    1.0
 
     # ── iSAM2 ───────────────────────────────────────────────
     isam2:
@@ -136,7 +137,6 @@ scan_matcher_node:
         pitch: 0.01
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
-        icp_covariance_threshold:    0.3
 
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
