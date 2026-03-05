@@ -11,7 +11,7 @@ fgo_node:
     sensors:
       enable_odom:  true
       enable_imu:   true
-      enable_lidar: false
+      enable_lidar: true
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
@@ -76,6 +76,29 @@ fgo_node:
 
         # Gravity magnitude (m/s²). Used in ENU Z-up convention.
         gravity:           9.81
+
+      lidar:
+        x:     0.1
+        y:     0.1
+        z:     0.01
+        roll:  0.01
+        pitch: 0.01
+        yaw:   0.1
+        icp_fitness_score_threshold: 0.5
+        icp_covariance_threshold:    0.3
+
+    # ── iSAM2 ───────────────────────────────────────────────
+    isam2:
+      relinearize_threshold:  0.1
+      relinearize_skip:       1
+      optimization_rate_hz:   50.0
+
+    # ── Keyframe Strategy ───────────────────────────────────
+    keyframe:
+      translation_threshold:  0.02
+      rotation_threshold:     0.02
+
+    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
     scan_matcher:
       type:                    "NDT"
       max_iterations:          50
@@ -91,7 +114,7 @@ scan_matcher_node:
     sensors:
       enable_odom:  true
       enable_imu:   true
-      enable_lidar: false
+      enable_lidar: true
 
     # ── Topic Names ─────────────────────────────────────────
     topics:

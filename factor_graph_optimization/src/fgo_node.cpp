@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <limits>
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -399,9 +400,8 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 void FgoNode::scanPoseCallback(
   const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
-  // Extract fitness score from covariance[34] (non-standard slot)
+  // Gate 1: fitness score (stored in non-standard covariance[34] slot)
   const double fitness_score = msg->pose.covariance[34];
-
   if (fitness_score > icp_fitness_score_threshold_) {
     RCLCPP_DEBUG(get_logger(),
       "[FgoNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
@@ -409,18 +409,8 @@ void FgoNode::scanPoseCallback(
     return;
   }
 
-  // Check meaningful covariance diagonal elements: index 0 (x), 7 (y), 35 (yaw)
-  const double cov_x   = msg->pose.covariance[0];
-  const double cov_y   = msg->pose.covariance[7];
-  const double cov_yaw = msg->pose.covariance[35];
-
-  if (cov_x > icp_covariance_threshold_ ||
-      cov_y > icp_covariance_threshold_ ||
-      cov_yaw > icp_covariance_threshold_)
-  {
-    RCLCPP_DEBUG(get_logger(),
-      "[FgoNode] Scan match discarded: covariance too large (%.3f, %.3f, %.3f)",
-      cov_x, cov_y, cov_yaw);
+  // Gate 2: NDT must have converged (fitness < 1e8 sentinel)
+  if (fitness_score > 1e8) {
     return;
   }
 
@@ -636,16 +626,36 @@ void FgoNode::optimizationStep()
   }
 
   // ── Scan match PriorFactors ───────────────────────────────────────────────
+  // Apply each scan match result to the odom keyframe whose timestamp is
+  // closest to the scan’s timestamp.  This avoids mis-attributing a scan
+  // result to a keyframe that is significantly later in time.
   if (!local_scan.empty()) {
     auto lidar_noise = makeDiagonalNoise(
       noise_lidar_x_, noise_lidar_y_, noise_lidar_z_,
       noise_lidar_roll_, noise_lidar_pitch_, noise_lidar_yaw_);
 
-    // Use latest scan match pose as a prior on the current key
-    const auto & latest_scan = local_scan.back();
-    const gtsam::Pose3 scan_pose = msgToGtsam(latest_scan.pose.pose);
-    new_factors_.add(
-      gtsam::PriorFactor<gtsam::Pose3>(X(key_), scan_pose, lidar_noise));
+    for (const auto & scan_msg : local_scan) {
+      const rclcpp::Time scan_t(scan_msg.header.stamp);
+      const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
+
+      // Find the index inside local_odom whose timestamp is closest to scan_t.
+      // local_odom[i] corresponds to key (batch_start_key + i + 1).
+      int best_i = static_cast<int>(local_odom.size()) - 1;  // default: latest
+      double best_dt = std::numeric_limits<double>::max();
+      for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+        const double dt = std::fabs(
+          (local_odom[i].timestamp - scan_t).seconds());
+        if (dt < best_dt) { best_dt = dt; best_i = i; }
+      }
+      const int target_key = batch_start_key + best_i + 1;
+
+      new_factors_.add(
+        gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
+
+      RCLCPP_DEBUG(get_logger(),
+        "[FgoNode] Scan prior added to X(%d), dt=%.3fs, fitness=%.3f",
+        target_key, best_dt, scan_msg.pose.covariance[34]);
+    }
   }
 
   // ── iSAM2 update ─────────────────────────────────────────────────────────
