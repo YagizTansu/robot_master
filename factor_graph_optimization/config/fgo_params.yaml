@@ -10,8 +10,8 @@ fgo_node:
     # ── Sensor Toggles ──────────────────────────────────────
     sensors:
       enable_odom:  true
-      enable_imu:   true
-      enable_lidar: true
+      enable_imu:   false
+      enable_lidar: false
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
@@ -50,25 +50,25 @@ fgo_node:
       odometry:
         x:     0.05
         y:     0.05
-        z:     999.0   # unconstrained — flat surface
-        roll:  999.0   # unconstrained — flat surface
-        pitch: 999.0   # unconstrained — flat surface
+        z:     0.01   # constrained — flat surface
+        roll:  0.01   # constrained — flat surface
+        pitch: 0.01   # constrained — flat surface
         yaw:   0.05
 
       imu:
         gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
         x:     999.0                # unconstrained (no translation from IMU)
         y:     999.0                # unconstrained
-        z:     999.0                # unconstrained
-        roll:  999.0                # unconstrained
-        pitch: 999.0                # unconstrained
+        z:     0.01                 # constrained
+        roll:  0.01                 # constrained
+        pitch: 0.01                 # constrained
 
       lidar:
         x:     0.1
         y:     0.1
-        z:     999.0   # unconstrained — flat surface
-        roll:  999.0   # unconstrained — flat surface
-        pitch: 999.0   # unconstrained — flat surface
+        z:     0.01   # constrained — flat surface
+        roll:  0.01   # constrained — flat surface
+        pitch: 0.01   # constrained — flat surface
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
         icp_covariance_threshold:    0.3
@@ -77,12 +77,12 @@ fgo_node:
     isam2:
       relinearize_threshold:  0.1
       relinearize_skip:       1
-      optimization_rate_hz:   10.0
+      optimization_rate_hz:   50.0
 
     # ── Keyframe Strategy ───────────────────────────────────
     keyframe:
-      translation_threshold:  0.2    # metres
-      rotation_threshold:     0.1    # radians
+      translation_threshold:  0.02    # metres
+      rotation_threshold:     0.02    # radians
 
     # ── Scan Matcher (consumed by scan_matcher_node) ─────────
     scan_matcher:
@@ -99,8 +99,8 @@ scan_matcher_node:
     # ── Sensor Toggles ──────────────────────────────────────
     sensors:
       enable_odom:  true
-      enable_imu:   true
-      enable_lidar: true
+      enable_imu:   false
+      enable_lidar: false
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
@@ -139,25 +139,25 @@ scan_matcher_node:
       odometry:
         x:     0.05
         y:     0.05
-        z:     999.0
-        roll:  999.0
-        pitch: 999.0
+        z:     0.01
+        roll:  0.01
+        pitch: 0.01
         yaw:   0.05
 
       imu:
         gyroscope_z_sigma:  0.001   # yaw rate noise (Z axis)
         x:     999.0                # unconstrained (no translation from IMU)
         y:     999.0                # unconstrained
-        z:     999.0                # unconstrained
-        roll:  999.0                # unconstrained
-        pitch: 999.0                # unconstrained
+        z:     0.01                 # constrained
+        roll:  0.01                 # constrained
+        pitch: 0.01                 # constrained
 
       lidar:
         x:     0.1
         y:     0.1
-        z:     999.0
-        roll:  999.0
-        pitch: 999.0
+        z:     0.01
+        roll:  0.01
+        pitch: 0.01
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
         icp_covariance_threshold:    0.3
@@ -166,12 +166,12 @@ scan_matcher_node:
     isam2:
       relinearize_threshold:  0.1
       relinearize_skip:       1
-      optimization_rate_hz:   10.0
+      optimization_rate_hz:   50.0
 
     # ── Keyframe Strategy ───────────────────────────────────
     keyframe:
-      translation_threshold:  0.2
-      rotation_threshold:     0.1
+      translation_threshold:  0.02
+      rotation_threshold:     0.02
 
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
