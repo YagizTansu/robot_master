@@ -1,3 +1,53 @@
-sudo apt install ros-<ros2-distro>-navigation2
-sudo apt install ros-<ros2-distro>-nav2-bringup
-sudo apt install nlohmann-json3-dev
+# ─────────────────────────────────────────────────
+# Python pip packages
+# Install with: pip install -r requirements.txt
+# ─────────────────────────────────────────────────
+
+# ROS 2 Python build tools
+xacro               # used in robot_bringup launch files
+
+# BT visualizer
+# tkinter is part of the Python standard library (python3-tk via apt)
+
+# Nav2 tools (optional, for benchmarking/graph export)
+graphviz            # navigation2/tools/bt2img.py
+requests            # navigation2/tools/update_readme_table.py
+
+# ─────────────────────────────────────────────────
+# System (apt) dependencies
+# Run the commands below once on a fresh machine.
+# Replace <distro> with your ROS 2 distro (e.g. jazzy)
+# ─────────────────────────────────────────────────
+
+# ROS 2 core
+# sudo apt install ros-<distro>-ros-base
+
+# Navigation stack
+# sudo apt install ros-<distro>-navigation2
+# sudo apt install ros-<distro>-nav2-bringup
+
+# Robot state / description
+# sudo apt install ros-<distro>-robot-state-publisher
+# sudo apt install ros-<distro>-joint-state-publisher
+# sudo apt install ros-<distro>-xacro
+
+# SLAM
+# sudo apt install ros-<distro>-slam-toolbox
+# sudo apt install ros-<distro>-cartographer-ros
+
+# Localization
+# sudo apt install ros-<distro>-robot-localization   # EKF fallback
+
+# Sensor drivers
+# sudo apt install ros-<distro>-sick-scan-xd          # SICK LiDAR driver
+
+# C++ build dependencies
+# sudo apt install nlohmann-json3-dev                 # JSON graph file parsing (graph planner)
+# sudo apt install libgtsam-dev                       # GTSAM for FGO localization
+# sudo apt install libpcl-dev                         # PCL for ICP scan matching
+
+# Python GUI (BT visualizer)
+# sudo apt install python3-tk
+
+# BehaviorTree.CPP (build from source or via apt if available)
+# sudo apt install ros-<distro>-behaviortree-cpp

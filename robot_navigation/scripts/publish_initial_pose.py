@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-publish_initial_pose.py
-───────────────────────
-Reads the last saved pose from ~/.ros/last_fgo_pose.json and publishes it
-once to /initialpose so the FGO / AMCL node can resume from where it left off.
-
-Key improvements over previous version:
-  • No time.sleep() in __init__ — uses a ROS2 one-shot timer instead, which
-    respects use_sim_time and does not block the executor.
-  • JSON integrity check before accepting the file.
-  • Covariance values are configurable via ROS2 parameters.
-  • Node exits cleanly after publishing (one-shot pattern).
-"""
-
 import json
 import math
 import os
