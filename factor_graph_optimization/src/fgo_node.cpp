@@ -28,8 +28,32 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   loadParameters();
   initIsam2();
 
-  // ── TF broadcaster ───────────────────────────────────────────────────────
+  // ── TF broadcaster + listener ────────────────────────────────────────────
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  tf_buffer_      = std::make_shared<tf2_ros::Buffer>(get_clock());
+  tf_listener_    = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+  // One-time lookup of static IMU→base_frame rotation.
+  // Static TFs are available immediately; 2-second timeout covers slow startup.
+  // If the transform is unavailable, imu_tf_ready_ stays false and raw IMU
+  // data is used (safe when imu_frame == base_frame).
+  if (imu_frame_ != base_frame_) {
+    try {
+      auto tf_imu = tf_buffer_->lookupTransform(
+        base_frame_, imu_frame_, tf2::TimePointZero,
+        tf2::durationFromSec(2.0));
+      const auto & q = tf_imu.transform.rotation;
+      R_imu_to_base_ = gtsam::Rot3::Quaternion(q.w, q.x, q.y, q.z);
+      imu_tf_ready_  = true;
+      RCLCPP_INFO(get_logger(),
+        "[FgoNode] IMU frame '%s' -> '%s' rotation cached.",
+        imu_frame_.c_str(), base_frame_.c_str());
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(get_logger(),
+        "[FgoNode] IMU->base TF not available (%s). "
+        "Assuming IMU is already expressed in base frame.", ex.what());
+    }
+  }
 
   // ── Initialize pose tracking from initial_pose parameters ────────────────
   auto make_init_pose = [this]() -> geometry_msgs::msg::Pose {
@@ -48,7 +72,6 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   };
   last_keyframe_odom_pose_  = make_init_pose();
   last_consumed_odom_pose_  = make_init_pose();
-  last_raw_odom_pose_       = make_init_pose();
   last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   // ── Build IMU preintegration params ──────────────────────────────────────
@@ -117,6 +140,7 @@ void FgoNode::declareParameters()
   declare_parameter("frames.map_frame",  "map");
   declare_parameter("frames.odom_frame", "odom");
   declare_parameter("frames.base_frame", "base_footprint");
+  declare_parameter("frames.imu_frame",  "imu_link");
 
   // TF
   declare_parameter("tf.publish_map_to_odom",  true);
@@ -154,7 +178,6 @@ void FgoNode::declareParameters()
   declare_parameter("noise.lidar.pitch", 999.0);
   declare_parameter("noise.lidar.yaw",   0.1);
   declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
-  declare_parameter("noise.lidar.icp_covariance_threshold",    0.3);
   // Skip scan prior if total batch |dyaw| exceeds this value (rad).
   // NDT becomes unreliable during fast in-place rotation.
   declare_parameter("noise.lidar.rotation_gate_rad",   0.02);
@@ -168,8 +191,8 @@ void FgoNode::declareParameters()
   declare_parameter("isam2.optimization_rate_hz",  10.0);
 
   // Keyframe
-  declare_parameter("keyframe.translation_threshold", 0.2);
-  declare_parameter("keyframe.rotation_threshold",    0.1);
+  declare_parameter("keyframe.translation_threshold", 0.02);
+  declare_parameter("keyframe.rotation_threshold",    0.02);
 }
 
 void FgoNode::loadParameters()
@@ -186,6 +209,7 @@ void FgoNode::loadParameters()
   map_frame_  = get_parameter("frames.map_frame").as_string();
   odom_frame_ = get_parameter("frames.odom_frame").as_string();
   base_frame_ = get_parameter("frames.base_frame").as_string();
+  imu_frame_  = get_parameter("frames.imu_frame").as_string();
 
   publish_map_to_odom_  = get_parameter("tf.publish_map_to_odom").as_bool();
   publish_odom_to_base_ = get_parameter("tf.publish_odom_to_base").as_bool();
@@ -219,7 +243,6 @@ void FgoNode::loadParameters()
   noise_lidar_yaw_   = get_parameter("noise.lidar.yaw").as_double();
 
   icp_fitness_score_threshold_ = get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
-  icp_covariance_threshold_    = get_parameter("noise.lidar.icp_covariance_threshold").as_double();
   lidar_rotation_gate_rad_     = get_parameter("noise.lidar.rotation_gate_rad").as_double();
   lidar_fitness_noise_scale_   = get_parameter("noise.lidar.fitness_noise_scale").as_double();
 
@@ -325,7 +348,6 @@ void FgoNode::initGraph()
   new_values_.clear();
 
   optimized_pose_ = init_pose;
-  has_optimized_pose_ = true;
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Graph initialised with X(0) at (%.2f, %.2f, yaw=%.2f)",
     init_x_, init_y_, init_yaw_);
@@ -343,8 +365,6 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   if (publish_odom_to_base_) {
     publishOdomToBase(msg->header.stamp, raw_pose);
   }
-
-  last_raw_odom_pose_ = raw_pose;
 
   // 2. Evaluate keyframe condition
   // Compute delta position
@@ -397,6 +417,15 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
     msg->angular_velocity.y,
     msg->angular_velocity.z);
 
+  // Rotate raw measurements into the robot base frame when the IMU is not
+  // co-located / co-oriented with base_frame (e.g. tilted mount, X-forward vs
+  // Y-forward IMU convention).  R_imu_to_base_ is the pure rotation component
+  // of the static TF, cached once at startup.
+  if (imu_tf_ready_) {
+    sample.accel = R_imu_to_base_.rotate(sample.accel);
+    sample.gyro  = R_imu_to_base_.rotate(sample.gyro);
+  }
+
   std::lock_guard<std::mutex> lock(imu_mutex_);
   imu_buffer_.push_back(sample);
 }
@@ -408,7 +437,17 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 void FgoNode::scanPoseCallback(
   const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
-  // Gate 1: fitness score (stored in non-standard covariance[34] slot)
+  // Gate 1: reject stale scan matches that built up while robot was stationary.
+  // Without this, restarting motion floods the graph with old scans attributed
+  // to wrong keyframes.
+  const double age_s = (now() - rclcpp::Time(msg->header.stamp)).seconds();
+  if (age_s > max_scan_age_sec_) {
+    RCLCPP_DEBUG(get_logger(),
+      "[FgoNode] Scan match discarded: age=%.3fs > max=%.3fs", age_s, max_scan_age_sec_);
+    return;
+  }
+
+  // Gate 2: fitness score (stored in non-standard covariance[34] slot)
   const double fitness_score = msg->pose.covariance[34];
   if (fitness_score > icp_fitness_score_threshold_) {
     RCLCPP_DEBUG(get_logger(),
@@ -417,12 +456,11 @@ void FgoNode::scanPoseCallback(
     return;
   }
 
-  // Gate 2: NDT must have converged (fitness < 1e8 sentinel)
-  if (fitness_score > 1e8) {
-    return;
-  }
-
+  // Gate 3: cap buffer size — prevents unbounded growth during long stationary periods
   std::lock_guard<std::mutex> lock(scan_mutex_);
+  if (scan_pose_buffer_.size() >= 10) {
+    scan_pose_buffer_.erase(scan_pose_buffer_.begin());
+  }
   scan_pose_buffer_.push_back(*msg);
 }
 
@@ -569,16 +607,22 @@ void FgoNode::optimizationStep()
   last_consumed_odom_stamp_ = local_odom.back().timestamp;
 
   // ── CombinedImuFactor: preintegrate IMU per keyframe interval ────────────
-  // Architecture:
-  //   For each consecutive keyframe pair [X(k-1)→X(k)], we find all IMU
-  //   samples whose timestamps fall inside that interval and preintegrate them
-  //   into a PreintegratedCombinedMeasurements object.
-  //   CombinedImuFactor then jointly constrains X(k), V(k) and B(k).
-  //
-  //   This is fundamentally different from the old BetweenFactor approach:
-  //   there is NO redundancy with the odom factors because CombinedImuFactor
-  //   operates on the VELOCITY and BIAS states, not on pose deltas alone.
-  //   The graph optimises all three consistently.
+  // V and B states must exist for every new key regardless of whether IMU
+  // data is available this batch.  If insertion is skipped when local_imu is
+  // empty, the next batch that has IMU data will reference V(k)/B(k) that
+  // were never committed to iSAM2 -> exception or silent graph corruption.
+  if (enable_imu_ && imu_preint_params_) {
+    for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+      const int to_key = batch_start_key + i + 1;
+      if (!new_values_.exists(V(to_key))) {
+        new_values_.insert(V(to_key), optimized_velocity_);
+      }
+      if (!new_values_.exists(B(to_key))) {
+        new_values_.insert(B(to_key), optimized_bias_);
+      }
+    }
+  }
+
   if (enable_imu_ && imu_preint_params_ && !local_imu.empty()) {
     // Sort IMU samples by timestamp (defensive guard)
     std::sort(local_imu.begin(), local_imu.end(),
@@ -606,10 +650,14 @@ void FgoNode::optimizationStep()
         const rclcpp::Time & t_a = local_imu[j - 1].timestamp;
         const rclcpp::Time & t_b = local_imu[j].timestamp;
 
-        // Only integrate samples fully inside [t_from, t_to]
+        // Reject samples fully outside the window
         if (t_b <= t_from || t_a >= t_to) continue;
 
-        const double dt = (t_b - t_a).seconds();
+        // Clamp to [t_from, t_to] so boundary-straddling samples are NOT
+        // double-counted across consecutive keyframe intervals.
+        const double t_a_eff = std::max(t_a.seconds(), t_from.seconds());
+        const double t_b_eff = std::min(t_b.seconds(), t_to.seconds());
+        const double dt = t_b_eff - t_a_eff;
         if (dt <= 0.0 || dt > 0.5) continue;  // sanity guard
 
         preint.integrateMeasurement(local_imu[j - 1].accel,
@@ -617,14 +665,7 @@ void FgoNode::optimizationStep()
         ++n_integrated;
       }
 
-      // Always insert V/B initial values BEFORE any continue guard so that
-      // subsequent intervals that reference from_key=to_key find them in the graph.
-      if (!new_values_.exists(V(to_key))) {
-        new_values_.insert(V(to_key), optimized_velocity_);
-      }
-      if (!new_values_.exists(B(to_key))) {
-        new_values_.insert(B(to_key), optimized_bias_);
-      }
+      // V/B values already pre-inserted in the unconditional block above.
 
       if (n_integrated == 0) continue;
 
@@ -716,7 +757,6 @@ void FgoNode::optimizationStep()
       }
     }
 
-    has_optimized_pose_ = true;
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "[FgoNode] iSAM2 update failed: %s", e.what());
     new_factors_.resize(0);

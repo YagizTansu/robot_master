@@ -112,7 +112,6 @@ private:
 
   // ── Optimised states (pose, velocity, IMU bias) ───────────────────────────
   gtsam::Pose3                         optimized_pose_;
-  bool                                 has_optimized_pose_{false};
   gtsam::Vector3                       optimized_velocity_{gtsam::Vector3::Zero()};
   gtsam::imuBias::ConstantBias         optimized_bias_{};
 
@@ -122,7 +121,6 @@ private:
   // ── Pose / stamp tracking ─────────────────────────────────────────────────
   geometry_msgs::msg::Pose  last_keyframe_odom_pose_;  ///< last pose that triggered a keyframe
   geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< keyframe pose corresponding to optimized_pose_
-  geometry_msgs::msg::Pose  last_raw_odom_pose_;       ///< live odom pose for odom→base TF
   rclcpp::Time              last_consumed_odom_stamp_;  ///< timestamp of last_consumed_odom_pose_
 
   /// Cached map→odom transform. Recomputed only when optimisation runs.
@@ -150,7 +148,13 @@ private:
 
   rclcpp::TimerBase::SharedPtr optimization_timer_;
 
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster>  tf_broadcaster_;
+  std::shared_ptr<tf2_ros::Buffer>                tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener>     tf_listener_;
+
+  /// Cached rotation from IMU frame to base frame (looked up once at startup).
+  gtsam::Rot3 R_imu_to_base_;
+  bool        imu_tf_ready_{false};  ///< true once R_imu_to_base_ is valid
 
   // ── Path history (for /fgo/path) ─────────────────────────────────────────
   nav_msgs::msg::Path path_msg_;
@@ -171,6 +175,7 @@ private:
   std::string map_frame_;
   std::string odom_frame_;
   std::string base_frame_;
+  std::string imu_frame_;   ///< frame_id of the IMU sensor
 
   // TF flags
   bool publish_map_to_odom_{true};
@@ -196,9 +201,9 @@ private:
   double noise_lidar_x_, noise_lidar_y_, noise_lidar_z_;
   double noise_lidar_roll_, noise_lidar_pitch_, noise_lidar_yaw_;
   double icp_fitness_score_threshold_;
-  double icp_covariance_threshold_;
   double lidar_rotation_gate_rad_;    ///< skip scan prior if batch |dyaw| > this (rad)
   double lidar_fitness_noise_scale_;  ///< sigma *= (1 + scale * fitness_score)
+  double max_scan_age_sec_;           ///< discard scan poses older than this (sec)
 
   // iSAM2
   double isam2_relinearize_threshold_;
