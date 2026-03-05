@@ -15,9 +15,6 @@ def generate_launch_description():
     robot_gazebo_dir = get_package_share_directory("robot_gazebo")
     robot_description_dir = get_package_share_directory("robot_description")
     dual_laser_merger_dir = get_package_share_directory("dual_laser_merger")
-    # NOTE: robot_localization (EKF) removed — FGO node replaces it.
-    # robot_fgo_localization is launched from robot_navigation.launch.py
-    # together with the rest of the Nav2 stack.
 
     # Launch configurations
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")

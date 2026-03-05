@@ -180,28 +180,19 @@ Default BT: `navigate_w_replanning_simple.xml`
 # Full robot bringup (hardware + localization + navigation)
 ros2 launch robot_bringup robot_bringup.launch.py
 
-# Navigation only (assumes localization is already running)
+# Navigation
 ros2 launch robot_bringup robot_navigation.launch.py
-
-# SLAM with slam_toolbox
-ros2 launch robot_bringup robot_slam.launch.py
-
-# SLAM with Cartographer
-ros2 launch robot_bringup robot_cartographer.launch.py
-
-# Gazebo simulation
-ros2 launch robot_gazebo <world_launch_file>
 ```
 
 ---
 
 ## Dependencies
 
-- ROS 2 Humble (or later)
+- ROS 2 Jazzy
 - Nav2
 - GTSAM (for FGO localization)
 - PCL (for ICP scan matching)
-- BehaviorTree.CPP v4
+- BehaviorTree.CPP
 - SICK scan_unified driver (for `/sick_lidar0` and `/sick_lidar1`)
 
 Install Python dependencies:

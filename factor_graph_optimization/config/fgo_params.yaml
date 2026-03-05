@@ -1,0 +1,147 @@
+# ============================================================
+#  factor_graph_optimization — FGO Parameter File
+#  All parameters used by both fgo_node and scan_matcher_node.
+#  NO hardcoded values are present in the C++ source code.
+# ============================================================
+
+fgo_node:
+  ros__parameters:
+
+    # ── Sensor Toggles ──────────────────────────────────────
+    sensors:
+      enable_odom:  true
+      enable_imu:   true
+      enable_lidar: true
+
+    # ── Topic Names ─────────────────────────────────────────
+    topics:
+      odom_topic:             "/odometry"
+      imu_topic:              "/imu"
+      lidar_topic:            "/scan"
+      scan_match_pose_topic:  "/scan_match_pose"
+      initial_pose_topic:     "/initialpose"
+      map_topic:              "/map"
+
+    # ── Frame IDs ───────────────────────────────────────────
+    frames:
+      map_frame:    "map"
+      odom_frame:   "odom"
+      base_frame:   "base_footprint"
+      lidar_frame:  "base_footprint"   # merged LiDAR scan arrives in base_footprint
+      imu_frame:    "base_footprint"
+
+    # ── TF Publishing ───────────────────────────────────────
+    tf:
+      publish_map_to_odom:    true
+      publish_odom_to_base:   true
+      tf_publish_rate_hz:     50.0
+
+    # ── Initial Pose ────────────────────────────────────────
+    initial_pose:
+      x:     0.0
+      y:     0.0
+      z:     0.0
+      roll:  0.0
+      pitch: 0.0
+      yaw:   0.0
+
+    # ── Noise Models ────────────────────────────────────────
+    noise:
+      odometry:
+        x:     0.05
+        y:     0.05
+        z:     0.01   # constrained — flat surface
+        roll:  0.01   # constrained — flat surface
+        pitch: 0.01   # constrained — flat surface
+        yaw:   0.05
+
+      imu:
+        # Accelerometer white noise (σ in m/s²/√Hz).
+        # Typical MEMS IMU: 0.003–0.02. Higher → trust IMU less.
+        accel_sigma:       0.02
+
+        # Gyroscope white noise (σ in rad/s/√Hz).
+        # Typical MEMS IMU: 0.0003–0.002. Higher → trust gyro less.
+        gyro_sigma:        0.002
+
+        # Accelerometer bias random walk (σ in m/s³/√Hz).
+        # Slower process — keep small.
+        accel_bias_sigma:  0.0001
+
+        # Gyroscope bias random walk (σ in rad/s²/√Hz).
+        gyro_bias_sigma:   0.000001
+
+        # Numerical integration noise σ (trapezoidal discretisation error).
+        integration_sigma: 0.0001
+
+        # Gravity magnitude (m/s²). Used in ENU Z-up convention.
+        gravity:           9.81
+
+      lidar:
+        x:     0.1
+        y:     0.1
+        z:     0.01
+        roll:  0.01
+        pitch: 0.01
+        yaw:   0.1
+        icp_fitness_score_threshold: 0.5
+        icp_covariance_threshold:    0.3
+        # Skip scan prior if total batch rotation exceeds this (rad).
+        # Set equal to keyframe.rotation_threshold so any rotation batch is skipped.
+        rotation_gate_rad:   0.02
+        # Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
+        # Higher value = noisier scan matches have much less influence.
+        fitness_noise_scale: 5.0
+
+    # ── iSAM2 ───────────────────────────────────────────────
+    isam2:
+      relinearize_threshold:  0.1
+      relinearize_skip:       1
+      optimization_rate_hz:   50.0
+
+    # ── Keyframe Strategy ───────────────────────────────────
+    keyframe:
+      translation_threshold:  0.02
+      rotation_threshold:     0.02
+
+    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
+    scan_matcher:
+      type:                    "NDT"
+      max_iterations:          50
+      max_correspondence_dist: 1.0
+      transformation_epsilon:  1.0e-6
+      map_z_height:            0.0
+
+
+scan_matcher_node:
+  ros__parameters:
+
+    # ── Topics (only those actually subscribed/published) ───
+    topics:
+      lidar_topic:            "/scan"
+      scan_match_pose_topic:  "/scan_match_pose"
+      map_topic:              "/map"
+
+    # ── Frame IDs ───────────────────────────────────────────
+    frames:
+      lidar_frame:  "base_footprint"
+
+    # ── LiDAR noise (written into published covariance msg) ─
+    noise:
+      lidar:
+        x:     0.1
+        y:     0.1
+        z:     0.01
+        roll:  0.01
+        pitch: 0.01
+        yaw:   0.1
+        icp_fitness_score_threshold: 0.5
+        icp_covariance_threshold:    0.3
+
+    # ── Scan Matcher ─────────────────────────────────────────
+    scan_matcher:
+      type:                    "NDT"
+      max_iterations:          50
+      max_correspondence_dist: 1.0
+      transformation_epsilon:  1.0e-6
+      map_z_height:            0.0
