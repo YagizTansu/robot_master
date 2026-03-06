@@ -132,6 +132,7 @@ private:
   std::vector<ImuSample>                                         imu_buffer_;
   std::vector<geometry_msgs::msg::PoseWithCovarianceStamped>     scan_pose_buffer_;
 
+  std::mutex graph_mutex_;  ///< protects iSAM2 state, optimized estimates, path
   std::mutex odom_mutex_;
   std::mutex imu_mutex_;
   std::mutex scan_mutex_;
