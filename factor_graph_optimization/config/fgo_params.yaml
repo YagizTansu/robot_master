@@ -78,13 +78,6 @@ fgo_node:
         gravity:           9.81
 
       lidar:
-        x:     0.1
-        y:     0.1
-        z:     0.01
-        roll:  0.01
-        pitch: 0.01
-        yaw:   0.1
-        icp_fitness_score_threshold: 0.5
         # Per-scan rotation gate (rad). Each scan is evaluated independently
         # against the instantaneous |dyaw| of its nearest keyframe interval.
         # Must be BELOW keyframe.rotation_threshold (0.02 rad): a rotation
@@ -93,9 +86,6 @@ fgo_node:
         # attributed to translation keyframes (instantaneous dyaw ≈ 0).
         # NDT is unreliable during ANY in-place rotation.
         rotation_gate_rad:   0.015
-        # Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
-        # Higher value = noisier scan matches have much less influence.
-        fitness_noise_scale: 5.0
         # Discard scan poses older than this (sec). Prevents stale scans after a pause.
         max_scan_age_sec:    1.0
 
@@ -142,6 +132,10 @@ scan_matcher_node:
         pitch: 0.01
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
+        # sigma *= (1 + fitness_noise_scale * fitness_score) — applied before publishing
+        fitness_noise_scale: 5.0
+        # VoxelGrid leaf size for map cloud downsampling (m)
+        map_voxel_leaf_size: 0.1
 
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
@@ -149,4 +143,5 @@ scan_matcher_node:
       max_iterations:          50
       max_correspondence_dist: 1.0
       transformation_epsilon:  1.0e-6
-      map_z_height:            0.0
+      map_z_height:            0.0      # NDT internal voxel resolution (m). Should match map resolution or be coarser.
+      ndt_resolution:          1.0

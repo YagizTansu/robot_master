@@ -104,16 +104,18 @@ private:
   double      max_correspondence_dist_;
   double      transformation_epsilon_;
   double      map_z_height_;
+  double      ndt_resolution_;              ///< NDT internal voxel resolution (m)
+  double      map_voxel_leaf_size_;         ///< VoxelGrid leaf size for map cloud (m)
 
-  // LiDAR noise (for covariance output)
+  // LiDAR noise (written into published covariance)
   double noise_lidar_x_;
   double noise_lidar_y_;
   double noise_lidar_z_;
   double noise_lidar_roll_;
   double noise_lidar_pitch_;
   double noise_lidar_yaw_;
-  double icp_fitness_score_threshold_;
-  double icp_covariance_threshold_;
+  double icp_fitness_score_threshold_;  ///< discard scan if fitness > this
+  double fitness_noise_scale_;          ///< sigma *= (1 + scale * fitness_score)
 };
 
 }  // namespace factor_graph_optimization

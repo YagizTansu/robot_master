@@ -78,6 +78,7 @@ void ScanMatcherNode::declareParameters()
   declare_parameter("scan_matcher.max_correspondence_dist", 1.0);
   declare_parameter("scan_matcher.transformation_epsilon",  1.0e-6);
   declare_parameter("scan_matcher.map_z_height",            0.0);
+  declare_parameter("scan_matcher.ndt_resolution",          1.0);
 
   declare_parameter("noise.lidar.x",     0.1);
   declare_parameter("noise.lidar.y",     0.1);
@@ -86,7 +87,8 @@ void ScanMatcherNode::declareParameters()
   declare_parameter("noise.lidar.pitch", 999.0);
   declare_parameter("noise.lidar.yaw",   0.1);
   declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
-  declare_parameter("noise.lidar.icp_covariance_threshold",    0.3);
+  declare_parameter("noise.lidar.fitness_noise_scale",         5.0);
+  declare_parameter("noise.lidar.map_voxel_leaf_size",         0.1);
 }
 
 void ScanMatcherNode::loadParameters()
@@ -102,6 +104,7 @@ void ScanMatcherNode::loadParameters()
   max_correspondence_dist_  = get_parameter("scan_matcher.max_correspondence_dist").as_double();
   transformation_epsilon_   = get_parameter("scan_matcher.transformation_epsilon").as_double();
   map_z_height_             = get_parameter("scan_matcher.map_z_height").as_double();
+  ndt_resolution_           = get_parameter("scan_matcher.ndt_resolution").as_double();
 
   noise_lidar_x_     = get_parameter("noise.lidar.x").as_double();
   noise_lidar_y_     = get_parameter("noise.lidar.y").as_double();
@@ -112,8 +115,10 @@ void ScanMatcherNode::loadParameters()
 
   icp_fitness_score_threshold_ =
     get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
-  icp_covariance_threshold_ =
-    get_parameter("noise.lidar.icp_covariance_threshold").as_double();
+  fitness_noise_scale_ =
+    get_parameter("noise.lidar.fitness_noise_scale").as_double();
+  map_voxel_leaf_size_ =
+    get_parameter("noise.lidar.map_voxel_leaf_size").as_double();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -126,10 +131,26 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
     msg->info.width, msg->info.height);
 
   map_cloud_ = occupancyGridToCloud(*msg);
+
+  // Downsample map cloud to reduce NDT/ICP computation cost.
+  {
+    pcl::VoxelGrid<pcl::PointXYZ> vg;
+    vg.setInputCloud(map_cloud_);
+    vg.setLeafSize(
+      static_cast<float>(map_voxel_leaf_size_),
+      static_cast<float>(map_voxel_leaf_size_),
+      static_cast<float>(map_voxel_leaf_size_));
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(
+      new pcl::PointCloud<pcl::PointXYZ>);
+    vg.filter(*filtered);
+    map_cloud_ = filtered;
+  }
+
   map_received_ = true;
 
-  RCLCPP_INFO(get_logger(), "[ScanMatcherNode] Map cloud built: %zu points.",
-    map_cloud_->size());
+  RCLCPP_INFO(get_logger(),
+    "[ScanMatcherNode] Map cloud built: %zu points (after voxel filter, leaf=%.2fm).",
+    map_cloud_->size(), map_voxel_leaf_size_);
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr
@@ -212,6 +233,17 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     fitness_score = runIcp(source_cloud, initial_guess, result_transform);
   }
 
+  // ── Fitness gate: discard poor matches before publishing ──────────────────
+  if (fitness_score > icp_fitness_score_threshold_) {
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+      "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
+      fitness_score, icp_fitness_score_threshold_);
+    return;
+  }
+
+  // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
+  const double scan_noise_scale = 1.0 + fitness_noise_scale_ * fitness_score;
+
   // ── Enforce 2D constraints ────────────────────────────────────────────────
   result_transform = enforce2D(result_transform);
 
@@ -247,17 +279,16 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   out.pose.pose.orientation.z = static_cast<double>(q.z());
   out.pose.pose.orientation.w = static_cast<double>(q.w());
 
-  // Fill 6×6 covariance (row–major, [x, y, z, roll, pitch, yaw])
-  // Diagonal: [0]=x·x, [7]=y·y, [14]=z·z, [21]=roll·roll, [28]=pitch·pitch, [35]=yaw·yaw
+  // Proper diagonal covariance (σ² terms). Adaptive scaling already applied.
+  // Order (row-major, Pose6DoF): [x, y, z, roll, pitch, yaw]
+  // Diagonal indices: [0]=x·x, [7]=y·y, [14]=z·z, [21]=roll·roll, [28]=pitch·pitch, [35]=yaw·yaw
   out.pose.covariance.fill(0.0);
-  out.pose.covariance[0]  = noise_lidar_x_     * noise_lidar_x_;
-  out.pose.covariance[7]  = noise_lidar_y_     * noise_lidar_y_;
-  out.pose.covariance[14] = noise_lidar_z_     * noise_lidar_z_;
-  out.pose.covariance[21] = noise_lidar_roll_  * noise_lidar_roll_;
-  out.pose.covariance[28] = noise_lidar_pitch_ * noise_lidar_pitch_;
-  out.pose.covariance[35] = noise_lidar_yaw_   * noise_lidar_yaw_;
-  // Non-standard slot: fitness score at [34] (pitch-yaw cross term — repurposed)
-  out.pose.covariance[34] = fitness_score;
+  out.pose.covariance[0]  = std::pow(noise_lidar_x_     * scan_noise_scale, 2.0);
+  out.pose.covariance[7]  = std::pow(noise_lidar_y_     * scan_noise_scale, 2.0);
+  out.pose.covariance[14] = std::pow(noise_lidar_z_,                        2.0);
+  out.pose.covariance[21] = std::pow(noise_lidar_roll_,                     2.0);
+  out.pose.covariance[28] = std::pow(noise_lidar_pitch_,                    2.0);
+  out.pose.covariance[35] = std::pow(noise_lidar_yaw_   * scan_noise_scale, 2.0);
 
   pub_scan_pose_->publish(out);
 }
@@ -285,7 +316,7 @@ double ScanMatcherNode::runNdt(
   ndt.setMaximumIterations(max_iterations_);
   ndt.setMaxCorrespondenceDistance(max_correspondence_dist_);
   ndt.setTransformationEpsilon(transformation_epsilon_);
-  ndt.setResolution(1.0);  // voxel grid resolution for NDT
+  ndt.setResolution(static_cast<float>(ndt_resolution_));
 
   ndt.setInputTarget(map_cloud_);
   ndt.setInputSource(source);
@@ -318,9 +349,8 @@ double ScanMatcherNode::runIcp(
   icp.setTransformationEpsilon(transformation_epsilon_);
 
   icp.setInputTarget(map_cloud_);
-  icp.setInputSource(source);
 
-  // Transform source to initial guess first
+  // Pre-transform source to initial guess position; ICP refines from there
   pcl::PointCloud<pcl::PointXYZ>::Ptr source_init(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::transformPointCloud(*source, *source_init, initial_guess);
   icp.setInputSource(source_init);

@@ -170,25 +170,15 @@ void FgoNode::declareParameters()
   declare_parameter("noise.imu.integration_sigma", 0.0001);
   declare_parameter("noise.imu.gravity",           9.81);
 
-  // LiDAR noise + gating
-  declare_parameter("noise.lidar.x",     0.1);
-  declare_parameter("noise.lidar.y",     0.1);
-  declare_parameter("noise.lidar.z",     999.0);
-  declare_parameter("noise.lidar.roll",  999.0);
-  declare_parameter("noise.lidar.pitch", 999.0);
-  declare_parameter("noise.lidar.yaw",   0.1);
-  declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
+  // LiDAR gating (noise is supplied by scan_matcher via published covariance)
   // Per-scan rotation gate: each scan is evaluated against the instantaneous
   // |dyaw| of its nearest keyframe interval (not the whole batch).
   // Must be below keyframe.rotation_threshold (0.02 rad) so any rotation
   // keyframe (dyaw >= 0.02) is reliably blocked while translation keyframes
   // (dyaw ≈ 0) are never affected.
-  declare_parameter("noise.lidar.rotation_gate_rad",   0.015);
-  // Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
-  // Poor matches (high fitness) contribute a much weaker constraint.
-  declare_parameter("noise.lidar.fitness_noise_scale", 5.0);
+  declare_parameter("noise.lidar.rotation_gate_rad", 0.015);
   // Discard scan poses older than this (sec). Prevents stale scans after a pause.
-  declare_parameter("noise.lidar.max_scan_age_sec", 1.0);
+  declare_parameter("noise.lidar.max_scan_age_sec",  1.0);
 
   // iSAM2
   declare_parameter("isam2.relinearize_threshold", 0.1);
@@ -240,17 +230,8 @@ void FgoNode::loadParameters()
   noise_imu_integration_sigma_ = get_parameter("noise.imu.integration_sigma").as_double();
   imu_gravity_                 = get_parameter("noise.imu.gravity").as_double();
 
-  noise_lidar_x_     = get_parameter("noise.lidar.x").as_double();
-  noise_lidar_y_     = get_parameter("noise.lidar.y").as_double();
-  noise_lidar_z_     = get_parameter("noise.lidar.z").as_double();
-  noise_lidar_roll_  = get_parameter("noise.lidar.roll").as_double();
-  noise_lidar_pitch_ = get_parameter("noise.lidar.pitch").as_double();
-  noise_lidar_yaw_   = get_parameter("noise.lidar.yaw").as_double();
-
-  icp_fitness_score_threshold_ = get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
-  lidar_rotation_gate_rad_     = get_parameter("noise.lidar.rotation_gate_rad").as_double();
-  lidar_fitness_noise_scale_   = get_parameter("noise.lidar.fitness_noise_scale").as_double();
-  max_scan_age_sec_            = get_parameter("noise.lidar.max_scan_age_sec").as_double();
+  lidar_rotation_gate_rad_ = get_parameter("noise.lidar.rotation_gate_rad").as_double();
+  max_scan_age_sec_        = get_parameter("noise.lidar.max_scan_age_sec").as_double();
 
   isam2_relinearize_threshold_ = get_parameter("isam2.relinearize_threshold").as_double();
   isam2_relinearize_skip_      = get_parameter("isam2.relinearize_skip").as_int();
@@ -453,16 +434,7 @@ void FgoNode::scanPoseCallback(
     return;
   }
 
-  // Gate 2: fitness score (stored in non-standard covariance[34] slot)
-  const double fitness_score = msg->pose.covariance[34];
-  if (fitness_score > icp_fitness_score_threshold_) {
-    RCLCPP_DEBUG(get_logger(),
-      "[FgoNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
-      fitness_score, icp_fitness_score_threshold_);
-    return;
-  }
-
-  // Gate 3: cap buffer size — prevents unbounded growth during long stationary periods
+  // Gate 2: cap buffer size — prevents unbounded growth during long stationary periods
   std::lock_guard<std::mutex> lock(scan_mutex_);
   if (scan_pose_buffer_.size() >= 10) {
     scan_pose_buffer_.erase(scan_pose_buffer_.begin());
@@ -720,7 +692,6 @@ void FgoNode::optimizationStep()
     for (const auto & scan_msg : local_scan) {
       const rclcpp::Time scan_t(scan_msg.header.stamp);
       const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
-      const double fitness = scan_msg.pose.covariance[34];
 
       // Find nearest keyframe by timestamp
       int best_i = static_cast<int>(local_odom.size()) - 1;
@@ -739,12 +710,19 @@ void FgoNode::optimizationStep()
         continue;
       }
 
-      // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
-      const double scale = 1.0 + lidar_fitness_noise_scale_ * fitness;
-      auto lidar_noise = makeDiagonalNoise(
-        noise_lidar_x_ * scale, noise_lidar_y_ * scale, noise_lidar_z_,
-        noise_lidar_roll_,       noise_lidar_pitch_,
-        noise_lidar_yaw_ * scale);
+      // Build noise from the properly-scaled covariance published by scan_matcher.
+      // scan_matcher already applied fitness gating and adaptive sigma scaling.
+      // GTSAM Pose3 sigma order: [roll, pitch, yaw, x, y, z]
+      const auto & cov = scan_msg.pose.covariance;
+      auto lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(
+        (gtsam::Vector6() <<
+          std::sqrt(cov[21]),   // roll  σ
+          std::sqrt(cov[28]),   // pitch σ
+          std::sqrt(cov[35]),   // yaw   σ
+          std::sqrt(cov[0]),    // x     σ
+          std::sqrt(cov[7]),    // y     σ
+          std::sqrt(cov[14])    // z     σ
+        ).finished());
 
       const int target_key = batch_start_key + best_i + 1;
 
@@ -752,8 +730,8 @@ void FgoNode::optimizationStep()
         gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
 
       RCLCPP_DEBUG(get_logger(),
-        "[FgoNode] Scan prior -> X(%d), dt=%.3fs, fitness=%.3f, scale=%.2f, dyaw=%.4f",
-        target_key, best_dt, fitness, scale, local_dyaw);
+        "[FgoNode] Scan prior -> X(%d), dt=%.3fs, dyaw=%.4f rad",
+        target_key, best_dt, local_dyaw);
     }
   }
 

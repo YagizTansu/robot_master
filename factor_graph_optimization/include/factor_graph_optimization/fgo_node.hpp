@@ -10,7 +10,6 @@
 // ROS 2 messages
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
@@ -197,12 +196,8 @@ private:
   double noise_imu_integration_sigma_; ///< numerical integration noise σ
   double imu_gravity_;                 ///< gravity magnitude             (m/s²)
 
-  // LiDAR noise + gating
-  double noise_lidar_x_, noise_lidar_y_, noise_lidar_z_;
-  double noise_lidar_roll_, noise_lidar_pitch_, noise_lidar_yaw_;
-  double icp_fitness_score_threshold_;
-  double lidar_rotation_gate_rad_;    ///< skip scan prior if batch |dyaw| > this (rad)
-  double lidar_fitness_noise_scale_;  ///< sigma *= (1 + scale * fitness_score)
+  // LiDAR gating (noise is read directly from scan_matcher's published covariance)
+  double lidar_rotation_gate_rad_;    ///< skip scan prior if keyframe |dyaw| > this (rad)
   double max_scan_age_sec_;           ///< discard scan poses older than this (sec)
 
   // iSAM2
