@@ -559,24 +559,32 @@ void FgoNode::optimizationStep()
   const geometry_msgs::msg::Pose pre_batch_odom_pose = last_consumed_odom_pose_;
   const int batch_start_key = key_;  // key index BEFORE this batch
 
+  // Seed the running estimate from iSAM2 if the current key is already committed
+  // (normal case). Falls back to optimized_pose_ on the very first batch.
+  // This estimate is then propagated inside the loop so that every key in a
+  // multi-keyframe batch gets the correct anchor, not a stale optimized_pose_.
+  gtsam::Pose3 current_estimate = optimized_pose_;
+  try {
+    current_estimate = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
+  } catch (...) {}
+
   for (const auto & sample : local_odom) {
     const gtsam::Pose3 gtsam_prev    = msgToGtsam(prev_pose);
     const gtsam::Pose3 gtsam_current = msgToGtsam(sample.pose);
     const gtsam::Pose3 delta         = gtsam_prev.between(gtsam_current);
 
-    // Initial value guess for new key: propagate from last optimised pose
-    gtsam::Pose3 estimate;
-    try {
-      estimate = isam2_->calculateEstimate<gtsam::Pose3>(X(key_)).compose(delta);
-    } catch (...) {
-      estimate = optimized_pose_.compose(delta);
-    }
+    // Propagate estimate for this new key from the previous key's estimate.
+    // Using a single try/catch outside the loop means X(key_+1), X(key_+2)…
+    // all get their correct chained estimate instead of anchoring every one
+    // of them to the stale optimized_pose_.
+    const gtsam::Pose3 estimate = current_estimate.compose(delta);
 
     key_++;
     new_factors_.add(
       gtsam::BetweenFactor<gtsam::Pose3>(X(key_ - 1), X(key_), delta, odom_noise));
     new_values_.insert(X(key_), estimate);
 
+    current_estimate = estimate;  // propagate anchor to the next keyframe
     prev_pose = sample.pose;
   }
   last_consumed_odom_pose_  = local_odom.back().pose;

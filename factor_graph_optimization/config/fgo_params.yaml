@@ -17,24 +17,20 @@ fgo_node:
     topics:
       odom_topic:             "/odometry"
       imu_topic:              "/imu"
-      lidar_topic:            "/scan"
       scan_match_pose_topic:  "/scan_match_pose"
       initial_pose_topic:     "/initialpose"
-      map_topic:              "/map"
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
       map_frame:    "map"
       odom_frame:   "odom"
       base_frame:   "base_footprint"
-      lidar_frame:  "base_footprint"   # merged LiDAR scan arrives in base_footprint
       imu_frame:    "base_footprint"
 
     # ── TF Publishing ───────────────────────────────────────
     tf:
       publish_map_to_odom:    true
       publish_odom_to_base:   true
-      tf_publish_rate_hz:     50.0
 
     # ── Initial Pose ────────────────────────────────────────
     initial_pose:
@@ -100,14 +96,6 @@ fgo_node:
       translation_threshold:  0.02
       rotation_threshold:     0.02
 
-    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
-    scan_matcher:
-      type:                    "NDT"
-      max_iterations:          50
-      max_correspondence_dist: 1.0
-      transformation_epsilon:  1.0e-6
-      map_z_height:            0.0
-
 
 scan_matcher_node:
   ros__parameters:
@@ -143,5 +131,7 @@ scan_matcher_node:
       max_iterations:          50
       max_correspondence_dist: 1.0
       transformation_epsilon:  1.0e-6
-      map_z_height:            0.0      # NDT internal voxel resolution (m). Should match map resolution or be coarser.
-      ndt_resolution:          1.0
+      map_z_height:            0.0
+      # NDT internal voxel resolution (m). Should be 2–5× the map voxel leaf size.
+      # 1.0m is far too coarse for indoor corridors; 0.3m gives wall-level detail.
+      ndt_resolution:          0.3
