@@ -184,6 +184,8 @@ void FgoNode::declareParameters()
   // Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
   // Poor matches (high fitness) contribute a much weaker constraint.
   declare_parameter("noise.lidar.fitness_noise_scale", 5.0);
+  // Discard scan poses older than this (sec). Prevents stale scans after a pause.
+  declare_parameter("noise.lidar.max_scan_age_sec", 1.0);
 
   // iSAM2
   declare_parameter("isam2.relinearize_threshold", 0.1);
@@ -245,6 +247,7 @@ void FgoNode::loadParameters()
   icp_fitness_score_threshold_ = get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
   lidar_rotation_gate_rad_     = get_parameter("noise.lidar.rotation_gate_rad").as_double();
   lidar_fitness_noise_scale_   = get_parameter("noise.lidar.fitness_noise_scale").as_double();
+  max_scan_age_sec_            = get_parameter("noise.lidar.max_scan_age_sec").as_double();
 
   isam2_relinearize_threshold_ = get_parameter("isam2.relinearize_threshold").as_double();
   isam2_relinearize_skip_      = get_parameter("isam2.relinearize_skip").as_int();
