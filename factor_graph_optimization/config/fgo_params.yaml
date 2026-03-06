@@ -85,9 +85,14 @@ fgo_node:
         pitch: 0.01
         yaw:   0.1
         icp_fitness_score_threshold: 0.5
-        # Skip scan prior if total batch rotation exceeds this (rad).
-        # Set equal to keyframe.rotation_threshold so any rotation batch is skipped.
-        rotation_gate_rad:   0.02
+        # Per-scan rotation gate (rad). Each scan is evaluated independently
+        # against the instantaneous |dyaw| of its nearest keyframe interval.
+        # Must be BELOW keyframe.rotation_threshold (0.02 rad): a rotation
+        # keyframe always contributes dyaw >= 0.02, so 0.015 reliably blocks
+        # scans attributed to rotation keyframes while never blocking scans
+        # attributed to translation keyframes (instantaneous dyaw ≈ 0).
+        # NDT is unreliable during ANY in-place rotation.
+        rotation_gate_rad:   0.015
         # Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
         # Higher value = noisier scan matches have much less influence.
         fitness_noise_scale: 5.0

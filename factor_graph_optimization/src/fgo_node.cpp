@@ -178,9 +178,12 @@ void FgoNode::declareParameters()
   declare_parameter("noise.lidar.pitch", 999.0);
   declare_parameter("noise.lidar.yaw",   0.1);
   declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
-  // Skip scan prior if total batch |dyaw| exceeds this value (rad).
-  // NDT becomes unreliable during fast in-place rotation.
-  declare_parameter("noise.lidar.rotation_gate_rad",   0.02);
+  // Per-scan rotation gate: each scan is evaluated against the instantaneous
+  // |dyaw| of its nearest keyframe interval (not the whole batch).
+  // Must be below keyframe.rotation_threshold (0.02 rad) so any rotation
+  // keyframe (dyaw >= 0.02) is reliably blocked while translation keyframes
+  // (dyaw ≈ 0) are never affected.
+  declare_parameter("noise.lidar.rotation_gate_rad",   0.015);
   // Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
   // Poor matches (high fitness) contribute a much weaker constraint.
   declare_parameter("noise.lidar.fitness_noise_scale", 5.0);
@@ -682,9 +685,15 @@ void FgoNode::optimizationStep()
   }
 
   // ── Scan match PriorFactors ───────────────────────────────────────────────
-  // Rotation gate: skip ALL scan priors if the robot rotated more than
-  // lidar_rotation_gate_rad_ this batch.  NDT is unreliable during in-place
-  // rotation and converges to a wrong local minimum, permanently shifting the graph.
+  // Per-scan rotation gate: evaluate each scan match independently against the
+  // instantaneous dyaw of its nearest keyframe interval.  Batch-level gating
+  // was incorrect FGO practice — it discarded reliable scan measurements that
+  // happened to share a batch with a rotation keyframe.
+  //
+  // NDT is unreliable during in-place rotation and can converge to a wrong
+  // local minimum even when the fitness score looks acceptable.  The gate
+  // catches this by checking the instantaneous yaw delta of the keyframe
+  // interval the scan is attributed to, NOT the whole batch.
   if (!local_scan.empty()) {
     auto get_yaw_pose = [](const geometry_msgs::msg::Pose & p) -> double {
       tf2::Quaternion tq(p.orientation.x, p.orientation.y,
@@ -693,48 +702,58 @@ void FgoNode::optimizationStep()
       tf2::Matrix3x3(tq).getRPY(r, pi, y);
       return y;
     };
-    double batch_dyaw = 0.0;
-    double yaw_prev = get_yaw_pose(pre_batch_odom_pose);
-    for (const auto & s : local_odom) {
-      double dy = std::fmod(std::fabs(get_yaw_pose(s.pose) - yaw_prev), 2.0 * M_PI);
-      if (dy > M_PI) dy = 2.0 * M_PI - dy;
-      batch_dyaw += dy;
-      yaw_prev = get_yaw_pose(s.pose);
+
+    // Pre-compute instantaneous |dyaw| for every keyframe interval in the batch.
+    // keyframe_dyaw[i] = |yaw(odom[i]) - yaw(odom[i-1])|  (wrapped to [0, π])
+    // Index 0 uses pre_batch_odom_pose as the "previous" pose.
+    std::vector<double> keyframe_dyaw(local_odom.size());
+    {
+      double yaw_prev = get_yaw_pose(pre_batch_odom_pose);
+      for (std::size_t i = 0; i < local_odom.size(); ++i) {
+        double dy = std::fmod(std::fabs(get_yaw_pose(local_odom[i].pose) - yaw_prev), 2.0 * M_PI);
+        if (dy > M_PI) dy = 2.0 * M_PI - dy;
+        keyframe_dyaw[i] = dy;
+        yaw_prev = get_yaw_pose(local_odom[i].pose);
+      }
     }
 
-    if (batch_dyaw > lidar_rotation_gate_rad_) {
-      RCLCPP_DEBUG(get_logger(),
-        "[FgoNode] Scan prior skipped: batch |dyaw|=%.4f rad > gate=%.4f rad",
-        batch_dyaw, lidar_rotation_gate_rad_);
-    } else {
-      for (const auto & scan_msg : local_scan) {
-        const rclcpp::Time scan_t(scan_msg.header.stamp);
-        const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
-        const double fitness = scan_msg.pose.covariance[34];
+    for (const auto & scan_msg : local_scan) {
+      const rclcpp::Time scan_t(scan_msg.header.stamp);
+      const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
+      const double fitness = scan_msg.pose.covariance[34];
 
-        // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
-        const double scale = 1.0 + lidar_fitness_noise_scale_ * fitness;
-        auto lidar_noise = makeDiagonalNoise(
-          noise_lidar_x_ * scale, noise_lidar_y_ * scale, noise_lidar_z_,
-          noise_lidar_roll_,       noise_lidar_pitch_,
-          noise_lidar_yaw_ * scale);
-
-        // Find nearest keyframe by timestamp
-        int best_i = static_cast<int>(local_odom.size()) - 1;
-        double best_dt = std::numeric_limits<double>::max();
-        for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
-          const double dt = std::fabs((local_odom[i].timestamp - scan_t).seconds());
-          if (dt < best_dt) { best_dt = dt; best_i = i; }
-        }
-        const int target_key = batch_start_key + best_i + 1;
-
-        new_factors_.add(
-          gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
-
-        RCLCPP_DEBUG(get_logger(),
-          "[FgoNode] Scan prior -> X(%d), dt=%.3fs, fitness=%.3f, scale=%.2f",
-          target_key, best_dt, fitness, scale);
+      // Find nearest keyframe by timestamp
+      int best_i = static_cast<int>(local_odom.size()) - 1;
+      double best_dt = std::numeric_limits<double>::max();
+      for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+        const double dt = std::fabs((local_odom[i].timestamp - scan_t).seconds());
+        if (dt < best_dt) { best_dt = dt; best_i = i; }
       }
+
+      // Per-scan gate: skip only THIS scan if its keyframe interval had rotation
+      const double local_dyaw = keyframe_dyaw[best_i];
+      if (local_dyaw > lidar_rotation_gate_rad_) {
+        RCLCPP_DEBUG(get_logger(),
+          "[FgoNode] Scan prior skipped: keyframe[%d] |dyaw|=%.4f rad > gate=%.4f rad",
+          best_i, local_dyaw, lidar_rotation_gate_rad_);
+        continue;
+      }
+
+      // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
+      const double scale = 1.0 + lidar_fitness_noise_scale_ * fitness;
+      auto lidar_noise = makeDiagonalNoise(
+        noise_lidar_x_ * scale, noise_lidar_y_ * scale, noise_lidar_z_,
+        noise_lidar_roll_,       noise_lidar_pitch_,
+        noise_lidar_yaw_ * scale);
+
+      const int target_key = batch_start_key + best_i + 1;
+
+      new_factors_.add(
+        gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
+
+      RCLCPP_DEBUG(get_logger(),
+        "[FgoNode] Scan prior -> X(%d), dt=%.3fs, fitness=%.3f, scale=%.2f, dyaw=%.4f",
+        target_key, best_dt, fitness, scale, local_dyaw);
     }
   }
 
