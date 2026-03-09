@@ -58,10 +58,3 @@ install(TARGETS ground_truth_publisher
 ament_package()
 
 install(DIRECTORY launch models worlds DESTINATION share/${PROJECT_NAME})
-
-# Python helper scripts (kept as secondary fallback)
-install(
-  PROGRAMS
-    scripts/ground_truth_publisher.py
-  DESTINATION lib/${PROJECT_NAME}
-)
