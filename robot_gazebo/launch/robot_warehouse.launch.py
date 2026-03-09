@@ -65,6 +65,19 @@ def generate_launch_description():
         output="screen",
     )
 
+    # Ground truth publisher node
+    # Reads /gz/dynamic_pose (TFMessage from Gz bridge), extracts the robot
+    # model pose and republishes as:
+    #   /ground_truth/odom  (nav_msgs/Odometry)
+    #   /ground_truth/pose  (geometry_msgs/PoseStamped)
+    ground_truth_publisher_node = Node(
+        package="robot_gazebo",
+        executable="ground_truth_publisher",
+        name="ground_truth_publisher",
+        output="screen",
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+
     # Create the launch description and populate
     ld = LaunchDescription()
 
@@ -76,5 +89,6 @@ def generate_launch_description():
     # Add any conditioned actions
     ld.add_action(gazebo)
     ld.add_action(bridge)
+    ld.add_action(ground_truth_publisher_node)
 
     return ld
