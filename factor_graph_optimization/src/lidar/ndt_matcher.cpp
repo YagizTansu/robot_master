@@ -8,11 +8,13 @@ namespace factor_graph_optimization
 NdtMatcher::NdtMatcher(int    max_iterations,
                        double max_correspondence_dist,
                        double transformation_epsilon,
-                       double ndt_resolution)
+                       double ndt_resolution,
+                       double ndt_step_size)
 : max_iterations_(max_iterations)
 , max_correspondence_dist_(max_correspondence_dist)
 , transformation_epsilon_(transformation_epsilon)
 , ndt_resolution_(ndt_resolution)
+, ndt_step_size_(ndt_step_size)
 {}
 
 double NdtMatcher::match(

@@ -53,6 +53,9 @@ void GraphManager::initIsam2()
   gtsam::ISAM2Params params;
   params.relinearizeThreshold   = cfg_.isam2_relinearize_threshold;
   params.relinearizeSkip        = cfg_.isam2_relinearize_skip;
+  params.factorization          = (cfg_.isam2_factorization == "QR")
+                                  ? gtsam::ISAM2Params::QR
+                                  : gtsam::ISAM2Params::CHOLESKY;
   params.evaluateNonlinearError = false;
   isam2_ = std::make_unique<gtsam::ISAM2>(params);
 }

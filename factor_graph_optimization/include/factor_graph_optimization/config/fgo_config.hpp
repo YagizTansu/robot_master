@@ -55,7 +55,7 @@ struct FgoConfig
   double noise_imu_accel_sigma{0.01};        ///< accelerometer white noise  (m/s²/√Hz)
   double noise_imu_gyro_sigma{0.001};        ///< gyroscope white noise      (rad/s/√Hz)
   double noise_imu_accel_bias_sigma{0.0001}; ///< accelerometer bias RW      (m/s³/√Hz)
-  double noise_imu_gyro_bias_sigma{1.0e-6};  ///< gyroscope bias RW          (rad/s²/√Hz)
+    double noise_imu_gyro_bias_sigma{1.0e-4};  ///< gyroscope bias RW          (rad/s²/√Hz) — typical MEMS: 1e-4 to 1e-3
   double noise_imu_integration_sigma{0.0001};///< numerical integration noise
   double imu_gravity{9.81};                  ///< gravity magnitude          (m/s²)
   double imu_bias_acc_omega_int{1.0e-5};     ///< initial bias-integral uncertainty (numerical stability)
@@ -64,15 +64,18 @@ struct FgoConfig
   double lidar_rotation_gate_rad{0.015};  ///< skip scan if keyframe |dyaw| > this (rad)
   double max_scan_age_sec{1.0};           ///< discard scans older than this (sec)
 
-  // ── iSAM2 ────────────────────────────────────────────────────────────────
-  double isam2_relinearize_threshold{0.1};
-  int    isam2_relinearize_skip{1};
+  // ── iSAM2 ───────────────────────────────────────────────
+  double      isam2_relinearize_threshold{0.1};
+  int         isam2_relinearize_skip{1};
+  std::string isam2_factorization{"CHOLESKY"};  ///< "CHOLESKY" or "QR" (QR more stable when info matrix is ill-conditioned)
+
+  // ── Node timing ─────────────────────────────────────────────
   double optimization_rate_hz{10.0};
 
   // ── Keyframe selection thresholds ────────────────────────────────────────
   double keyframe_translation_threshold{0.02};
   double keyframe_rotation_threshold{0.02};
-
+  double keyframe_max_time_sec{2.0};  ///< force a keyframe after this interval even when stationary (prevents pending scans being dropped)
   // ── Prior noise for graph initialisation ─────────────────────────────────
   // These were previously hardcoded `constexpr` inside initGraph().
   double prior_pose_pos_sigma{0.001};    ///< 1 mm — tight prior on X(0) position
@@ -87,6 +90,8 @@ struct FgoConfig
   double fallback_bias_accel_sigma{0.01};  ///< m/s²
   double fallback_bias_gyro_sigma{0.001};  ///< rad/s
 
+  // ── Scan buffer ───────────────────────────────────────────────
+  int max_pending_scans{10};  ///< max scan-match poses buffered before oldest is dropped
   // ── Factory ──────────────────────────────────────────────────────────────
   /// Declare and load all parameters from a ROS 2 node.
   /// Replaces the former declareParameters() + loadParameters() pair.

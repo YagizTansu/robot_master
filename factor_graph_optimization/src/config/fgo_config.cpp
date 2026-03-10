@@ -47,12 +47,12 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("noise.imu.gravity",            cfg.imu_gravity);
   node.declare_parameter("noise.imu.bias_acc_omega_int", cfg.imu_bias_acc_omega_int);
 
-  node.declare_parameter("noise.lidar.rotation_gate_rad", cfg.lidar_rotation_gate_rad);
-  node.declare_parameter("noise.lidar.max_scan_age_sec",  cfg.max_scan_age_sec);
+  node.declare_parameter("lidar.gating.rotation_gate_rad", cfg.lidar_rotation_gate_rad);
+  node.declare_parameter("lidar.gating.max_scan_age_sec",  cfg.max_scan_age_sec);
 
   node.declare_parameter("isam2.relinearize_threshold", cfg.isam2_relinearize_threshold);
   node.declare_parameter("isam2.relinearize_skip",      cfg.isam2_relinearize_skip);
-  node.declare_parameter("isam2.optimization_rate_hz",  cfg.optimization_rate_hz);
+  node.declare_parameter("node.optimization_rate_hz",  cfg.optimization_rate_hz);
 
   node.declare_parameter("keyframe.translation_threshold", cfg.keyframe_translation_threshold);
   node.declare_parameter("keyframe.rotation_threshold",    cfg.keyframe_rotation_threshold);
@@ -107,12 +107,12 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.imu_gravity                 = node.get_parameter("noise.imu.gravity").as_double();
   cfg.imu_bias_acc_omega_int      = node.get_parameter("noise.imu.bias_acc_omega_int").as_double();
 
-  cfg.lidar_rotation_gate_rad = node.get_parameter("noise.lidar.rotation_gate_rad").as_double();
-  cfg.max_scan_age_sec        = node.get_parameter("noise.lidar.max_scan_age_sec").as_double();
+  cfg.lidar_rotation_gate_rad = node.get_parameter("lidar.gating.rotation_gate_rad").as_double();
+  cfg.max_scan_age_sec        = node.get_parameter("lidar.gating.max_scan_age_sec").as_double();
 
   cfg.isam2_relinearize_threshold = node.get_parameter("isam2.relinearize_threshold").as_double();
   cfg.isam2_relinearize_skip      = node.get_parameter("isam2.relinearize_skip").as_int();
-  cfg.optimization_rate_hz        = node.get_parameter("isam2.optimization_rate_hz").as_double();
+  cfg.optimization_rate_hz        = node.get_parameter("node.optimization_rate_hz").as_double();
 
   cfg.keyframe_translation_threshold = node.get_parameter("keyframe.translation_threshold").as_double();
   cfg.keyframe_rotation_threshold    = node.get_parameter("keyframe.rotation_threshold").as_double();

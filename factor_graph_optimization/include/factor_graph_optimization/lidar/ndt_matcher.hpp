@@ -21,11 +21,14 @@ public:
    * @param max_correspondence_dist Maximum distance for correspondences (m).
    * @param transformation_epsilon  Convergence criterion.
    * @param ndt_resolution          Voxel resolution of the NDT grid (m).
+   * @param ndt_step_size           Newton gradient-descent step size (m).
+   *                                 Smaller = more stable, more iterations. Default: 0.1.
    */
   NdtMatcher(int    max_iterations,
              double max_correspondence_dist,
              double transformation_epsilon,
-             double ndt_resolution);
+             double ndt_resolution,
+             double ndt_step_size = 0.1);
 
   double match(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
@@ -38,6 +41,7 @@ private:
   double max_correspondence_dist_;
   double transformation_epsilon_;
   double ndt_resolution_;
+  double ndt_step_size_;
 };
 
 }  // namespace factor_graph_optimization

@@ -34,7 +34,8 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
       cfg_.max_iterations,
       cfg_.max_correspondence_dist,
       cfg_.transformation_epsilon,
-      cfg_.ndt_resolution);
+      cfg_.ndt_resolution,
+      cfg_.ndt_step_size);
   } else {
     matcher_ = std::make_unique<IcpMatcher>(
       cfg_.max_iterations,
@@ -131,10 +132,10 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     matcher_->match(source_cloud, map_cloud_, initial_guess, result_transform);
 
   // ── Fitness gate ──────────────────────────────────────────────────────────
-  if (fitness_score > cfg_.icp_fitness_score_threshold) {
+  if (fitness_score > cfg_.fitness_score_threshold) {
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
       "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
-      fitness_score, cfg_.icp_fitness_score_threshold);
+      fitness_score, cfg_.fitness_score_threshold);
     return;
   }
 

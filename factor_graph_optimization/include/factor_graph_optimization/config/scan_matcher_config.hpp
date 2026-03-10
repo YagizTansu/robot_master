@@ -24,6 +24,7 @@ struct ScanMatcherConfig
   double      transformation_epsilon{1.0e-6};
   double      map_z_height{0.0};
   double      ndt_resolution{1.0};          ///< NDT internal voxel resolution (m)
+  double      ndt_step_size{0.1};           ///< Newton step size for NDT gradient descent (m)
   double      map_voxel_leaf_size{0.1};     ///< VoxelGrid leaf size for map downsampling (m)
 
   // ── LiDAR noise written into the published covariance ────────────────────
@@ -33,7 +34,7 @@ struct ScanMatcherConfig
   double noise_lidar_roll{999.0};
   double noise_lidar_pitch{999.0};
   double noise_lidar_yaw{0.1};
-  double icp_fitness_score_threshold{0.5};  ///< discard scan if score > this
+  double fitness_score_threshold{0.5};       ///< discard scan if score > this (applies to both NDT and ICP)
   double fitness_noise_scale{5.0};          ///< sigma *= (1 + scale * fitness)
 
   // ── Factory ──────────────────────────────────────────────────────────────

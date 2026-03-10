@@ -181,7 +181,7 @@ void FgoNode::scanPoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamp
   }
 
   // Gate 2: cap buffer size — prevents unbounded growth during long stationary periods
-  scan_buf_.push(*msg, 10);
+  scan_buf_.push(*msg, cfg_.max_pending_scans);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
