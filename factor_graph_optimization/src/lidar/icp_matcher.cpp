@@ -8,10 +8,14 @@ namespace factor_graph_optimization
 
 IcpMatcher::IcpMatcher(int    max_iterations,
                        double max_correspondence_dist,
-                       double transformation_epsilon)
+                       double transformation_epsilon,
+                       int    ransac_iterations,
+                       double ransac_outlier_threshold)
 : max_iterations_(max_iterations)
 , max_correspondence_dist_(max_correspondence_dist)
 , transformation_epsilon_(transformation_epsilon)
+, ransac_iterations_(ransac_iterations)
+, ransac_outlier_threshold_(ransac_outlier_threshold)
 {}
 
 double IcpMatcher::match(
@@ -24,6 +28,12 @@ double IcpMatcher::match(
   icp.setMaximumIterations(max_iterations_);
   icp.setMaxCorrespondenceDistance(max_correspondence_dist_);
   icp.setTransformationEpsilon(transformation_epsilon_);
+  // Enable RANSAC outlier rejection when configured; guards against false
+  // correspondences in cluttered environments.
+  if (ransac_iterations_ > 0) {
+    icp.setRANSACIterations(ransac_iterations_);
+    icp.setRANSACOutlierRejectionThreshold(ransac_outlier_threshold_);
+  }
 
   icp.setInputTarget(target);
 

@@ -27,9 +27,14 @@ ScanMatcherConfig ScanMatcherConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("noise.lidar.roll",                       cfg.noise_lidar_roll);
   node.declare_parameter("noise.lidar.pitch",                      cfg.noise_lidar_pitch);
   node.declare_parameter("noise.lidar.yaw",                        cfg.noise_lidar_yaw);
-  node.declare_parameter("scan_matcher.fitness_score_threshold", cfg.fitness_score_threshold);
-  node.declare_parameter("scan_matcher.fitness_noise_scale",         cfg.fitness_noise_scale);
-  node.declare_parameter("scan_matcher.map_voxel_leaf_size",         cfg.map_voxel_leaf_size);
+  node.declare_parameter("scan_matcher.fitness_score_threshold",  cfg.fitness_score_threshold);
+  node.declare_parameter("scan_matcher.fitness_noise_scale",       cfg.fitness_noise_scale);
+  node.declare_parameter("scan_matcher.map_voxel_leaf_size",       cfg.map_voxel_leaf_size);
+  node.declare_parameter("scan_matcher.ndt_step_size",             cfg.ndt_step_size);
+  node.declare_parameter("scan_matcher.scan_voxel_leaf_size",      cfg.scan_voxel_leaf_size);
+  node.declare_parameter("scan_matcher.icp_ransac_iterations",     cfg.icp_ransac_iterations);
+  node.declare_parameter("scan_matcher.icp_ransac_threshold",      cfg.icp_ransac_threshold);
+  node.declare_parameter("frames.map_frame",                       cfg.map_frame);
 
   // ── Load ──────────────────────────────────────────────────────────────────
   cfg.lidar_topic            = node.get_parameter("topics.lidar_topic").as_string();
@@ -52,8 +57,13 @@ ScanMatcherConfig ScanMatcherConfig::fromNode(rclcpp::Node & node)
   cfg.noise_lidar_pitch         = node.get_parameter("noise.lidar.pitch").as_double();
   cfg.noise_lidar_yaw           = node.get_parameter("noise.lidar.yaw").as_double();
   cfg.fitness_score_threshold = node.get_parameter("scan_matcher.fitness_score_threshold").as_double();
-  cfg.fitness_noise_scale       = node.get_parameter("scan_matcher.fitness_noise_scale").as_double();
-  cfg.map_voxel_leaf_size       = node.get_parameter("scan_matcher.map_voxel_leaf_size").as_double();
+  cfg.fitness_noise_scale     = node.get_parameter("scan_matcher.fitness_noise_scale").as_double();
+  cfg.map_voxel_leaf_size     = node.get_parameter("scan_matcher.map_voxel_leaf_size").as_double();
+  cfg.ndt_step_size           = node.get_parameter("scan_matcher.ndt_step_size").as_double();
+  cfg.scan_voxel_leaf_size    = node.get_parameter("scan_matcher.scan_voxel_leaf_size").as_double();
+  cfg.icp_ransac_iterations   = node.get_parameter("scan_matcher.icp_ransac_iterations").as_int();
+  cfg.icp_ransac_threshold    = node.get_parameter("scan_matcher.icp_ransac_threshold").as_double();
+  cfg.map_frame               = node.get_parameter("frames.map_frame").as_string();
 
   return cfg;
 }

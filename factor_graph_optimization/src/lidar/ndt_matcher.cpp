@@ -28,6 +28,7 @@ double NdtMatcher::match(
   ndt.setMaxCorrespondenceDistance(max_correspondence_dist_);
   ndt.setTransformationEpsilon(transformation_epsilon_);
   ndt.setResolution(static_cast<float>(ndt_resolution_));
+  ndt.setStepSize(static_cast<float>(ndt_step_size_));
 
   ndt.setInputTarget(target);
   ndt.setInputSource(source);

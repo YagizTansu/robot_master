@@ -168,3 +168,11 @@ scan_matcher_node:
       fitness_noise_scale:     5.0
       # VoxelGrid leaf size for map cloud downsampling (m)
       map_voxel_leaf_size:     0.1
+      # VoxelGrid leaf size applied to the source scan before matching (m; 0 = skip)
+      # Should be equal to or smaller than map_voxel_leaf_size so densities are symmetric.
+      scan_voxel_leaf_size:    0.1
+      # Frame written into the published scan-pose message (must match fgo_node map_frame)
+      map_frame:               "map"
+      # ICP-only: RANSAC outlier rejection (0 iterations = disabled)
+      icp_ransac_iterations:   5
+      icp_ransac_threshold:    0.05  # inlier distance threshold (m)

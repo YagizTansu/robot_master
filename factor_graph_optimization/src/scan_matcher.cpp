@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <tf2_ros/transform_listener.h>
@@ -40,7 +41,9 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
     matcher_ = std::make_unique<IcpMatcher>(
       cfg_.max_iterations,
       cfg_.max_correspondence_dist,
-      cfg_.transformation_epsilon);
+      cfg_.transformation_epsilon,
+      cfg_.icp_ransac_iterations,
+      cfg_.icp_ransac_threshold);
   }
 
   // ── TF2 buffer + listener (needed by LaserProjection) ─────────────────────
@@ -84,12 +87,18 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
     static_cast<std::size_t>(msg->info.width),
     static_cast<std::size_t>(msg->info.height));
 
-  map_cloud_    = map_builder_->build(*msg);
-  map_received_ = true;
+  // Build the cloud outside the lock — this is the expensive part.
+  auto new_cloud = map_builder_->build(*msg);
+
+  {
+    std::lock_guard<std::mutex> lk(map_mutex_);
+    map_cloud_    = new_cloud;
+    map_received_ = true;
+  }
 
   RCLCPP_INFO(get_logger(),
     "[ScanMatcherNode] Map cloud ready: %zu points (leaf=%.2fm).",
-    map_cloud_->size(), cfg_.map_voxel_leaf_size);
+    new_cloud->size(), cfg_.map_voxel_leaf_size);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -98,9 +107,25 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
 
 void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-  if (!map_received_) {
+  // Snapshot the current map under the mutex; lock released before the
+  // expensive match() call so mapCallback is never blocked on matching.
+  pcl::PointCloud<pcl::PointXYZ>::Ptr current_map;
+  {
+    std::lock_guard<std::mutex> lk(map_mutex_);
+    if (!map_received_) {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
+        "[ScanMatcherNode] Waiting for map...");
+      return;
+    }
+    current_map = map_cloud_;  // shared_ptr copy — O(1), data not copied
+  }
+
+  // Guard: do not run matching until the FGO node has published an initial pose.
+  // Without this the initial guess is the map origin, which can produce a
+  // spurious match that confuses graph initialisation.
+  if (!has_fgo_pose_) {
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
-      "[ScanMatcherNode] Waiting for map...");
+      "[ScanMatcherNode] Waiting for initial FGO pose...");
     return;
   }
 
@@ -124,12 +149,24 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     return;
   }
 
+  // Downsample source scan to roughly match the map cloud density.
+  // Symmetric densities improve correspondence quality for both NDT and ICP.
+  if (cfg_.scan_voxel_leaf_size > 0.0) {
+    pcl::VoxelGrid<pcl::PointXYZ> vg;
+    vg.setInputCloud(source_cloud);
+    const auto leaf = static_cast<float>(cfg_.scan_voxel_leaf_size);
+    vg.setLeafSize(leaf, leaf, leaf);
+    auto downsampled = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+    vg.filter(*downsampled);
+    source_cloud = downsampled;
+  }
+
   // ── Run matching ──────────────────────────────────────────────────────────
   const Eigen::Matrix4f initial_guess = buildInitialGuess();
   Eigen::Matrix4f result_transform    = Eigen::Matrix4f::Identity();
 
   const double fitness_score =
-    matcher_->match(source_cloud, map_cloud_, initial_guess, result_transform);
+    matcher_->match(source_cloud, current_map, initial_guess, result_transform);
 
   // ── Fitness gate ──────────────────────────────────────────────────────────
   if (fitness_score > cfg_.fitness_score_threshold) {
@@ -163,7 +200,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   // ── Build output message ──────────────────────────────────────────────────
   geometry_msgs::msg::PoseWithCovarianceStamped out;
   out.header.stamp    = msg->header.stamp;
-  out.header.frame_id = "map";
+  out.header.frame_id = cfg_.map_frame;
 
   out.pose.pose.position.x    = static_cast<double>(tx);
   out.pose.pose.position.y    = static_cast<double>(ty);

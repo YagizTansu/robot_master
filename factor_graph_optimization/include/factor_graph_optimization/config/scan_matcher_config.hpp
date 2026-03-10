@@ -25,7 +25,11 @@ struct ScanMatcherConfig
   double      map_z_height{0.0};
   double      ndt_resolution{1.0};          ///< NDT internal voxel resolution (m)
   double      ndt_step_size{0.1};           ///< Newton step size for NDT gradient descent (m)
-  double      map_voxel_leaf_size{0.1};     ///< VoxelGrid leaf size for map downsampling (m)
+  double map_voxel_leaf_size{0.1};     ///< VoxelGrid leaf size for map cloud downsampling (m)
+  double scan_voxel_leaf_size{0.1};    ///< VoxelGrid leaf size for source scan downsampling (m; 0 = skip)
+  int    icp_ransac_iterations{5};     ///< RANSAC iterations for ICP outlier rejection (0 = off)
+  double icp_ransac_threshold{0.05};   ///< RANSAC inlier distance threshold (m)
+  std::string map_frame{"map"};        ///< frame_id written into the published scan-pose message
 
   // ── LiDAR noise written into the published covariance ────────────────────
   double noise_lidar_x{0.1};

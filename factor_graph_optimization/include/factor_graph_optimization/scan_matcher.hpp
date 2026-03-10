@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
@@ -77,6 +78,7 @@ private:
   // ── Map state ─────────────────────────────────────────────────────────────
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_cloud_;
   bool map_received_{false};
+  mutable std::mutex map_mutex_;  ///< guards map_cloud_ and map_received_
 
   // ── Current FGO pose (for initial guess) ─────────────────────────────────
   geometry_msgs::msg::Pose current_fgo_pose_;

@@ -20,9 +20,17 @@ public:
    * @param max_correspondence_dist Maximum distance for correspondences (m).
    * @param transformation_epsilon  Convergence criterion.
    */
+  /**
+   * @param ransac_iterations        Number of RANSAC iterations for outlier rejection
+   *                                 (0 = disabled; PCL default is 0).
+   * @param ransac_outlier_threshold Maximum point-to-point distance to be considered
+   *                                 an inlier for RANSAC (m).
+   */
   IcpMatcher(int    max_iterations,
              double max_correspondence_dist,
-             double transformation_epsilon);
+             double transformation_epsilon,
+             int    ransac_iterations        = 5,
+             double ransac_outlier_threshold = 0.05);
 
   double match(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
@@ -34,6 +42,8 @@ private:
   int    max_iterations_;
   double max_correspondence_dist_;
   double transformation_epsilon_;
+  int    ransac_iterations_;
+  double ransac_outlier_threshold_;
 };
 
 }  // namespace factor_graph_optimization
