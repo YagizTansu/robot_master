@@ -202,7 +202,19 @@ void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceSt
   double new_roll, new_pitch, new_yaw;
   tf2::Matrix3x3(tq).getRPY(new_roll, new_pitch, new_yaw);
 
-  // Update init parameters so initGraph() uses new pose
+  // Clear sensor buffers and reset keyframe selector.
+  // SensorBuffer and KeyframeSelector are individually mutex-protected;
+  // safe to reset before acquiring graph_mutex_.
+  keyframe_sel_->reset(new_pose);
+  odom_buf_.clear();
+  imu_buf_.clear();
+  scan_buf_.clear();
+
+  // All cfg_ mutations and graph state changes are serialised under
+  // graph_mutex_ to prevent a data race with the optimizationStep() thread.
+  std::lock_guard<std::mutex> graph_lock(graph_mutex_);
+
+  // Update init parameters so initGraph() uses the new pose.
   cfg_.init_x     = new_pose.position.x;
   cfg_.init_y     = new_pose.position.y;
   cfg_.init_z     = new_pose.position.z;
@@ -210,14 +222,6 @@ void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceSt
   cfg_.init_pitch = new_pitch;
   cfg_.init_yaw   = new_yaw;
 
-  // Clear sensor buffers and reset keyframe selector.
-  keyframe_sel_->reset(new_pose);
-  odom_buf_.clear();
-  imu_buf_.clear();
-  scan_buf_.clear();
-
-  // Reset all graph state behind graph_mutex_.
-  std::lock_guard<std::mutex> graph_lock(graph_mutex_);
   path_msg_.poses.clear();
   path_msg_.header.stamp = now();
   has_map_to_odom_cache_ = false;
@@ -295,8 +299,7 @@ void FgoNode::optimizationStep()
 // TF helpers
 // ═════════════════════════════════════════════════════════════════════════════
 
-void FgoNode::publishOdomToBase(const rclcpp::Time & stamp,
-                                const geometry_msgs::msg::Pose & raw_pose)
+void FgoNode::publishOdomToBase(const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & raw_pose)
 {
   geometry_msgs::msg::TransformStamped ts;
   ts.header.stamp    = stamp;

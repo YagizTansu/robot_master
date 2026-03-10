@@ -67,6 +67,17 @@ private:
   void initIsam2();
   void initGraph();
 
+  /**
+   * @brief Marginalize the oldest X/V/B key cluster until the active window
+   *        is within cfg_.graph_max_size nodes.
+   *
+   * Uses gtsam::ISAM2::marginalizeLeaves() which converts the variable to a
+   * dense marginal factor on its neighbors.  Stops (with a one-time warning)
+   * if marginalization fails, because the variable is not yet a leaf in the
+   * Bayes tree (e.g. a scan prior linked an old key to a recent one).
+   */
+  void trimOldestKeys(const rclcpp::Logger & logger);
+
   /// Build a geometry_msgs::Pose from the init-pose fields in \p cfg.
   static geometry_msgs::msg::Pose makePoseFromCfg(const FgoConfig & cfg);
 
@@ -77,6 +88,7 @@ private:
   gtsam::NonlinearFactorGraph     new_factors_;
   gtsam::Values                   new_values_;
   int                             key_{0};
+  int                             oldest_kept_key_{0};  ///< sliding-window lower bound: oldest key still in iSAM2
 
   // ── Optimised estimates ───────────────────────────────────────────────────
   gtsam::Pose3                    optimized_pose_;

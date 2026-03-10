@@ -104,6 +104,7 @@ fgo_node:
       max_pending_scans:      10    # max scan-match poses buffered; oldest dropped when exceeded
       max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
       max_pending_odom:       500   # generous keyframe buffer cap
+      graph_max_size:         2000  # keep at most N key nodes in iSAM2; oldest X/V/B cluster is marginalized when exceeded (0 = unlimited)
 
     # ── Prior factors on X(0) ───────────────────────────────
     prior:
@@ -144,9 +145,9 @@ scan_matcher_node:
       lidar:
         x:     0.1
         y:     0.1
-        z:     0.01
-        roll:  0.01
-        pitch: 0.01
+        z:     999.0   # 2D scanner provides no z information — keep this DOF unconstrained
+        roll:  999.0   # 2D scanner provides no roll information — keep unconstrained
+        pitch: 999.0   # 2D scanner provides no pitch information — keep unconstrained
         yaw:   0.1
 
     # ── Scan Matcher ─────────────────────────────────────────

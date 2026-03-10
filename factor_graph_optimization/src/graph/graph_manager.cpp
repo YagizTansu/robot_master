@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <unordered_set>
 
 #include <tf2/LinearMath/Quaternion.h>
 
@@ -63,6 +64,7 @@ void GraphManager::initIsam2()
 void GraphManager::initGraph()
 {
   key_ = 0;
+  oldest_kept_key_ = 0;
   new_factors_.resize(0);
   new_values_.clear();
 
@@ -140,6 +142,7 @@ bool GraphManager::step(
   geometry_msgs::msg::Pose prev_pose             = last_consumed_odom_pose_;
   const geometry_msgs::msg::Pose pre_batch_pose  = last_consumed_odom_pose_;
   const int batch_start_key                      = key_;
+  const int key_before_batch                     = key_;  // saved for rollback if iSAM2 throws
 
   // Seed running estimate from the latest iSAM2 result; falls back at startup.
   gtsam::Pose3 current_estimate = optimized_pose_;
@@ -193,6 +196,10 @@ bool GraphManager::step(
       }
     }
 
+    // One scan prior per keyframe per batch — prevents silent noise halving
+    // when multiple scan messages happen to map to the same nearest keyframe.
+    std::unordered_set<int> assigned_scan_keys;
+
     for (const auto & scan_msg : local_scan) {
       const rclcpp::Time scan_t(scan_msg.header.stamp);
       const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
@@ -227,6 +234,17 @@ bool GraphManager::step(
         ).finished());
 
       const int target_key = batch_start_key + best_i + 1;
+
+      // Guard: allow at most one scan prior per keyframe per batch.
+      // A burst of scans all mapping to the same X(k) would be fused as
+      // independent measurements, silently halving the noise sigma each time.
+      if (!assigned_scan_keys.insert(target_key).second) {
+        RCLCPP_DEBUG(logger,
+          "[GraphManager] Scan prior skipped: X(%d) already has a prior this batch (dt=%.3fs)",
+          target_key, best_dt);
+        continue;
+      }
+
       new_factors_.add(
         gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
 
@@ -255,14 +273,48 @@ bool GraphManager::step(
         // V/B keys may not exist if no IMU factors were added this step
       }
     }
+    // ── Sliding-window marginalization ──────────────────────────────────────
+    // Margins the oldest key cluster so the Bayes tree does not grow without
+    // bound.  Must be called after calculateEstimate() — marginalization
+    // removes a key from iSAM2 but the bayes-factor chain is still intact.
+    trimOldestKeys(logger);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(logger, "[GraphManager] iSAM2 update failed: %s", e.what());
+    key_ = key_before_batch;   // roll back: next step must rebuild from a consistent state
     new_factors_.resize(0);
     new_values_.clear();
     return false;
   }
 
   return true;
+}
+
+void GraphManager::trimOldestKeys(const rclcpp::Logger & logger)
+{
+  if (cfg_.graph_max_size <= 0) return;  // feature disabled
+
+  while ((key_ - oldest_kept_key_) > cfg_.graph_max_size) {
+    gtsam::FastList<gtsam::Key> to_marg;
+    to_marg.push_back(X(oldest_kept_key_));
+    if (imu_preint_) {
+      to_marg.push_back(V(oldest_kept_key_));
+      to_marg.push_back(B(oldest_kept_key_));
+    }
+    try {
+      isam2_->marginalizeLeaves(to_marg);
+    } catch (const std::exception & e) {
+      // marginalizeLeaves() requires the variable to be a leaf in the current
+      // Bayes tree.  A scan prior bridging an old key to a recent one can
+      // temporarily prevent this.  Stop trimming; the graph will shrink
+      // naturally as newer factors push the old key towards leaf status.
+      RCLCPP_WARN_ONCE(logger,
+        "[GraphManager] Marginalization of key %d failed: %s. "
+        "Trim halted until next opportunity.",
+        oldest_kept_key_, e.what());
+      break;
+    }
+    ++oldest_kept_key_;
+  }
 }
 
 }  // namespace factor_graph_optimization

@@ -94,6 +94,7 @@ struct FgoConfig
   int max_pending_scans{10};   ///< max scan-match poses buffered before oldest is dropped
   int max_pending_imu{2000};   ///< IMU buffer cap (100 Hz × 20 s); prevents unbounded growth if optimizer stalls
   int max_pending_odom{500};   ///< odom buffer cap; generous but bounded
+  int graph_max_size{2000};    ///< sliding-window limit: marginalize oldest keys when graph exceeds this size (0 = unlimited)
   // ── Factory ──────────────────────────────────────────────────────────────
   /// Declare and load all parameters from a ROS 2 node.
   /// Replaces the former declareParameters() + loadParameters() pair.
