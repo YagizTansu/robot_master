@@ -40,6 +40,10 @@
 
 // Configuration struct
 #include "factor_graph_optimization/config/fgo_config.hpp"
+
+// Odometry module
+#include "factor_graph_optimization/odometry/sensor_buffer.hpp"
+#include "factor_graph_optimization/odometry/keyframe_selector.hpp"
 // GTSAM — navigation / IMU preintegration
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuBias.h>
@@ -53,20 +57,7 @@ using gtsam::symbol_shorthand::X;  // Pose3 keys
 using gtsam::symbol_shorthand::V;  // Velocity keys  (gtsam::Vector3)
 using gtsam::symbol_shorthand::B;  // IMU-bias keys  (gtsam::imuBias::ConstantBias)
 
-/// Full 6-DOF IMU sample (accelerometer + gyroscope).
-struct ImuSample
-{
-  rclcpp::Time   timestamp;
-  gtsam::Vector3 accel{0.0, 0.0, 9.81};  ///< linear acceleration  (m/s²)
-  gtsam::Vector3 gyro {0.0, 0.0, 0.0};   ///< angular velocity      (rad/s)
-};
-
-/// Odometry keyframe stored with its ROS timestamp for IMU alignment.
-struct OdomSample
-{
-  geometry_msgs::msg::Pose pose;
-  rclcpp::Time             timestamp;
-};
+// ImuSample and OdomSample are defined in odometry/sensor_buffer.hpp.
 
 class FgoNode : public rclcpp::Node
 {
@@ -121,7 +112,7 @@ private:
   boost::shared_ptr<gtsam::PreintegrationCombinedParams> imu_preint_params_;
 
   // ── Pose / stamp tracking ─────────────────────────────────────────────────
-  geometry_msgs::msg::Pose  last_keyframe_odom_pose_;  ///< last pose that triggered a keyframe
+  std::unique_ptr<KeyframeSelector> keyframe_sel_;     ///< keyframe decision logic
   geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< keyframe pose corresponding to optimized_pose_
   rclcpp::Time              last_consumed_odom_stamp_;  ///< timestamp of last_consumed_odom_pose_
 
@@ -131,14 +122,11 @@ private:
   bool                                  has_map_to_odom_cache_{false};
 
   // ── Thread-safe sensor buffers ────────────────────────────────────────────
-  std::vector<OdomSample>                                        odom_buffer_;
-  std::vector<ImuSample>                                         imu_buffer_;
-  std::vector<geometry_msgs::msg::PoseWithCovarianceStamped>     scan_pose_buffer_;
+  SensorBuffer<OdomSample>                                        odom_buf_;
+  SensorBuffer<ImuSample>                                         imu_buf_;
+  SensorBuffer<geometry_msgs::msg::PoseWithCovarianceStamped>     scan_buf_;
 
   std::mutex graph_mutex_;  ///< protects iSAM2 state, optimized estimates, path
-  std::mutex odom_mutex_;
-  std::mutex imu_mutex_;
-  std::mutex scan_mutex_;
 
   // ── Publishers / Subscribers / Timer ─────────────────────────────────────
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr                       sub_odom_;

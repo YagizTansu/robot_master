@@ -66,7 +66,10 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
     p.orientation.w = q.w();
     return p;
   };
-  last_keyframe_odom_pose_  = make_init_pose();
+  keyframe_sel_ = std::make_unique<KeyframeSelector>(
+    cfg_.keyframe_translation_threshold,
+    cfg_.keyframe_rotation_threshold,
+    make_init_pose());
   last_consumed_odom_pose_  = make_init_pose();
   last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
@@ -232,33 +235,11 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     publishOdomToBase(msg->header.stamp, raw_pose);
   }
 
-  // Snapshot keyframe pose under lock to avoid data race with initialPoseCallback.
-  geometry_msgs::msg::Pose keyframe_snapshot;
-  {
-    std::lock_guard<std::mutex> lock(odom_mutex_);
-    keyframe_snapshot = last_keyframe_odom_pose_;
-  }
-
-  const double dx = raw_pose.position.x - keyframe_snapshot.position.x;
-  const double dy = raw_pose.position.y - keyframe_snapshot.position.y;
-  const double dz = raw_pose.position.z - keyframe_snapshot.position.z;
-  const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-
-  const double yaw_curr = extractYaw(raw_pose.orientation);
-  const double yaw_last = extractYaw(keyframe_snapshot.orientation);
-  double dyaw = std::fmod(std::fabs(yaw_curr - yaw_last), 2.0 * M_PI);
-  if (dyaw > M_PI) dyaw = 2.0 * M_PI - dyaw;
-
-  const bool threshold_met = (dist > cfg_.keyframe_translation_threshold) ||
-                             (dyaw > cfg_.keyframe_rotation_threshold);
-
-  if (threshold_met) {
-    std::lock_guard<std::mutex> lock(odom_mutex_);
+  if (keyframe_sel_->checkAndUpdate(raw_pose)) {
     OdomSample s;
     s.pose      = raw_pose;
     s.timestamp = rclcpp::Time(msg->header.stamp);
-    odom_buffer_.push_back(s);
-    last_keyframe_odom_pose_ = raw_pose;
+    odom_buf_.push(s);
   }
 }
 
@@ -288,8 +269,7 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
     sample.gyro  = R_imu_to_base_.rotate(sample.gyro);
   }
 
-  std::lock_guard<std::mutex> lock(imu_mutex_);
-  imu_buffer_.push_back(sample);
+  imu_buf_.push(sample);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -310,11 +290,7 @@ void FgoNode::scanPoseCallback(
   }
 
   // Gate 2: cap buffer size — prevents unbounded growth during long stationary periods
-  std::lock_guard<std::mutex> lock(scan_mutex_);
-  if (scan_pose_buffer_.size() >= 10) {
-    scan_pose_buffer_.erase(scan_pose_buffer_.begin());
-  }
-  scan_pose_buffer_.push_back(*msg);
+  scan_buf_.push(*msg, 10);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -343,14 +319,11 @@ void FgoNode::initialPoseCallback(
   cfg_.init_pitch = new_pitch;
   cfg_.init_yaw   = new_yaw;
 
-  // Clear sensor buffers under their respective locks.
-  {
-    std::lock_guard<std::mutex> l(odom_mutex_);
-    odom_buffer_.clear();
-    last_keyframe_odom_pose_ = new_pose;
-  }
-  { std::lock_guard<std::mutex> l(imu_mutex_);  imu_buffer_.clear(); }
-  { std::lock_guard<std::mutex> l(scan_mutex_); scan_pose_buffer_.clear(); }
+  // Clear sensor buffers and reset keyframe selector.
+  keyframe_sel_->reset(new_pose);
+  odom_buf_.clear();
+  imu_buf_.clear();
+  scan_buf_.clear();
 
   // Reset all graph state behind graph_mutex_.
   std::lock_guard<std::mutex> graph_lock(graph_mutex_);
@@ -376,26 +349,15 @@ void FgoNode::initialPoseCallback(
 
 void FgoNode::optimizationStep()
 {
-  // ── Drain odom buffer ─────────────────────────────────────────────────────
+  // ── Drain sensor buffers ───────────────────────────────────────────────
   std::vector<OdomSample> local_odom;
-  {
-    std::lock_guard<std::mutex> lock(odom_mutex_);
-    local_odom.swap(odom_buffer_);
-  }
+  odom_buf_.drain(local_odom);
 
-  // ── Drain IMU buffer ──────────────────────────────────────────────────────
   std::vector<ImuSample> local_imu;
-  {
-    std::lock_guard<std::mutex> lock(imu_mutex_);
-    local_imu.swap(imu_buffer_);
-  }
+  imu_buf_.drain(local_imu);
 
-  // ── Drain scan pose buffer ────────────────────────────────────────────────
   std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> local_scan;
-  {
-    std::lock_guard<std::mutex> lock(scan_mutex_);
-    local_scan.swap(scan_pose_buffer_);
-  }
+  scan_buf_.drain(local_scan);
 
   // All graph operations are serialised behind graph_mutex_.
   std::lock_guard<std::mutex> graph_lock(graph_mutex_);
