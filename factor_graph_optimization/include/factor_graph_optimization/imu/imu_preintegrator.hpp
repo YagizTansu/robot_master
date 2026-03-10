@@ -84,7 +84,7 @@ public:
     const gtsam::Vector3 & current_velocity) const;
 
   /// Returns the underlying `PreintegrationCombinedParams` (read-only after construction).
-  boost::shared_ptr<const Params> params() const { return params_; }
+  const Params & params() const { return *params_; }
 
 private:
   boost::shared_ptr<Params> params_;
