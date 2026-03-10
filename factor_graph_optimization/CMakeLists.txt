@@ -61,6 +61,7 @@ add_executable(fgo_node
   src/core/geometry_2d.cpp
   src/config/fgo_config.cpp
   src/odometry/keyframe_selector.cpp
+  src/imu/imu_preintegrator.cpp
 )
 
 target_link_libraries(fgo_node

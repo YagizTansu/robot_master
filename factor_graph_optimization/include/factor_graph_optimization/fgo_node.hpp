@@ -44,6 +44,9 @@
 // Odometry module
 #include "factor_graph_optimization/odometry/sensor_buffer.hpp"
 #include "factor_graph_optimization/odometry/keyframe_selector.hpp"
+
+// IMU module
+#include "factor_graph_optimization/imu/imu_preintegrator.hpp"
 // GTSAM — navigation / IMU preintegration
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuBias.h>
@@ -71,7 +74,6 @@ private:
   // ── Initialisation ────────────────────────────────────────────────────────
   void initIsam2();
   void initGraph();              ///< Adds X(0)/V(0)/B(0) PriorFactors and commits to iSAM2
-  void initImuPreintegration();  ///< Builds PreintegrationCombinedParams from loaded noise params
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
@@ -108,8 +110,8 @@ private:
   gtsam::Vector3                       optimized_velocity_{gtsam::Vector3::Zero()};
   gtsam::imuBias::ConstantBias         optimized_bias_{};
 
-  /// IMU preintegration params (built once from YAML, reused every step).
-  boost::shared_ptr<gtsam::PreintegrationCombinedParams> imu_preint_params_;
+  /// IMU preintegrator — null when cfg_.enable_imu is false.
+  std::unique_ptr<ImuPreintegrator> imu_preint_;
 
   // ── Pose / stamp tracking ─────────────────────────────────────────────────
   std::unique_ptr<KeyframeSelector> keyframe_sel_;     ///< keyframe decision logic

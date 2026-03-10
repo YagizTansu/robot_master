@@ -75,7 +75,11 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
 
   // ── Build IMU preintegration params ──────────────────────────────────────
   if (cfg_.enable_imu) {
-    initImuPreintegration();
+    imu_preint_ = std::make_unique<ImuPreintegrator>(cfg_);
+    RCLCPP_INFO(get_logger(),
+      "[FgoNode] IMU preintegration params set. "
+      "accel_sigma=%.4f gyro_sigma=%.4f gravity=%.2f",
+      cfg_.noise_imu_accel_sigma, cfg_.noise_imu_gyro_sigma, cfg_.imu_gravity);
   }
 
   // ── Initialise graph: add X(0)/V(0)/B(0) prior ────────────────────────
@@ -138,42 +142,6 @@ void FgoNode::initIsam2()
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// IMU preintegration setup
-// ════════════════════════════════════════════════════════════════════════════════
-
-void FgoNode::initImuPreintegration()
-{
-  // MakeSharedU: ENU (Z-up) world frame convention.
-  // Gravity acts along -Z in world frame → magnitude passed as positive scalar.
-  auto p = gtsam::PreintegrationCombinedParams::MakeSharedU(cfg_.imu_gravity);
-
-  // White-noise spectral densities (continuous time)
-  p->accelerometerCovariance =
-    gtsam::I_3x3 * (cfg_.noise_imu_accel_sigma * cfg_.noise_imu_accel_sigma);
-  p->gyroscopeCovariance =
-    gtsam::I_3x3 * (cfg_.noise_imu_gyro_sigma * cfg_.noise_imu_gyro_sigma);
-
-  // Numerical integration uncertainty
-  p->integrationCovariance =
-    gtsam::I_3x3 * (cfg_.noise_imu_integration_sigma * cfg_.noise_imu_integration_sigma);
-
-  // Bias random-walk spectral densities
-  p->biasAccCovariance =
-    gtsam::I_3x3 * (cfg_.noise_imu_accel_bias_sigma * cfg_.noise_imu_accel_bias_sigma);
-  p->biasOmegaCovariance =
-    gtsam::I_3x3 * (cfg_.noise_imu_gyro_bias_sigma * cfg_.noise_imu_gyro_bias_sigma);
-
-  // Small uncertainty on initial bias integral (numerical stability)
-  p->biasAccOmegaInt = gtsam::I_6x6 * cfg_.imu_bias_acc_omega_int;
-
-  imu_preint_params_ = p;
-
-  RCLCPP_INFO(get_logger(),
-    "[FgoNode] IMU preintegration params set. "
-    "accel_sigma=%.4f gyro_sigma=%.4f gravity=%.2f",
-    cfg_.noise_imu_accel_sigma, cfg_.noise_imu_gyro_sigma, cfg_.imu_gravity);
-}
-
 void FgoNode::initGraph()
 {
   key_ = 0;
@@ -193,7 +161,7 @@ void FgoNode::initGraph()
   new_values_.insert(X(0), init_pose);
 
   // ── V(0) and B(0): velocity and bias priors (only when IMU is enabled) ────
-  if (cfg_.enable_imu && imu_preint_params_) {
+  if (imu_preint_) {
     optimized_velocity_ = gtsam::Vector3::Zero();
     optimized_bias_     = gtsam::imuBias::ConstantBias();
 
@@ -276,8 +244,7 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 // Scan pose callback (from scan_matcher_node)
 // ═════════════════════════════════════════════════════════════════════════════
 
-void FgoNode::scanPoseCallback(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+void FgoNode::scanPoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
   // Gate 1: reject stale scan matches that built up while robot was stationary.
   // Without this, restarting motion floods the graph with old scans attributed
@@ -297,8 +264,7 @@ void FgoNode::scanPoseCallback(
 // Initial pose callback — full reset
 // ═════════════════════════════════════════════════════════════════════════════
 
-void FgoNode::initialPoseCallback(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
   RCLCPP_WARN(get_logger(), "[FgoNode] Received /initialpose — resetting graph.");
 
@@ -405,72 +371,13 @@ void FgoNode::optimizationStep()
   const rclcpp::Time prev_consumed_stamp = last_consumed_odom_stamp_;
   last_consumed_odom_stamp_ = local_odom.back().timestamp;
 
-  // ── CombinedImuFactor: preintegrate IMU per keyframe interval ─────────────
-  // V and B are inserted for every new key. If no IMU data covers an interval,
-  // prior factors pin V and B to prevent unconstrained nodes in the graph.
-  if (cfg_.enable_imu && imu_preint_params_) {
-    std::sort(local_imu.begin(), local_imu.end(),
-      [](const ImuSample & a, const ImuSample & b) {
-        return a.timestamp < b.timestamp;
-      });
-
-    for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
-      const int from_key = batch_start_key + i;
-      const int to_key   = from_key + 1;
-
-      if (!new_values_.exists(V(to_key)))
-        new_values_.insert(V(to_key), optimized_velocity_);
-      if (!new_values_.exists(B(to_key)))
-        new_values_.insert(B(to_key), optimized_bias_);
-
-      const rclcpp::Time t_from =
-        (i == 0) ? prev_consumed_stamp : local_odom[i - 1].timestamp;
-      const rclcpp::Time t_to = local_odom[i].timestamp;
-
-      bool imu_integrated = false;
-
-      if (!local_imu.empty() && t_from.nanoseconds() != 0 && t_to > t_from) {
-        gtsam::PreintegratedCombinedMeasurements preint(imu_preint_params_, optimized_bias_);
-        int n_integrated = 0;
-
-        for (std::size_t j = 1; j < local_imu.size(); ++j) {
-          const rclcpp::Time & t_a = local_imu[j - 1].timestamp;
-          const rclcpp::Time & t_b = local_imu[j].timestamp;
-          if (t_b <= t_from || t_a >= t_to) continue;
-
-          // Clamp interval to [t_from, t_to] to avoid double-counting across batches.
-          const double t_a_eff = std::max(t_a.seconds(), t_from.seconds());
-          const double t_b_eff = std::min(t_b.seconds(), t_to.seconds());
-          const double dt = t_b_eff - t_a_eff;
-          if (dt <= 0.0 || dt > 0.5) continue;
-
-          preint.integrateMeasurement(local_imu[j - 1].accel,
-                                      local_imu[j - 1].gyro, dt);
-          ++n_integrated;
-        }
-
-        if (n_integrated > 0) {
-          new_factors_.add(gtsam::CombinedImuFactor(
-            X(from_key), V(from_key),
-            X(to_key),   V(to_key),
-            B(from_key), B(to_key),
-            preint));
-          imu_integrated = true;
-        }
-      }
-
-      if (!imu_integrated) {
-        // No IMU coverage for this interval — pin V and B to prevent unconstrained nodes.
-        new_factors_.add(gtsam::PriorFactor<gtsam::Vector3>(
-          V(to_key), optimized_velocity_,
-          gtsam::noiseModel::Isotropic::Sigma(3, cfg_.fallback_vel_sigma)));
-        new_factors_.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(
-          B(to_key), optimized_bias_,
-          gtsam::noiseModel::Diagonal::Sigmas(
-            (gtsam::Vector6() << cfg_.fallback_bias_accel_sigma, cfg_.fallback_bias_accel_sigma, cfg_.fallback_bias_accel_sigma,
-                                 cfg_.fallback_bias_gyro_sigma,  cfg_.fallback_bias_gyro_sigma,  cfg_.fallback_bias_gyro_sigma).finished())));
-      }
-    }
+  // ── IMU preintegration: delegate entirely to ImuPreintegrator ──────────────────
+  if (imu_preint_) {
+    imu_preint_->addFactors(
+      new_factors_, new_values_,
+      std::move(local_imu), local_odom,
+      batch_start_key, prev_consumed_stamp,
+      optimized_bias_, optimized_velocity_);
   }
 
   // ── Scan match PriorFactors ───────────────────────────────────────────────
@@ -544,7 +451,7 @@ void FgoNode::optimizationStep()
     optimized_pose_ = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
 
     // Retrieve velocity and bias if IMU is active
-    if (cfg_.enable_imu && imu_preint_params_) {
+    if (imu_preint_) {
       try {
         optimized_velocity_ =
           isam2_->calculateEstimate<gtsam::Vector3>(V(key_));
