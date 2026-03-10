@@ -10,9 +10,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 // GTSAM
-#include <gtsam/geometry/Rot3.h>
-#include <gtsam/geometry/Point3.h>
-#include <gtsam/nonlinear/ISAM2Params.h>
 
 namespace factor_graph_optimization
 {
@@ -25,7 +22,6 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("fgo_node", options)
 {
   cfg_ = FgoConfig::fromNode(*this);
-  initIsam2();
 
   // ── TF broadcaster + listener ────────────────────────────────────────────
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -70,20 +66,17 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
     cfg_.keyframe_translation_threshold,
     cfg_.keyframe_rotation_threshold,
     make_init_pose());
-  last_consumed_odom_pose_  = make_init_pose();
-  last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  // ── Build IMU preintegration params ──────────────────────────────────────
+  // ── Graph manager (owns iSAM2, factor graph, IMU preintegrator) ───────────
+  std::unique_ptr<ImuPreintegrator> imu_preint;
   if (cfg_.enable_imu) {
-    imu_preint_ = std::make_unique<ImuPreintegrator>(cfg_);
+    imu_preint = std::make_unique<ImuPreintegrator>(cfg_);
     RCLCPP_INFO(get_logger(),
-      "[FgoNode] IMU preintegration params set. "
+      "[FgoNode] IMU preintegration enabled. "
       "accel_sigma=%.4f gyro_sigma=%.4f gravity=%.2f",
       cfg_.noise_imu_accel_sigma, cfg_.noise_imu_gyro_sigma, cfg_.imu_gravity);
   }
-
-  // ── Initialise graph: add X(0)/V(0)/B(0) prior ────────────────────────
-  initGraph();
+  graph_mgr_ = std::make_unique<GraphManager>(cfg_, std::move(imu_preint));
 
   // ── Path message header ───────────────────────────────────────────────────
   path_msg_.header.frame_id = cfg_.map_frame;
@@ -128,67 +121,6 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
 
 // Parameter loading — moved to FgoConfig::fromNode() in src/config/fgo_config.cpp
 
-// ═════════════════════════════════════════════════════════════════════════════
-// iSAM2 initialisation
-// ═════════════════════════════════════════════════════════════════════════════
-
-void FgoNode::initIsam2()
-{
-  gtsam::ISAM2Params params;
-  params.relinearizeThreshold = cfg_.isam2_relinearize_threshold;
-  params.relinearizeSkip      = cfg_.isam2_relinearize_skip;
-  params.evaluateNonlinearError = false;
-  isam2_ = std::make_unique<gtsam::ISAM2>(params);
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-void FgoNode::initGraph()
-{
-  key_ = 0;
-  new_factors_.resize(0);
-  new_values_.clear();
-
-  // ── X(0): tight prior on initial pose ───────────────────────────────────────────
-  gtsam::Pose3 init_pose(
-    gtsam::Rot3::RzRyRx(cfg_.init_roll, cfg_.init_pitch, cfg_.init_yaw),
-    gtsam::Point3(cfg_.init_x, cfg_.init_y, cfg_.init_z));
-
-  auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma,
-                         cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma).finished());
-
-  new_factors_.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), init_pose, prior_noise));
-  new_values_.insert(X(0), init_pose);
-
-  // ── V(0) and B(0): velocity and bias priors (only when IMU is enabled) ────
-  if (imu_preint_) {
-    optimized_velocity_ = gtsam::Vector3::Zero();
-    optimized_bias_     = gtsam::imuBias::ConstantBias();
-
-    // Robot starts from rest — prior_vel_sigma uncertainty (generous)
-    auto vel_noise = gtsam::noiseModel::Isotropic::Sigma(3, cfg_.prior_vel_sigma);
-    new_factors_.add(
-      gtsam::PriorFactor<gtsam::Vector3>(V(0), optimized_velocity_, vel_noise));
-    new_values_.insert(V(0), optimized_velocity_);
-
-    // Bias assumed near-zero at startup; moderate uncertainty lets GTSAM estimate it
-    auto bias_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      (gtsam::Vector6() << cfg_.prior_bias_accel_sigma, cfg_.prior_bias_accel_sigma, cfg_.prior_bias_accel_sigma,
-                           cfg_.prior_bias_gyro_sigma,  cfg_.prior_bias_gyro_sigma,  cfg_.prior_bias_gyro_sigma).finished());
-    new_factors_.add(
-      gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), optimized_bias_, bias_noise));
-    new_values_.insert(B(0), optimized_bias_);
-  }
-
-  isam2_->update(new_factors_, new_values_);
-  new_factors_.resize(0);
-  new_values_.clear();
-
-  optimized_pose_ = init_pose;
-
-  RCLCPP_INFO(get_logger(), "[FgoNode] Graph initialised with X(0) at (%.2f, %.2f, yaw=%.2f)",
-    cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Odometry callback
@@ -293,16 +225,11 @@ void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceSt
 
   // Reset all graph state behind graph_mutex_.
   std::lock_guard<std::mutex> graph_lock(graph_mutex_);
-  last_consumed_odom_pose_  = new_pose;
-  last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  optimized_velocity_       = gtsam::Vector3::Zero();
-  optimized_bias_           = gtsam::imuBias::ConstantBias();
   path_msg_.poses.clear();
   path_msg_.header.stamp = now();
   has_map_to_odom_cache_ = false;
 
-  initIsam2();
-  initGraph();
+  graph_mgr_->reinit(cfg_);
   updateMapToOdomCache();
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Graph reset to (%.2f, %.2f, yaw=%.2f)",
@@ -336,136 +263,7 @@ void FgoNode::optimizationStep()
     return;
   }
 
-  // ── Noise models ──────────────────────────────────────────────────
-  auto odom_noise = makeDiagonalNoise(
-    cfg_.noise_odom_x, cfg_.noise_odom_y, cfg_.noise_odom_z,
-    cfg_.noise_odom_roll, cfg_.noise_odom_pitch, cfg_.noise_odom_yaw);
-
-  // ── Odometry BetweenFactors ────────────────────────────────────────────────
-  geometry_msgs::msg::Pose prev_pose = last_consumed_odom_pose_;
-  const geometry_msgs::msg::Pose pre_batch_odom_pose = last_consumed_odom_pose_;
-  const int batch_start_key = key_;
-
-  // Seed running estimate from latest iSAM2 result; falls back at startup.
-  gtsam::Pose3 current_estimate = optimized_pose_;
-  try {
-    current_estimate = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
-  } catch (...) {}
-
-  for (const auto & sample : local_odom) {
-    const gtsam::Pose3 gtsam_prev    = msgToGtsam(prev_pose);
-    const gtsam::Pose3 gtsam_current = msgToGtsam(sample.pose);
-    const gtsam::Pose3 delta         = gtsam_prev.between(gtsam_current);
-
-    const gtsam::Pose3 estimate = current_estimate.compose(delta);
-
-    key_++;
-    new_factors_.add(
-      gtsam::BetweenFactor<gtsam::Pose3>(X(key_ - 1), X(key_), delta, odom_noise));
-    new_values_.insert(X(key_), estimate);
-
-    current_estimate = estimate;  // propagate anchor to the next keyframe
-    prev_pose = sample.pose;
-  }
-  last_consumed_odom_pose_  = local_odom.back().pose;
-  const rclcpp::Time prev_consumed_stamp = last_consumed_odom_stamp_;
-  last_consumed_odom_stamp_ = local_odom.back().timestamp;
-
-  // ── IMU preintegration: delegate entirely to ImuPreintegrator ──────────────────
-  if (imu_preint_) {
-    imu_preint_->addFactors(
-      new_factors_, new_values_,
-      std::move(local_imu), local_odom,
-      batch_start_key, prev_consumed_stamp,
-      optimized_bias_, optimized_velocity_);
-  }
-
-  // ── Scan match PriorFactors ───────────────────────────────────────────────
-  // Each scan is gated independently against the instantaneous |dyaw| of its
-  // nearest keyframe interval. NDT is unreliable during in-place rotation.
-  if (!local_scan.empty()) {
-    // Pre-compute |dyaw| per keyframe interval; index 0 uses pre-batch pose.
-    std::vector<double> keyframe_dyaw(local_odom.size());
-    {
-      double yaw_prev = extractYaw(pre_batch_odom_pose.orientation);
-      for (std::size_t i = 0; i < local_odom.size(); ++i) {
-        double dy = std::fmod(std::fabs(extractYaw(local_odom[i].pose.orientation) - yaw_prev), 2.0 * M_PI);
-        if (dy > M_PI) dy = 2.0 * M_PI - dy;
-        keyframe_dyaw[i] = dy;
-        yaw_prev = extractYaw(local_odom[i].pose.orientation);
-      }
-    }
-
-    for (const auto & scan_msg : local_scan) {
-      const rclcpp::Time scan_t(scan_msg.header.stamp);
-      const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
-
-      // Find nearest keyframe by timestamp
-      int best_i = static_cast<int>(local_odom.size()) - 1;
-      double best_dt = std::numeric_limits<double>::max();
-      for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
-        const double dt = std::fabs((local_odom[i].timestamp - scan_t).seconds());
-        if (dt < best_dt) { best_dt = dt; best_i = i; }
-      }
-
-      // Per-scan gate: skip only THIS scan if its keyframe interval had rotation
-      const double local_dyaw = keyframe_dyaw[best_i];
-      if (local_dyaw > cfg_.lidar_rotation_gate_rad) {
-        RCLCPP_DEBUG(get_logger(),
-          "[FgoNode] Scan prior skipped: keyframe[%d] |dyaw|=%.4f rad > gate=%.4f rad",
-          best_i, local_dyaw, cfg_.lidar_rotation_gate_rad);
-        continue;
-      }
-
-      // GTSAM Pose3 sigma order: [roll, pitch, yaw, x, y, z]
-      const auto & cov = scan_msg.pose.covariance;
-      auto lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(
-        (gtsam::Vector6() <<
-          std::sqrt(cov[21]),   // roll  σ
-          std::sqrt(cov[28]),   // pitch σ
-          std::sqrt(cov[35]),   // yaw   σ
-          std::sqrt(cov[0]),    // x     σ
-          std::sqrt(cov[7]),    // y     σ
-          std::sqrt(cov[14])    // z     σ
-        ).finished());
-
-      const int target_key = batch_start_key + best_i + 1;
-
-      new_factors_.add(
-        gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
-
-      RCLCPP_DEBUG(get_logger(),
-        "[FgoNode] Scan prior -> X(%d), dt=%.3fs, dyaw=%.4f rad",
-        target_key, best_dt, local_dyaw);
-    }
-  }
-
-  // ── iSAM2 update ─────────────────────────────────────────────────────────
-  try {
-    isam2_->update(new_factors_, new_values_);
-    isam2_->update();  // extra pass for convergence
-    new_factors_.resize(0);
-    new_values_.clear();
-
-    // Retrieve optimised pose at current key
-    optimized_pose_ = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
-
-    // Retrieve velocity and bias if IMU is active
-    if (imu_preint_) {
-      try {
-        optimized_velocity_ =
-          isam2_->calculateEstimate<gtsam::Vector3>(V(key_));
-        optimized_bias_ =
-          isam2_->calculateEstimate<gtsam::imuBias::ConstantBias>(B(key_));
-      } catch (...) {
-        // V/B keys may not exist if no IMU factors were added this step
-      }
-    }
-
-  } catch (const std::exception & e) {
-    RCLCPP_ERROR(get_logger(), "[FgoNode] iSAM2 update failed: %s", e.what());
-    new_factors_.resize(0);
-    new_values_.clear();
+  if (!graph_mgr_->step(local_odom, std::move(local_imu), local_scan, get_logger())) {
     return;
   }
 
@@ -481,10 +279,10 @@ void FgoNode::optimizationStep()
     // Use the sensor timestamp of the last consumed odom sample, NOT now().
     // now() is called after optimization completes (potentially 10-50ms later),
     // which breaks ApproximateTimeSynchronizer in downstream nodes (benchmark, etc.).
-    odom_msg.header.stamp    = last_consumed_odom_stamp_;
+    odom_msg.header.stamp    = graph_mgr_->lastConsumedOdomStamp();
     odom_msg.header.frame_id = cfg_.map_frame;
     odom_msg.child_frame_id  = cfg_.base_frame;
-    odom_msg.pose.pose       = gtsamToMsg(optimized_pose_);
+    odom_msg.pose.pose       = gtsamToMsg(graph_mgr_->optimizedPose());
     pub_odometry_->publish(odom_msg);
   }
 
@@ -493,7 +291,7 @@ void FgoNode::optimizationStep()
     geometry_msgs::msg::PoseStamped ps;
     ps.header.stamp    = now();
     ps.header.frame_id = cfg_.map_frame;
-    ps.pose            = gtsamToMsg(optimized_pose_);
+    ps.pose            = gtsamToMsg(graph_mgr_->optimizedPose());
     path_msg_.poses.push_back(ps);
     path_msg_.header.stamp = now();
     pub_path_->publish(path_msg_);
@@ -524,8 +322,8 @@ void FgoNode::updateMapToOdomCache()
 {
   // T(map→odom) = T(map→base)_opt × T(odom→base)_keyframe⁻¹
   // Keyframe anchor ensures odom dead-reckons correctly between optimisation steps.
-  const gtsam::Pose3 odom_T_base = msgToGtsam(last_consumed_odom_pose_);
-  const gtsam::Pose3 map_T_odom  = optimized_pose_.compose(odom_T_base.inverse());
+  const gtsam::Pose3 odom_T_base = msgToGtsam(graph_mgr_->lastConsumedOdomPose());
+  const gtsam::Pose3 map_T_odom  = graph_mgr_->optimizedPose().compose(odom_T_base.inverse());
 
   const gtsam::Point3 & t = map_T_odom.translation();
   const gtsam::Quaternion q = map_T_odom.rotation().toQuaternion();

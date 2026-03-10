@@ -22,21 +22,8 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-// GTSAM — core
-#include <gtsam/geometry/Pose3.h>
-#include <gtsam/geometry/Rot3.h>
-#include <gtsam/inference/Symbol.h>
-#include <gtsam/nonlinear/ISAM2.h>
-#include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/slam/PriorFactor.h>
-#include <gtsam/linear/NoiseModel.h>
-
 // Core utilities (ROS-free math helpers)
 #include "factor_graph_optimization/core/pose_conversion.hpp"
-#include "factor_graph_optimization/core/noise_model.hpp"
-#include "factor_graph_optimization/core/geometry_2d.hpp"
 
 // Configuration struct
 #include "factor_graph_optimization/config/fgo_config.hpp"
@@ -45,20 +32,11 @@
 #include "factor_graph_optimization/odometry/sensor_buffer.hpp"
 #include "factor_graph_optimization/odometry/keyframe_selector.hpp"
 
-// IMU module
-#include "factor_graph_optimization/imu/imu_preintegrator.hpp"
-// GTSAM — navigation / IMU preintegration
-#include <gtsam/navigation/CombinedImuFactor.h>
-#include <gtsam/navigation/ImuBias.h>
-#include <gtsam/navigation/NavState.h>
-#include <boost/shared_ptr.hpp>
+// Graph module (owns iSAM2, optimised states, IMU preintegrator)
+#include "factor_graph_optimization/graph/graph_manager.hpp"
 
 namespace factor_graph_optimization
 {
-
-using gtsam::symbol_shorthand::X;  // Pose3 keys
-using gtsam::symbol_shorthand::V;  // Velocity keys  (gtsam::Vector3)
-using gtsam::symbol_shorthand::B;  // IMU-bias keys  (gtsam::imuBias::ConstantBias)
 
 // ImuSample and OdomSample are defined in odometry/sensor_buffer.hpp.
 
@@ -72,9 +50,6 @@ private:
   // Parameters are loaded via FgoConfig::fromNode() — see config/fgo_config.hpp.
 
   // ── Initialisation ────────────────────────────────────────────────────────
-  void initIsam2();
-  void initGraph();              ///< Adds X(0)/V(0)/B(0) PriorFactors and commits to iSAM2
-
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
@@ -99,24 +74,11 @@ private:
   // Conversion helpers are now free functions in the factor_graph_optimization
   // namespace — see core/pose_conversion.hpp and core/noise_model.hpp.
 
-  // ── iSAM2 state ───────────────────────────────────────────────────────────
-  std::unique_ptr<gtsam::ISAM2>               isam2_;
-  gtsam::NonlinearFactorGraph                 new_factors_;
-  gtsam::Values                               new_values_;
-  int                                         key_{0};       ///< current pose key index
+  // ── Graph module (owns iSAM2, factor graph, optimised states, IMU preint) ──
+  std::unique_ptr<GraphManager>     graph_mgr_;
 
-  // ── Optimised states (pose, velocity, IMU bias) ───────────────────────────
-  gtsam::Pose3                         optimized_pose_;
-  gtsam::Vector3                       optimized_velocity_{gtsam::Vector3::Zero()};
-  gtsam::imuBias::ConstantBias         optimized_bias_{};
-
-  /// IMU preintegrator — null when cfg_.enable_imu is false.
-  std::unique_ptr<ImuPreintegrator> imu_preint_;
-
-  // ── Pose / stamp tracking ─────────────────────────────────────────────────
+  // ── Keyframe selector ─────────────────────────────────────────────────────
   std::unique_ptr<KeyframeSelector> keyframe_sel_;     ///< keyframe decision logic
-  geometry_msgs::msg::Pose  last_consumed_odom_pose_;  ///< keyframe pose corresponding to optimized_pose_
-  rclcpp::Time              last_consumed_odom_stamp_;  ///< timestamp of last_consumed_odom_pose_
 
   /// Cached map→odom transform. Recomputed only when optimisation runs.
   /// Re-published every timer tick so Nav2 does not time out.
