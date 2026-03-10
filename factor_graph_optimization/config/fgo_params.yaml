@@ -160,7 +160,7 @@ scan_matcher_node:
       map_z_height:            0.0
       # NDT internal voxel resolution (m). Should be 2-5x the map voxel leaf size.
       # 1.0m is far too coarse for indoor corridors; 0.3m gives wall-level detail.
-      ndt_resolution:          0.3
+      ndt_resolution:          0.15
       # Newton gradient-descent step size (m). One of the most impactful NDT
       # convergence parameters. Smaller = more stable, more iterations.
       ndt_step_size:           0.1
@@ -169,10 +169,10 @@ scan_matcher_node:
       # sigma *= (1 + fitness_noise_scale * fitness_score) — applied before publishing
       fitness_noise_scale:     5.0
       # VoxelGrid leaf size for map cloud downsampling (m)
-      map_voxel_leaf_size:     0.1
+      map_voxel_leaf_size:     0.03
       # VoxelGrid leaf size applied to the source scan before matching (m; 0 = skip)
       # Should be equal to or smaller than map_voxel_leaf_size so densities are symmetric.
-      scan_voxel_leaf_size:    0.1
+      scan_voxel_leaf_size:    0.03
       # Frame written into the published scan-pose message (must match fgo_node map_frame)
       map_frame:               "map"
       # ICP-only: RANSAC outlier rejection (0 iterations = disabled)
