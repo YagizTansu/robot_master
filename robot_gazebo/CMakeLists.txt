@@ -58,3 +58,10 @@ install(TARGETS ground_truth_publisher
 ament_package()
 
 install(DIRECTORY launch models worlds DESTINATION share/${PROJECT_NAME})
+
+# Python benchmark scripts
+install(
+  PROGRAMS
+    scripts/localization_benchmark.py
+  DESTINATION lib/${PROJECT_NAME}
+)
