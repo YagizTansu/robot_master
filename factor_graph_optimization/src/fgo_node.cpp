@@ -18,8 +18,7 @@ namespace factor_graph_optimization
 // Construction
 // ═════════════════════════════════════════════════════════════════════════════
 
-FgoNode::FgoNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("fgo_node", options)
+FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node", options)
 {
   cfg_ = FgoConfig::fromNode(*this);
 
