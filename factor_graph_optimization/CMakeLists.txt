@@ -59,6 +59,7 @@ add_executable(fgo_node
   src/core/pose_conversion.cpp
   src/core/noise_model.cpp
   src/core/geometry_2d.cpp
+  src/config/fgo_config.cpp
 )
 
 target_link_libraries(fgo_node
@@ -85,6 +86,7 @@ add_executable(scan_matcher_node
   src/scan_matcher_main.cpp
   src/scan_matcher.cpp
   src/core/geometry_2d.cpp
+  src/config/scan_matcher_config.cpp
 )
 
 target_link_libraries(scan_matcher_node

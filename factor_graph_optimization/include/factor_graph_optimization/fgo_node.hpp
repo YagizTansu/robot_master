@@ -37,6 +37,9 @@
 #include "factor_graph_optimization/core/pose_conversion.hpp"
 #include "factor_graph_optimization/core/noise_model.hpp"
 #include "factor_graph_optimization/core/geometry_2d.hpp"
+
+// Configuration struct
+#include "factor_graph_optimization/config/fgo_config.hpp"
 // GTSAM — navigation / IMU preintegration
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuBias.h>
@@ -72,8 +75,7 @@ public:
 
 private:
   // ── Parameter helpers ─────────────────────────────────────────────────────
-  void declareParameters();
-  void loadParameters();
+  // Parameters are loaded via FgoConfig::fromNode() — see config/fgo_config.hpp.
 
   // ── Initialisation ────────────────────────────────────────────────────────
   void initIsam2();
@@ -160,56 +162,8 @@ private:
   // ── Path history (for /fgo/path) ─────────────────────────────────────────
   nav_msgs::msg::Path path_msg_;
 
-  // ── Parameters (loaded once at startup) ──────────────────────────────────
-  // Sensor toggles
-  bool enable_odom_{true};
-  bool enable_imu_{true};
-  bool enable_lidar_{true};
-
-  // Topics
-  std::string odom_topic_;
-  std::string imu_topic_;
-  std::string scan_match_pose_topic_;
-  std::string initial_pose_topic_;
-
-  // Frames
-  std::string map_frame_;
-  std::string odom_frame_;
-  std::string base_frame_;
-  std::string imu_frame_;   ///< frame_id of the IMU sensor
-
-  // TF flags
-  bool publish_map_to_odom_{true};
-  bool publish_odom_to_base_{true};
-
-  // Initial pose
-  double init_x_{0.0}, init_y_{0.0}, init_z_{0.0};
-  double init_roll_{0.0}, init_pitch_{0.0}, init_yaw_{0.0};
-
-  // Odometry noise
-  double noise_odom_x_, noise_odom_y_, noise_odom_z_;
-  double noise_odom_roll_, noise_odom_pitch_, noise_odom_yaw_;
-
-  // IMU preintegration noise
-  double noise_imu_accel_sigma_;       ///< accelerometer white noise  σ (m/s²/√Hz)
-  double noise_imu_gyro_sigma_;        ///< gyroscope white noise       σ (rad/s/√Hz)
-  double noise_imu_accel_bias_sigma_;  ///< accelerometer bias RW       σ (m/s³/√Hz)
-  double noise_imu_gyro_bias_sigma_;   ///< gyroscope bias RW           σ (rad/s²/√Hz)
-  double noise_imu_integration_sigma_; ///< numerical integration noise σ
-  double imu_gravity_;                 ///< gravity magnitude             (m/s²)
-
-  // LiDAR gating (noise is read directly from scan_matcher's published covariance)
-  double lidar_rotation_gate_rad_;    ///< skip scan prior if keyframe |dyaw| > this (rad)
-  double max_scan_age_sec_;           ///< discard scan poses older than this (sec)
-
-  // iSAM2
-  double isam2_relinearize_threshold_;
-  int    isam2_relinearize_skip_;
-  double optimization_rate_hz_;
-
-  // Keyframe
-  double keyframe_translation_threshold_;
-  double keyframe_rotation_threshold_;
+  // ── Parameters ───────────────────────────────────────────────
+  FgoConfig cfg_;
 };
 
 }  // namespace factor_graph_optimization

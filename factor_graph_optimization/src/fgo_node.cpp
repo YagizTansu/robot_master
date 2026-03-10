@@ -24,8 +24,7 @@ namespace factor_graph_optimization
 FgoNode::FgoNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("fgo_node", options)
 {
-  declareParameters();
-  loadParameters();
+  cfg_ = FgoConfig::fromNode(*this);
   initIsam2();
 
   // ── TF broadcaster + listener ────────────────────────────────────────────
@@ -34,17 +33,17 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   tf_listener_    = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   // One-time lookup of static IMU→base rotation; falls back gracefully if unavailable.
-  if (imu_frame_ != base_frame_) {
+  if (cfg_.imu_frame != cfg_.base_frame) {
     try {
       auto tf_imu = tf_buffer_->lookupTransform(
-        base_frame_, imu_frame_, tf2::TimePointZero,
+        cfg_.base_frame, cfg_.imu_frame, tf2::TimePointZero,
         tf2::durationFromSec(2.0));
       const auto & q = tf_imu.transform.rotation;
       R_imu_to_base_ = gtsam::Rot3::Quaternion(q.w, q.x, q.y, q.z);
       imu_tf_ready_  = true;
       RCLCPP_INFO(get_logger(),
         "[FgoNode] IMU frame '%s' -> '%s' rotation cached.",
-        imu_frame_.c_str(), base_frame_.c_str());
+        cfg_.imu_frame.c_str(), cfg_.base_frame.c_str());
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN(get_logger(),
         "[FgoNode] IMU->base TF not available (%s). "
@@ -55,11 +54,11 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   // ── Initialize pose tracking from initial_pose parameters ────────────────
   auto make_init_pose = [this]() -> geometry_msgs::msg::Pose {
     geometry_msgs::msg::Pose p;
-    p.position.x = init_x_;
-    p.position.y = init_y_;
-    p.position.z = init_z_;
+    p.position.x = cfg_.init_x;
+    p.position.y = cfg_.init_y;
+    p.position.z = cfg_.init_z;
     tf2::Quaternion q;
-    q.setRPY(init_roll_, init_pitch_, init_yaw_);
+    q.setRPY(cfg_.init_roll, cfg_.init_pitch, cfg_.init_yaw);
     q.normalize();
     p.orientation.x = q.x();
     p.orientation.y = q.y();
@@ -72,7 +71,7 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   // ── Build IMU preintegration params ──────────────────────────────────────
-  if (enable_imu_) {
+  if (cfg_.enable_imu) {
     initImuPreintegration();
   }
 
@@ -80,26 +79,26 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
   initGraph();
 
   // ── Path message header ───────────────────────────────────────────────────
-  path_msg_.header.frame_id = map_frame_;
+  path_msg_.header.frame_id = cfg_.map_frame;
 
   // ── Subscribers ──────────────────────────────────────────────────────────
-  if (enable_odom_) {
+  if (cfg_.enable_odom) {
     sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
-      odom_topic_, rclcpp::QoS(10),
+      cfg_.odom_topic, rclcpp::QoS(10),
       std::bind(&FgoNode::odomCallback, this, std::placeholders::_1));
   }
-  if (enable_imu_) {
+  if (cfg_.enable_imu) {
     sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic_, rclcpp::QoS(100),
+      cfg_.imu_topic, rclcpp::QoS(100),
       std::bind(&FgoNode::imuCallback, this, std::placeholders::_1));
   }
-  if (enable_lidar_) {
+  if (cfg_.enable_lidar) {
     sub_scan_pose_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-      scan_match_pose_topic_, rclcpp::QoS(10),
+      cfg_.scan_match_pose_topic, rclcpp::QoS(10),
       std::bind(&FgoNode::scanPoseCallback, this, std::placeholders::_1));
   }
   sub_init_pose_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    initial_pose_topic_, rclcpp::QoS(5),
+    cfg_.initial_pose_topic, rclcpp::QoS(5),
     std::bind(&FgoNode::initialPoseCallback, this, std::placeholders::_1));
 
   // ── Publishers ────────────────────────────────────────────────────────────
@@ -108,135 +107,19 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options)
 
   // ── Optimization timer ────────────────────────────────────────────────────
   const auto period_ms = std::chrono::milliseconds(
-    static_cast<int>(1000.0 / optimization_rate_hz_));
+    static_cast<int>(1000.0 / cfg_.optimization_rate_hz));
   optimization_timer_ = create_wall_timer(
     period_ms, std::bind(&FgoNode::optimizationStep, this));
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Started. map=%s odom=%s base=%s",
-    map_frame_.c_str(), odom_frame_.c_str(), base_frame_.c_str());
+    cfg_.map_frame.c_str(), cfg_.odom_frame.c_str(), cfg_.base_frame.c_str());
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Parameter loading
 // ═════════════════════════════════════════════════════════════════════════════
 
-void FgoNode::declareParameters()
-{
-  // Sensor toggles
-  declare_parameter("sensors.enable_odom",  true);
-  declare_parameter("sensors.enable_imu",   true);
-  declare_parameter("sensors.enable_lidar", true);
-
-  // Topics
-  declare_parameter("topics.odom_topic",            "/odom");
-  declare_parameter("topics.imu_topic",             "/imu/data");
-  declare_parameter("topics.scan_match_pose_topic", "/scan_match_pose");
-  declare_parameter("topics.initial_pose_topic",    "/initialpose");
-
-  // Frames
-  declare_parameter("frames.map_frame",  "map");
-  declare_parameter("frames.odom_frame", "odom");
-  declare_parameter("frames.base_frame", "base_footprint");
-  declare_parameter("frames.imu_frame",  "imu_link");
-
-  // TF
-  declare_parameter("tf.publish_map_to_odom",  true);
-  declare_parameter("tf.publish_odom_to_base", true);
-
-  // Initial pose
-  declare_parameter("initial_pose.x",     0.0);
-  declare_parameter("initial_pose.y",     0.0);
-  declare_parameter("initial_pose.z",     0.0);
-  declare_parameter("initial_pose.roll",  0.0);
-  declare_parameter("initial_pose.pitch", 0.0);
-  declare_parameter("initial_pose.yaw",   0.0);
-
-  // Odometry noise
-  declare_parameter("noise.odometry.x",     0.05);
-  declare_parameter("noise.odometry.y",     0.05);
-  declare_parameter("noise.odometry.z",     999.0);
-  declare_parameter("noise.odometry.roll",  999.0);
-  declare_parameter("noise.odometry.pitch", 999.0);
-  declare_parameter("noise.odometry.yaw",   0.05);
-
-  // IMU preintegration noise
-  declare_parameter("noise.imu.accel_sigma",       0.01);
-  declare_parameter("noise.imu.gyro_sigma",        0.001);
-  declare_parameter("noise.imu.accel_bias_sigma",  0.0001);
-  declare_parameter("noise.imu.gyro_bias_sigma",   0.000001);
-  declare_parameter("noise.imu.integration_sigma", 0.0001);
-  declare_parameter("noise.imu.gravity",           9.81);
-
-  // LiDAR gating (noise is supplied by scan_matcher via published covariance)
-  // Per-scan rotation gate: each scan is evaluated against the instantaneous
-  // |dyaw| of its nearest keyframe interval (not the whole batch).
-  // Must be below keyframe.rotation_threshold (0.02 rad) so any rotation
-  // keyframe (dyaw >= 0.02) is reliably blocked while translation keyframes
-  // (dyaw ≈ 0) are never affected.
-  declare_parameter("noise.lidar.rotation_gate_rad", 0.015);
-  // Discard scan poses older than this (sec). Prevents stale scans after a pause.
-  declare_parameter("noise.lidar.max_scan_age_sec",  1.0);
-
-  // iSAM2
-  declare_parameter("isam2.relinearize_threshold", 0.1);
-  declare_parameter("isam2.relinearize_skip",       1);
-  declare_parameter("isam2.optimization_rate_hz",  10.0);
-
-  // Keyframe
-  declare_parameter("keyframe.translation_threshold", 0.02);
-  declare_parameter("keyframe.rotation_threshold",    0.02);
-}
-
-void FgoNode::loadParameters()
-{
-  enable_odom_  = get_parameter("sensors.enable_odom").as_bool();
-  enable_imu_   = get_parameter("sensors.enable_imu").as_bool();
-  enable_lidar_ = get_parameter("sensors.enable_lidar").as_bool();
-
-  odom_topic_            = get_parameter("topics.odom_topic").as_string();
-  imu_topic_             = get_parameter("topics.imu_topic").as_string();
-  scan_match_pose_topic_ = get_parameter("topics.scan_match_pose_topic").as_string();
-  initial_pose_topic_    = get_parameter("topics.initial_pose_topic").as_string();
-
-  map_frame_  = get_parameter("frames.map_frame").as_string();
-  odom_frame_ = get_parameter("frames.odom_frame").as_string();
-  base_frame_ = get_parameter("frames.base_frame").as_string();
-  imu_frame_  = get_parameter("frames.imu_frame").as_string();
-
-  publish_map_to_odom_  = get_parameter("tf.publish_map_to_odom").as_bool();
-  publish_odom_to_base_ = get_parameter("tf.publish_odom_to_base").as_bool();
-
-  init_x_     = get_parameter("initial_pose.x").as_double();
-  init_y_     = get_parameter("initial_pose.y").as_double();
-  init_z_     = get_parameter("initial_pose.z").as_double();
-  init_roll_  = get_parameter("initial_pose.roll").as_double();
-  init_pitch_ = get_parameter("initial_pose.pitch").as_double();
-  init_yaw_   = get_parameter("initial_pose.yaw").as_double();
-
-  noise_odom_x_     = get_parameter("noise.odometry.x").as_double();
-  noise_odom_y_     = get_parameter("noise.odometry.y").as_double();
-  noise_odom_z_     = get_parameter("noise.odometry.z").as_double();
-  noise_odom_roll_  = get_parameter("noise.odometry.roll").as_double();
-  noise_odom_pitch_ = get_parameter("noise.odometry.pitch").as_double();
-  noise_odom_yaw_   = get_parameter("noise.odometry.yaw").as_double();
-
-  noise_imu_accel_sigma_       = get_parameter("noise.imu.accel_sigma").as_double();
-  noise_imu_gyro_sigma_        = get_parameter("noise.imu.gyro_sigma").as_double();
-  noise_imu_accel_bias_sigma_  = get_parameter("noise.imu.accel_bias_sigma").as_double();
-  noise_imu_gyro_bias_sigma_   = get_parameter("noise.imu.gyro_bias_sigma").as_double();
-  noise_imu_integration_sigma_ = get_parameter("noise.imu.integration_sigma").as_double();
-  imu_gravity_                 = get_parameter("noise.imu.gravity").as_double();
-
-  lidar_rotation_gate_rad_ = get_parameter("noise.lidar.rotation_gate_rad").as_double();
-  max_scan_age_sec_        = get_parameter("noise.lidar.max_scan_age_sec").as_double();
-
-  isam2_relinearize_threshold_ = get_parameter("isam2.relinearize_threshold").as_double();
-  isam2_relinearize_skip_      = get_parameter("isam2.relinearize_skip").as_int();
-  optimization_rate_hz_        = get_parameter("isam2.optimization_rate_hz").as_double();
-
-  keyframe_translation_threshold_ = get_parameter("keyframe.translation_threshold").as_double();
-  keyframe_rotation_threshold_    = get_parameter("keyframe.rotation_threshold").as_double();
-}
+// Parameter loading — moved to FgoConfig::fromNode() in src/config/fgo_config.cpp
 
 // ═════════════════════════════════════════════════════════════════════════════
 // iSAM2 initialisation
@@ -245,8 +128,8 @@ void FgoNode::loadParameters()
 void FgoNode::initIsam2()
 {
   gtsam::ISAM2Params params;
-  params.relinearizeThreshold = isam2_relinearize_threshold_;
-  params.relinearizeSkip      = isam2_relinearize_skip_;
+  params.relinearizeThreshold = cfg_.isam2_relinearize_threshold;
+  params.relinearizeSkip      = cfg_.isam2_relinearize_skip;
   params.evaluateNonlinearError = false;
   isam2_ = std::make_unique<gtsam::ISAM2>(params);
 }
@@ -259,33 +142,33 @@ void FgoNode::initImuPreintegration()
 {
   // MakeSharedU: ENU (Z-up) world frame convention.
   // Gravity acts along -Z in world frame → magnitude passed as positive scalar.
-  auto p = gtsam::PreintegrationCombinedParams::MakeSharedU(imu_gravity_);
+  auto p = gtsam::PreintegrationCombinedParams::MakeSharedU(cfg_.imu_gravity);
 
   // White-noise spectral densities (continuous time)
   p->accelerometerCovariance =
-    gtsam::I_3x3 * (noise_imu_accel_sigma_ * noise_imu_accel_sigma_);
+    gtsam::I_3x3 * (cfg_.noise_imu_accel_sigma * cfg_.noise_imu_accel_sigma);
   p->gyroscopeCovariance =
-    gtsam::I_3x3 * (noise_imu_gyro_sigma_ * noise_imu_gyro_sigma_);
+    gtsam::I_3x3 * (cfg_.noise_imu_gyro_sigma * cfg_.noise_imu_gyro_sigma);
 
   // Numerical integration uncertainty
   p->integrationCovariance =
-    gtsam::I_3x3 * (noise_imu_integration_sigma_ * noise_imu_integration_sigma_);
+    gtsam::I_3x3 * (cfg_.noise_imu_integration_sigma * cfg_.noise_imu_integration_sigma);
 
   // Bias random-walk spectral densities
   p->biasAccCovariance =
-    gtsam::I_3x3 * (noise_imu_accel_bias_sigma_ * noise_imu_accel_bias_sigma_);
+    gtsam::I_3x3 * (cfg_.noise_imu_accel_bias_sigma * cfg_.noise_imu_accel_bias_sigma);
   p->biasOmegaCovariance =
-    gtsam::I_3x3 * (noise_imu_gyro_bias_sigma_ * noise_imu_gyro_bias_sigma_);
+    gtsam::I_3x3 * (cfg_.noise_imu_gyro_bias_sigma * cfg_.noise_imu_gyro_bias_sigma);
 
   // Small uncertainty on initial bias integral (numerical stability)
-  p->biasAccOmegaInt = gtsam::I_6x6 * 1e-5;
+  p->biasAccOmegaInt = gtsam::I_6x6 * cfg_.imu_bias_acc_omega_int;
 
   imu_preint_params_ = p;
 
   RCLCPP_INFO(get_logger(),
     "[FgoNode] IMU preintegration params set. "
     "accel_sigma=%.4f gyro_sigma=%.4f gravity=%.2f",
-    noise_imu_accel_sigma_, noise_imu_gyro_sigma_, imu_gravity_);
+    cfg_.noise_imu_accel_sigma, cfg_.noise_imu_gyro_sigma, cfg_.imu_gravity);
 }
 
 void FgoNode::initGraph()
@@ -296,32 +179,31 @@ void FgoNode::initGraph()
 
   // ── X(0): tight prior on initial pose ───────────────────────────────────────────
   gtsam::Pose3 init_pose(
-    gtsam::Rot3::RzRyRx(init_roll_, init_pitch_, init_yaw_),
-    gtsam::Point3(init_x_, init_y_, init_z_));
+    gtsam::Rot3::RzRyRx(cfg_.init_roll, cfg_.init_pitch, cfg_.init_yaw),
+    gtsam::Point3(cfg_.init_x, cfg_.init_y, cfg_.init_z));
 
-  constexpr double kPosSigma = 0.001;  // 1 mm
-  constexpr double kRotSigma = 0.001;  // ~0.057 deg
   auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << kRotSigma, kRotSigma, kRotSigma,
-                         kPosSigma, kPosSigma, kPosSigma).finished());
+    (gtsam::Vector6() << cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma,
+                         cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma).finished());
 
   new_factors_.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), init_pose, prior_noise));
   new_values_.insert(X(0), init_pose);
 
   // ── V(0) and B(0): velocity and bias priors (only when IMU is enabled) ────
-  if (enable_imu_ && imu_preint_params_) {
+  if (cfg_.enable_imu && imu_preint_params_) {
     optimized_velocity_ = gtsam::Vector3::Zero();
     optimized_bias_     = gtsam::imuBias::ConstantBias();
 
-    // Robot starts from rest — 1 m/s uncertainty (generous)
-    auto vel_noise = gtsam::noiseModel::Isotropic::Sigma(3, 1.0);
+    // Robot starts from rest — prior_vel_sigma uncertainty (generous)
+    auto vel_noise = gtsam::noiseModel::Isotropic::Sigma(3, cfg_.prior_vel_sigma);
     new_factors_.add(
       gtsam::PriorFactor<gtsam::Vector3>(V(0), optimized_velocity_, vel_noise));
     new_values_.insert(V(0), optimized_velocity_);
 
     // Bias assumed near-zero at startup; moderate uncertainty lets GTSAM estimate it
     auto bias_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      (gtsam::Vector6() << 0.3, 0.3, 0.3, 0.05, 0.05, 0.05).finished());
+      (gtsam::Vector6() << cfg_.prior_bias_accel_sigma, cfg_.prior_bias_accel_sigma, cfg_.prior_bias_accel_sigma,
+                           cfg_.prior_bias_gyro_sigma,  cfg_.prior_bias_gyro_sigma,  cfg_.prior_bias_gyro_sigma).finished());
     new_factors_.add(
       gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), optimized_bias_, bias_noise));
     new_values_.insert(B(0), optimized_bias_);
@@ -334,7 +216,7 @@ void FgoNode::initGraph()
   optimized_pose_ = init_pose;
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Graph initialised with X(0) at (%.2f, %.2f, yaw=%.2f)",
-    init_x_, init_y_, init_yaw_);
+    cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -346,7 +228,7 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   const auto & raw_pose = msg->pose.pose;
 
   // 1. Always publish odom → base_footprint using raw odometry
-  if (publish_odom_to_base_) {
+  if (cfg_.publish_odom_to_base) {
     publishOdomToBase(msg->header.stamp, raw_pose);
   }
 
@@ -367,8 +249,8 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   double dyaw = std::fmod(std::fabs(yaw_curr - yaw_last), 2.0 * M_PI);
   if (dyaw > M_PI) dyaw = 2.0 * M_PI - dyaw;
 
-  const bool threshold_met = (dist > keyframe_translation_threshold_) ||
-                             (dyaw > keyframe_rotation_threshold_);
+  const bool threshold_met = (dist > cfg_.keyframe_translation_threshold) ||
+                             (dyaw > cfg_.keyframe_rotation_threshold);
 
   if (threshold_met) {
     std::lock_guard<std::mutex> lock(odom_mutex_);
@@ -421,9 +303,9 @@ void FgoNode::scanPoseCallback(
   // Without this, restarting motion floods the graph with old scans attributed
   // to wrong keyframes.
   const double age_s = (now() - rclcpp::Time(msg->header.stamp)).seconds();
-  if (age_s > max_scan_age_sec_) {
+  if (age_s > cfg_.max_scan_age_sec) {
     RCLCPP_DEBUG(get_logger(),
-      "[FgoNode] Scan match discarded: age=%.3fs > max=%.3fs", age_s, max_scan_age_sec_);
+      "[FgoNode] Scan match discarded: age=%.3fs > max=%.3fs", age_s, cfg_.max_scan_age_sec);
     return;
   }
 
@@ -454,12 +336,12 @@ void FgoNode::initialPoseCallback(
   tf2::Matrix3x3(tq).getRPY(new_roll, new_pitch, new_yaw);
 
   // Update init parameters so initGraph() uses new pose
-  init_x_     = new_pose.position.x;
-  init_y_     = new_pose.position.y;
-  init_z_     = new_pose.position.z;
-  init_roll_  = new_roll;
-  init_pitch_ = new_pitch;
-  init_yaw_   = new_yaw;
+  cfg_.init_x     = new_pose.position.x;
+  cfg_.init_y     = new_pose.position.y;
+  cfg_.init_z     = new_pose.position.z;
+  cfg_.init_roll  = new_roll;
+  cfg_.init_pitch = new_pitch;
+  cfg_.init_yaw   = new_yaw;
 
   // Clear sensor buffers under their respective locks.
   {
@@ -485,7 +367,7 @@ void FgoNode::initialPoseCallback(
   updateMapToOdomCache();
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Graph reset to (%.2f, %.2f, yaw=%.2f)",
-    init_x_, init_y_, init_yaw_);
+    cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -520,16 +402,16 @@ void FgoNode::optimizationStep()
 
   // No new keyframes — republish cached map→odom to prevent Nav2 TF timeout.
   if (local_odom.empty()) {
-    if (has_map_to_odom_cache_ && publish_map_to_odom_) {
+    if (has_map_to_odom_cache_ && cfg_.publish_map_to_odom) {
       publishMapToOdom(now());
     }
     return;
   }
 
-  // ── Noise models ──────────────────────────────────────────────────────────
+  // ── Noise models ──────────────────────────────────────────────────
   auto odom_noise = makeDiagonalNoise(
-    noise_odom_x_, noise_odom_y_, noise_odom_z_,
-    noise_odom_roll_, noise_odom_pitch_, noise_odom_yaw_);
+    cfg_.noise_odom_x, cfg_.noise_odom_y, cfg_.noise_odom_z,
+    cfg_.noise_odom_roll, cfg_.noise_odom_pitch, cfg_.noise_odom_yaw);
 
   // ── Odometry BetweenFactors ────────────────────────────────────────────────
   geometry_msgs::msg::Pose prev_pose = last_consumed_odom_pose_;
@@ -564,13 +446,11 @@ void FgoNode::optimizationStep()
   // ── CombinedImuFactor: preintegrate IMU per keyframe interval ─────────────
   // V and B are inserted for every new key. If no IMU data covers an interval,
   // prior factors pin V and B to prevent unconstrained nodes in the graph.
-  if (enable_imu_ && imu_preint_params_) {
-    if (!local_imu.empty()) {
-      std::sort(local_imu.begin(), local_imu.end(),
-        [](const ImuSample & a, const ImuSample & b) {
-          return a.timestamp < b.timestamp;
-        });
-    }
+  if (cfg_.enable_imu && imu_preint_params_) {
+    std::sort(local_imu.begin(), local_imu.end(),
+      [](const ImuSample & a, const ImuSample & b) {
+        return a.timestamp < b.timestamp;
+      });
 
     for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
       const int from_key = batch_start_key + i;
@@ -621,11 +501,12 @@ void FgoNode::optimizationStep()
         // No IMU coverage for this interval — pin V and B to prevent unconstrained nodes.
         new_factors_.add(gtsam::PriorFactor<gtsam::Vector3>(
           V(to_key), optimized_velocity_,
-          gtsam::noiseModel::Isotropic::Sigma(3, 0.5)));
+          gtsam::noiseModel::Isotropic::Sigma(3, cfg_.fallback_vel_sigma)));
         new_factors_.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(
           B(to_key), optimized_bias_,
           gtsam::noiseModel::Diagonal::Sigmas(
-            (gtsam::Vector6() << 0.01, 0.01, 0.01, 0.001, 0.001, 0.001).finished())));
+            (gtsam::Vector6() << cfg_.fallback_bias_accel_sigma, cfg_.fallback_bias_accel_sigma, cfg_.fallback_bias_accel_sigma,
+                                 cfg_.fallback_bias_gyro_sigma,  cfg_.fallback_bias_gyro_sigma,  cfg_.fallback_bias_gyro_sigma).finished())));
       }
     }
   }
@@ -660,10 +541,10 @@ void FgoNode::optimizationStep()
 
       // Per-scan gate: skip only THIS scan if its keyframe interval had rotation
       const double local_dyaw = keyframe_dyaw[best_i];
-      if (local_dyaw > lidar_rotation_gate_rad_) {
+      if (local_dyaw > cfg_.lidar_rotation_gate_rad) {
         RCLCPP_DEBUG(get_logger(),
           "[FgoNode] Scan prior skipped: keyframe[%d] |dyaw|=%.4f rad > gate=%.4f rad",
-          best_i, local_dyaw, lidar_rotation_gate_rad_);
+          best_i, local_dyaw, cfg_.lidar_rotation_gate_rad);
         continue;
       }
 
@@ -701,7 +582,7 @@ void FgoNode::optimizationStep()
     optimized_pose_ = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
 
     // Retrieve velocity and bias if IMU is active
-    if (enable_imu_ && imu_preint_params_) {
+    if (cfg_.enable_imu && imu_preint_params_) {
       try {
         optimized_velocity_ =
           isam2_->calculateEstimate<gtsam::Vector3>(V(key_));
@@ -720,7 +601,7 @@ void FgoNode::optimizationStep()
   }
 
   // ── Publish map→odom TF ──────────────────────────────────────────────────
-  if (publish_map_to_odom_) {
+  if (cfg_.publish_map_to_odom) {
     updateMapToOdomCache();
     publishMapToOdom(now());
   }
@@ -732,8 +613,8 @@ void FgoNode::optimizationStep()
     // now() is called after optimization completes (potentially 10-50ms later),
     // which breaks ApproximateTimeSynchronizer in downstream nodes (benchmark, etc.).
     odom_msg.header.stamp    = last_consumed_odom_stamp_;
-    odom_msg.header.frame_id = map_frame_;
-    odom_msg.child_frame_id  = base_frame_;
+    odom_msg.header.frame_id = cfg_.map_frame;
+    odom_msg.child_frame_id  = cfg_.base_frame;
     odom_msg.pose.pose       = gtsamToMsg(optimized_pose_);
     pub_odometry_->publish(odom_msg);
   }
@@ -742,7 +623,7 @@ void FgoNode::optimizationStep()
   {
     geometry_msgs::msg::PoseStamped ps;
     ps.header.stamp    = now();
-    ps.header.frame_id = map_frame_;
+    ps.header.frame_id = cfg_.map_frame;
     ps.pose            = gtsamToMsg(optimized_pose_);
     path_msg_.poses.push_back(ps);
     path_msg_.header.stamp = now();
@@ -759,8 +640,8 @@ void FgoNode::publishOdomToBase(const rclcpp::Time & stamp,
 {
   geometry_msgs::msg::TransformStamped ts;
   ts.header.stamp    = stamp;
-  ts.header.frame_id = odom_frame_;
-  ts.child_frame_id  = base_frame_;
+  ts.header.frame_id = cfg_.odom_frame;
+  ts.child_frame_id  = cfg_.base_frame;
 
   ts.transform.translation.x = raw_pose.position.x;
   ts.transform.translation.y = raw_pose.position.y;
@@ -780,8 +661,8 @@ void FgoNode::updateMapToOdomCache()
   const gtsam::Point3 & t = map_T_odom.translation();
   const gtsam::Quaternion q = map_T_odom.rotation().toQuaternion();
 
-  cached_map_to_odom_tf_.header.frame_id = map_frame_;
-  cached_map_to_odom_tf_.child_frame_id  = odom_frame_;
+  cached_map_to_odom_tf_.header.frame_id = cfg_.map_frame;
+  cached_map_to_odom_tf_.child_frame_id  = cfg_.odom_frame;
   cached_map_to_odom_tf_.transform.translation.x = t.x();
   cached_map_to_odom_tf_.transform.translation.y = t.y();
   cached_map_to_odom_tf_.transform.translation.z = t.z();

@@ -70,6 +70,10 @@ fgo_node:
         # Numerical integration noise σ (trapezoidal discretisation error).
         integration_sigma: 0.0001
 
+        # Bias integration cross-coupling noise (6×6 diagonal, dimensionless scale).
+        # Keeps bias random-walk numerically stable inside preintegration.
+        bias_acc_omega_int: 1.0e-5
+
         # Gravity magnitude (m/s²). Used in ENU Z-up convention.
         gravity:           9.81
 
@@ -90,6 +94,20 @@ fgo_node:
       relinearize_threshold:  0.1
       relinearize_skip:       1
       optimization_rate_hz:   50.0
+
+    # ── Prior factors on X(0) ───────────────────────────────
+    prior:
+      pose_pos_sigma:   0.001    # tight prior on initial position  (1 mm)
+      pose_rot_sigma:   0.001    # tight prior on initial rotation  (~0.057 deg)
+      vel_sigma:        1.0      # generous — robot starts approx. at rest
+      bias_accel_sigma: 0.3      # accel bias uncertainty at startup
+      bias_gyro_sigma:  0.05     # gyro  bias uncertainty at startup
+
+    # ── Fallback noise when IMU is disabled ─────────────────
+    fallback:
+      vel_sigma:        0.5
+      bias_accel_sigma: 0.01
+      bias_gyro_sigma:  0.001
 
     # ── Keyframe Strategy ───────────────────────────────────
     keyframe:

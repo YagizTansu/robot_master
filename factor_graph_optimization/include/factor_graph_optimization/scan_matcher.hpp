@@ -31,6 +31,9 @@
 // Core utilities
 #include "factor_graph_optimization/core/geometry_2d.hpp"
 
+// Configuration struct
+#include "factor_graph_optimization/config/scan_matcher_config.hpp"
+
 namespace factor_graph_optimization
 {
 
@@ -41,8 +44,7 @@ public:
 
 private:
   // ── Parameter helpers ─────────────────────────────────────────────────────
-  void declareParameters();
-  void loadParameters();
+  // Parameters are loaded via ScanMatcherConfig::fromNode() — see config/scan_matcher_config.hpp.
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
@@ -92,33 +94,8 @@ private:
   geometry_msgs::msg::Pose current_fgo_pose_;
   bool has_fgo_pose_{false};
 
-  // ── Parameters ────────────────────────────────────────────────────────────
-  // Topics
-  std::string map_topic_;
-  std::string lidar_topic_;
-  std::string scan_match_pose_topic_;
-
-  // Frames
-  std::string lidar_frame_;
-
-  // Scan matcher
-  std::string scan_matcher_type_;           ///< "NDT" or "ICP"
-  int         max_iterations_;
-  double      max_correspondence_dist_;
-  double      transformation_epsilon_;
-  double      map_z_height_;
-  double      ndt_resolution_;              ///< NDT internal voxel resolution (m)
-  double      map_voxel_leaf_size_;         ///< VoxelGrid leaf size for map cloud (m)
-
-  // LiDAR noise (written into published covariance)
-  double noise_lidar_x_;
-  double noise_lidar_y_;
-  double noise_lidar_z_;
-  double noise_lidar_roll_;
-  double noise_lidar_pitch_;
-  double noise_lidar_yaw_;
-  double icp_fitness_score_threshold_;  ///< discard scan if fitness > this
-  double fitness_noise_scale_;          ///< sigma *= (1 + scale * fitness_score)
+  // ── Parameters ───────────────────────────────────────────────────────────
+  ScanMatcherConfig cfg_;
 };
 
 }  // namespace factor_graph_optimization

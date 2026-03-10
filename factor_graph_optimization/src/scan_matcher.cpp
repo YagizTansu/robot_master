@@ -27,8 +27,7 @@ namespace factor_graph_optimization
 ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("scan_matcher_node", options)
 {
-  declareParameters();
-  loadParameters();
+  cfg_ = ScanMatcherConfig::fromNode(*this);
 
   // ── TF2 buffer + listener (needed by LaserProjection) ─────────────────────
   tf_buffer_   = std::make_shared<tf2_ros::Buffer>(get_clock());
@@ -39,12 +38,12 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
   map_qos.transient_local().reliable();
 
   sub_map_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-    map_topic_, map_qos,
+    cfg_.map_topic, map_qos,
     std::bind(&ScanMatcherNode::mapCallback, this, std::placeholders::_1));
 
   // ── Scan subscription ─────────────────────────────────────────────────────
   sub_scan_ = create_subscription<sensor_msgs::msg::LaserScan>(
-    lidar_topic_, rclcpp::QoS(10),
+    cfg_.lidar_topic, rclcpp::QoS(10),
     std::bind(&ScanMatcherNode::scanCallback, this, std::placeholders::_1));
 
   // ── FGO pose subscription (for NDT initial guess) ─────────────────────────
@@ -54,72 +53,18 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
 
   // ── Publisher ─────────────────────────────────────────────────────────────
   pub_scan_pose_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    scan_match_pose_topic_, rclcpp::QoS(10));
+    cfg_.scan_match_pose_topic, rclcpp::QoS(10));
 
   RCLCPP_INFO(get_logger(),
     "[ScanMatcherNode] Started. type=%s lidar_frame=%s",
-    scan_matcher_type_.c_str(), lidar_frame_.c_str());
+    cfg_.scan_matcher_type.c_str(), cfg_.lidar_frame.c_str());
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Parameter helpers
 // ═════════════════════════════════════════════════════════════════════════════
 
-void ScanMatcherNode::declareParameters()
-{
-  declare_parameter("topics.lidar_topic",             "/scan");
-  declare_parameter("topics.scan_match_pose_topic",   "/scan_match_pose");
-  declare_parameter("topics.map_topic",               "/map");
-
-  declare_parameter("frames.lidar_frame", "base_footprint");
-
-  declare_parameter("scan_matcher.type",                    "NDT");
-  declare_parameter("scan_matcher.max_iterations",          50);
-  declare_parameter("scan_matcher.max_correspondence_dist", 1.0);
-  declare_parameter("scan_matcher.transformation_epsilon",  1.0e-6);
-  declare_parameter("scan_matcher.map_z_height",            0.0);
-  declare_parameter("scan_matcher.ndt_resolution",          1.0);
-
-  declare_parameter("noise.lidar.x",     0.1);
-  declare_parameter("noise.lidar.y",     0.1);
-  declare_parameter("noise.lidar.z",     999.0);
-  declare_parameter("noise.lidar.roll",  999.0);
-  declare_parameter("noise.lidar.pitch", 999.0);
-  declare_parameter("noise.lidar.yaw",   0.1);
-  declare_parameter("noise.lidar.icp_fitness_score_threshold", 0.5);
-  declare_parameter("noise.lidar.fitness_noise_scale",         5.0);
-  declare_parameter("noise.lidar.map_voxel_leaf_size",         0.1);
-}
-
-void ScanMatcherNode::loadParameters()
-{
-  lidar_topic_            = get_parameter("topics.lidar_topic").as_string();
-  scan_match_pose_topic_  = get_parameter("topics.scan_match_pose_topic").as_string();
-  map_topic_              = get_parameter("topics.map_topic").as_string();
-
-  lidar_frame_ = get_parameter("frames.lidar_frame").as_string();
-
-  scan_matcher_type_        = get_parameter("scan_matcher.type").as_string();
-  max_iterations_           = get_parameter("scan_matcher.max_iterations").as_int();
-  max_correspondence_dist_  = get_parameter("scan_matcher.max_correspondence_dist").as_double();
-  transformation_epsilon_   = get_parameter("scan_matcher.transformation_epsilon").as_double();
-  map_z_height_             = get_parameter("scan_matcher.map_z_height").as_double();
-  ndt_resolution_           = get_parameter("scan_matcher.ndt_resolution").as_double();
-
-  noise_lidar_x_     = get_parameter("noise.lidar.x").as_double();
-  noise_lidar_y_     = get_parameter("noise.lidar.y").as_double();
-  noise_lidar_z_     = get_parameter("noise.lidar.z").as_double();
-  noise_lidar_roll_  = get_parameter("noise.lidar.roll").as_double();
-  noise_lidar_pitch_ = get_parameter("noise.lidar.pitch").as_double();
-  noise_lidar_yaw_   = get_parameter("noise.lidar.yaw").as_double();
-
-  icp_fitness_score_threshold_ =
-    get_parameter("noise.lidar.icp_fitness_score_threshold").as_double();
-  fitness_noise_scale_ =
-    get_parameter("noise.lidar.fitness_noise_scale").as_double();
-  map_voxel_leaf_size_ =
-    get_parameter("noise.lidar.map_voxel_leaf_size").as_double();
-}
+// Parameter helpers — moved to ScanMatcherConfig::fromNode() in src/config/scan_matcher_config.cpp
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Map callback
@@ -137,9 +82,9 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
     pcl::VoxelGrid<pcl::PointXYZ> vg;
     vg.setInputCloud(map_cloud_);
     vg.setLeafSize(
-      static_cast<float>(map_voxel_leaf_size_),
-      static_cast<float>(map_voxel_leaf_size_),
-      static_cast<float>(map_voxel_leaf_size_));
+      static_cast<float>(cfg_.map_voxel_leaf_size),
+      static_cast<float>(cfg_.map_voxel_leaf_size),
+      static_cast<float>(cfg_.map_voxel_leaf_size));
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(
       new pcl::PointCloud<pcl::PointXYZ>);
     vg.filter(*filtered);
@@ -150,7 +95,7 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
 
   RCLCPP_INFO(get_logger(),
     "[ScanMatcherNode] Map cloud built: %zu points (after voxel filter, leaf=%.2fm).",
-    map_cloud_->size(), map_voxel_leaf_size_);
+    map_cloud_->size(), cfg_.map_voxel_leaf_size);
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr
@@ -174,7 +119,7 @@ ScanMatcherNode::occupancyGridToCloud(const nav_msgs::msg::OccupancyGrid & grid)
         pcl::PointXYZ pt;
         pt.x = ox + (static_cast<double>(col) + 0.5) * res;
         pt.y = oy + (static_cast<double>(row) + 0.5) * res;
-        pt.z = static_cast<float>(map_z_height_);
+        pt.z = static_cast<float>(cfg_.map_z_height);
         cloud->push_back(pt);
       }
     }
@@ -201,7 +146,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   sensor_msgs::msg::PointCloud2 pc2_msg;
   try {
     projector_.transformLaserScanToPointCloud(
-      lidar_frame_,   // target frame
+      cfg_.lidar_frame,   // target frame
       *msg,
       pc2_msg,
       *tf_buffer_);
@@ -227,22 +172,22 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   Eigen::Matrix4f result_transform = Eigen::Matrix4f::Identity();
   double fitness_score = 0.0;
 
-  if (scan_matcher_type_ == "NDT") {
+  if (cfg_.scan_matcher_type == "NDT") {
     fitness_score = runNdt(source_cloud, initial_guess, result_transform);
   } else {
     fitness_score = runIcp(source_cloud, initial_guess, result_transform);
   }
 
   // ── Fitness gate: discard poor matches before publishing ──────────────────
-  if (fitness_score > icp_fitness_score_threshold_) {
+  if (fitness_score > cfg_.icp_fitness_score_threshold) {
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
       "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
-      fitness_score, icp_fitness_score_threshold_);
+      fitness_score, cfg_.icp_fitness_score_threshold);
     return;
   }
 
   // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
-  const double scan_noise_scale = 1.0 + fitness_noise_scale_ * fitness_score;
+  const double scan_noise_scale = 1.0 + cfg_.fitness_noise_scale * fitness_score;
 
   // ── Enforce 2D constraints ────────────────────────────────────────────────
   result_transform = enforce2D(result_transform);
@@ -283,12 +228,12 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   // Order (row-major, Pose6DoF): [x, y, z, roll, pitch, yaw]
   // Diagonal indices: [0]=x·x, [7]=y·y, [14]=z·z, [21]=roll·roll, [28]=pitch·pitch, [35]=yaw·yaw
   out.pose.covariance.fill(0.0);
-  out.pose.covariance[0]  = std::pow(noise_lidar_x_     * scan_noise_scale, 2.0);
-  out.pose.covariance[7]  = std::pow(noise_lidar_y_     * scan_noise_scale, 2.0);
-  out.pose.covariance[14] = std::pow(noise_lidar_z_,                        2.0);
-  out.pose.covariance[21] = std::pow(noise_lidar_roll_,                     2.0);
-  out.pose.covariance[28] = std::pow(noise_lidar_pitch_,                    2.0);
-  out.pose.covariance[35] = std::pow(noise_lidar_yaw_   * scan_noise_scale, 2.0);
+  out.pose.covariance[0]  = std::pow(cfg_.noise_lidar_x     * scan_noise_scale, 2.0);
+  out.pose.covariance[7]  = std::pow(cfg_.noise_lidar_y     * scan_noise_scale, 2.0);
+  out.pose.covariance[14] = std::pow(cfg_.noise_lidar_z,                        2.0);
+  out.pose.covariance[21] = std::pow(cfg_.noise_lidar_roll,                     2.0);
+  out.pose.covariance[28] = std::pow(cfg_.noise_lidar_pitch,                    2.0);
+  out.pose.covariance[35] = std::pow(cfg_.noise_lidar_yaw   * scan_noise_scale, 2.0);
 
   pub_scan_pose_->publish(out);
 }
@@ -313,10 +258,10 @@ double ScanMatcherNode::runNdt(
   Eigen::Matrix4f & result_transform)
 {
   pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
-  ndt.setMaximumIterations(max_iterations_);
-  ndt.setMaxCorrespondenceDistance(max_correspondence_dist_);
-  ndt.setTransformationEpsilon(transformation_epsilon_);
-  ndt.setResolution(static_cast<float>(ndt_resolution_));
+  ndt.setMaximumIterations(cfg_.max_iterations);
+  ndt.setMaxCorrespondenceDistance(cfg_.max_correspondence_dist);
+  ndt.setTransformationEpsilon(cfg_.transformation_epsilon);
+  ndt.setResolution(static_cast<float>(cfg_.ndt_resolution));
 
   ndt.setInputTarget(map_cloud_);
   ndt.setInputSource(source);
@@ -344,9 +289,9 @@ double ScanMatcherNode::runIcp(
   Eigen::Matrix4f & result_transform)
 {
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-  icp.setMaximumIterations(max_iterations_);
-  icp.setMaxCorrespondenceDistance(max_correspondence_dist_);
-  icp.setTransformationEpsilon(transformation_epsilon_);
+  icp.setMaximumIterations(cfg_.max_iterations);
+  icp.setMaxCorrespondenceDistance(cfg_.max_correspondence_dist);
+  icp.setTransformationEpsilon(cfg_.transformation_epsilon);
 
   icp.setInputTarget(map_cloud_);
 
