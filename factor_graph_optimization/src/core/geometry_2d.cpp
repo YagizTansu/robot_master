@@ -11,6 +11,7 @@ namespace factor_graph_optimization
 double extractYaw(const geometry_msgs::msg::Quaternion & q)
 {
   tf2::Quaternion tq(q.x, q.y, q.z, q.w);
+  tq.normalize();  // guard against accumulated float drift in ROS messages
   double roll, pitch, yaw;
   tf2::Matrix3x3(tq).getRPY(roll, pitch, yaw);
   return yaw;
