@@ -21,11 +21,9 @@
 // LiDAR projection
 #include <laser_geometry/laser_geometry.hpp>
 
-// PCL
+// PCL (point cloud type only — no registration headers here)
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/registration/ndt.h>
-#include <pcl/registration/icp.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 // Core utilities
@@ -33,6 +31,10 @@
 
 // Configuration struct
 #include "factor_graph_optimization/config/scan_matcher_config.hpp"
+
+// Lidar module
+#include "factor_graph_optimization/lidar/map_builder.hpp"
+#include "factor_graph_optimization/lidar/scan_matcher_interface.hpp"
 
 namespace factor_graph_optimization
 {
@@ -43,33 +45,15 @@ public:
   explicit ScanMatcherNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
 private:
-  // ── Parameter helpers ─────────────────────────────────────────────────────
-  // Parameters are loaded via ScanMatcherConfig::fromNode() — see config/scan_matcher_config.hpp.
-
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void fgoPoseCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  /** Convert OccupancyGrid occupied cells → PCL point cloud at z=map_z_height. */
-  pcl::PointCloud<pcl::PointXYZ>::Ptr occupancyGridToCloud(
-    const nav_msgs::msg::OccupancyGrid & grid);
-
-  /** Run NDT matching.  Returns fitness score; result written to result_pose. */
-  double runNdt(const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
-                const Eigen::Matrix4f & initial_guess,
-                Eigen::Matrix4f & result_transform);
-
-  /** Run ICP matching (fallback). */
-  double runIcp(const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
-                const Eigen::Matrix4f & initial_guess,
-                Eigen::Matrix4f & result_transform);
-
   /** Build an Eigen initial guess from the current FGO pose. */
   Eigen::Matrix4f buildInitialGuess() const;
 
-  // enforce2D() is now a free function in factor_graph_optimization::core
+  // enforce2D() is a free function in factor_graph_optimization::core
   // (see core/geometry_2d.hpp).
 
   // ── Publishers / Subscribers ──────────────────────────────────────────────
@@ -86,7 +70,11 @@ private:
   // ── LiDAR projection ─────────────────────────────────────────────────────
   laser_geometry::LaserProjection projector_;
 
-  // ── Map ───────────────────────────────────────────────────────────────────
+  // ── Lidar module objects ──────────────────────────────────────────────────
+  std::unique_ptr<MapBuilder>    map_builder_;   ///< OccupancyGrid → PCL cloud
+  std::unique_ptr<IScanMatcher>  matcher_;       ///< NDT or ICP, selected from cfg_
+
+  // ── Map state ─────────────────────────────────────────────────────────────
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_cloud_;
   bool map_received_{false};
 

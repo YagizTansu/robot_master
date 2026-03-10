@@ -87,6 +87,9 @@ add_executable(scan_matcher_node
   src/scan_matcher.cpp
   src/core/geometry_2d.cpp
   src/config/scan_matcher_config.cpp
+  src/lidar/map_builder.cpp
+  src/lidar/ndt_matcher.cpp
+  src/lidar/icp_matcher.cpp
 )
 
 target_link_libraries(scan_matcher_node
