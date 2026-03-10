@@ -56,6 +56,9 @@ include_directories(
 add_executable(fgo_node
   src/fgo_main.cpp
   src/fgo_node.cpp
+  src/core/pose_conversion.cpp
+  src/core/noise_model.cpp
+  src/core/geometry_2d.cpp
 )
 
 target_link_libraries(fgo_node
@@ -81,6 +84,7 @@ ament_target_dependencies(fgo_node
 add_executable(scan_matcher_node
   src/scan_matcher_main.cpp
   src/scan_matcher.cpp
+  src/core/geometry_2d.cpp
 )
 
 target_link_libraries(scan_matcher_node

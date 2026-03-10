@@ -28,6 +28,9 @@
 #include <pcl/registration/icp.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+// Core utilities
+#include "factor_graph_optimization/core/geometry_2d.hpp"
+
 namespace factor_graph_optimization
 {
 
@@ -64,8 +67,8 @@ private:
   /** Build an Eigen initial guess from the current FGO pose. */
   Eigen::Matrix4f buildInitialGuess() const;
 
-  /** Enforce 2D: zero out z, roll, pitch in a 4×4 transform. */
-  static Eigen::Matrix4f enforce2D(const Eigen::Matrix4f & T);
+  // enforce2D() is now a free function in factor_graph_optimization::core
+  // (see core/geometry_2d.hpp).
 
   // ── Publishers / Subscribers ──────────────────────────────────────────────
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_map_;

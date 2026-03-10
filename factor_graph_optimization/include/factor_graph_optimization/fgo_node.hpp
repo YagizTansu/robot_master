@@ -32,6 +32,11 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/linear/NoiseModel.h>
+
+// Core utilities (ROS-free math helpers)
+#include "factor_graph_optimization/core/pose_conversion.hpp"
+#include "factor_graph_optimization/core/noise_model.hpp"
+#include "factor_graph_optimization/core/geometry_2d.hpp"
 // GTSAM — navigation / IMU preintegration
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuBias.h>
@@ -96,12 +101,8 @@ private:
   /// Publish the cached map→odom transform with an updated stamp.
   void publishMapToOdom(const rclcpp::Time & stamp);
 
-  // ── Conversion helpers ────────────────────────────────────────────────────
-  static gtsam::Pose3 msgToGtsam(const geometry_msgs::msg::Pose & pose);
-  static geometry_msgs::msg::Pose gtsamToMsg(const gtsam::Pose3 & pose);
-  static gtsam::noiseModel::Diagonal::shared_ptr makeDiagonalNoise(
-    double x, double y, double z,
-    double roll, double pitch, double yaw);
+  // Conversion helpers are now free functions in the factor_graph_optimization
+  // namespace — see core/pose_conversion.hpp and core/noise_model.hpp.
 
   // ── iSAM2 state ───────────────────────────────────────────────────────────
   std::unique_ptr<gtsam::ISAM2>               isam2_;

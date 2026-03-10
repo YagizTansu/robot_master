@@ -362,14 +362,8 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   const double dz = raw_pose.position.z - keyframe_snapshot.position.z;
   const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-  auto get_yaw = [](const geometry_msgs::msg::Quaternion & q) -> double {
-    tf2::Quaternion tq(q.x, q.y, q.z, q.w);
-    double r, p, y;
-    tf2::Matrix3x3(tq).getRPY(r, p, y);
-    return y;
-  };
-  const double yaw_curr = get_yaw(raw_pose.orientation);
-  const double yaw_last = get_yaw(keyframe_snapshot.orientation);
+  const double yaw_curr = extractYaw(raw_pose.orientation);
+  const double yaw_last = extractYaw(keyframe_snapshot.orientation);
   double dyaw = std::fmod(std::fabs(yaw_curr - yaw_last), 2.0 * M_PI);
   if (dyaw > M_PI) dyaw = 2.0 * M_PI - dyaw;
 
@@ -640,23 +634,15 @@ void FgoNode::optimizationStep()
   // Each scan is gated independently against the instantaneous |dyaw| of its
   // nearest keyframe interval. NDT is unreliable during in-place rotation.
   if (!local_scan.empty()) {
-    auto get_yaw_pose = [](const geometry_msgs::msg::Pose & p) -> double {
-      tf2::Quaternion tq(p.orientation.x, p.orientation.y,
-                         p.orientation.z, p.orientation.w);
-      double r, pi, y;
-      tf2::Matrix3x3(tq).getRPY(r, pi, y);
-      return y;
-    };
-
     // Pre-compute |dyaw| per keyframe interval; index 0 uses pre-batch pose.
     std::vector<double> keyframe_dyaw(local_odom.size());
     {
-      double yaw_prev = get_yaw_pose(pre_batch_odom_pose);
+      double yaw_prev = extractYaw(pre_batch_odom_pose.orientation);
       for (std::size_t i = 0; i < local_odom.size(); ++i) {
-        double dy = std::fmod(std::fabs(get_yaw_pose(local_odom[i].pose) - yaw_prev), 2.0 * M_PI);
+        double dy = std::fmod(std::fabs(extractYaw(local_odom[i].pose.orientation) - yaw_prev), 2.0 * M_PI);
         if (dy > M_PI) dy = 2.0 * M_PI - dy;
         keyframe_dyaw[i] = dy;
-        yaw_prev = get_yaw_pose(local_odom[i].pose);
+        yaw_prev = extractYaw(local_odom[i].pose.orientation);
       }
     }
 
@@ -811,47 +797,6 @@ void FgoNode::publishMapToOdom(const rclcpp::Time & stamp)
   if (!has_map_to_odom_cache_) return;
   cached_map_to_odom_tf_.header.stamp = stamp;
   tf_broadcaster_->sendTransform(cached_map_to_odom_tf_);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Conversion helpers
-// ═════════════════════════════════════════════════════════════════════════════
-
-gtsam::Pose3 FgoNode::msgToGtsam(const geometry_msgs::msg::Pose & pose)
-{
-  tf2::Quaternion tq(
-    pose.orientation.x, pose.orientation.y,
-    pose.orientation.z, pose.orientation.w);
-  double roll, pitch, yaw;
-  tf2::Matrix3x3(tq).getRPY(roll, pitch, yaw);
-
-  return gtsam::Pose3(
-    gtsam::Rot3::RzRyRx(roll, pitch, yaw),
-    gtsam::Point3(pose.position.x, pose.position.y, pose.position.z));
-}
-
-geometry_msgs::msg::Pose FgoNode::gtsamToMsg(const gtsam::Pose3 & pose)
-{
-  geometry_msgs::msg::Pose msg;
-  msg.position.x = pose.translation().x();
-  msg.position.y = pose.translation().y();
-  msg.position.z = pose.translation().z();
-
-  const gtsam::Quaternion q = pose.rotation().toQuaternion();
-  msg.orientation.x = q.x();
-  msg.orientation.y = q.y();
-  msg.orientation.z = q.z();
-  msg.orientation.w = q.w();
-  return msg;
-}
-
-gtsam::noiseModel::Diagonal::shared_ptr FgoNode::makeDiagonalNoise(
-  double x, double y, double z,
-  double roll, double pitch, double yaw)
-{
-  // GTSAM Pose3 sigma order: [roll, pitch, yaw, x, y, z]
-  return gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << roll, pitch, yaw, x, y, z).finished());
 }
 
 }  // namespace factor_graph_optimization
