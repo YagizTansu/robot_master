@@ -102,6 +102,8 @@ fgo_node:
     node:
       optimization_rate_hz:   50.0
       max_pending_scans:      10    # max scan-match poses buffered; oldest dropped when exceeded
+      max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
+      max_pending_odom:       500   # generous keyframe buffer cap
 
     # ── Prior factors on X(0) ───────────────────────────────
     prior:

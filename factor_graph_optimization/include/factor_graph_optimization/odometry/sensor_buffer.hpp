@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <deque>
 #include <mutex>
 #include <vector>
 
@@ -21,7 +22,7 @@ namespace factor_graph_optimization
 struct ImuSample
 {
   rclcpp::Time   timestamp;
-  gtsam::Vector3 accel{0.0, 0.0, 9.81};  ///< linear acceleration (m/s²)
+  gtsam::Vector3 accel{0.0, 0.0, 0.0};   ///< linear acceleration (m/s²) — gravity removed by MakeSharedU() in ImuPreintegrator
   gtsam::Vector3 gyro {0.0, 0.0, 0.0};   ///< angular velocity    (rad/s)
 };
 
@@ -42,13 +43,17 @@ struct OdomSample
  * The intended usage pattern is:
  * @code
  *   // Producer (callback thread):
- *   buf_.push(sample);
+ *   buf_.push(sample, max_size);  // max_size 0 = unbounded
  *
  *   // Consumer (timer / optimizer thread):
  *   std::vector<T> local;
- *   buf_.drain(local);      // O(1) swap — no allocations
+ *   buf_.drain(local);   // moves all elements into local in O(N)
  *   for (auto & s : local) { ... }
  * @endcode
+ *
+ * The internal store is `std::deque<T>` so that the FIFO cap path
+ * (drop-oldest-on-overflow) runs in O(1) instead of the O(N) that
+ * `std::vector::erase(begin())` would incur.
  *
  * @tparam T  Sample type.  Must be copyable.
  */
@@ -61,19 +66,20 @@ public:
    *
    * @param item      Sample to append.
    * @param max_size  If > 0, the oldest entry is dropped when the buffer
-   *                  already has @p max_size elements (FIFO cap).
+   *                  already has @p max_size elements (O(1) deque pop_front).
+   *                  Pass 0 to disable the cap (unbounded — use with care).
    */
   void push(const T & item, std::size_t max_size = 0)
   {
     std::lock_guard<std::mutex> lk(mutex_);
     if (max_size > 0 && buffer_.size() >= max_size) {
-      buffer_.erase(buffer_.begin());
+      buffer_.pop_front();  // O(1) on deque
     }
     buffer_.push_back(item);
   }
 
   /**
-   * @brief Atomically swap the internal buffer into @p out.
+   * @brief Move all buffered samples into @p out.
    *
    * After the call the internal buffer is empty.
    * @p out is cleared first, so its previous contents are discarded.
@@ -84,7 +90,8 @@ public:
   {
     std::lock_guard<std::mutex> lk(mutex_);
     out.clear();
-    out.swap(buffer_);
+    out.assign(buffer_.begin(), buffer_.end());
+    buffer_.clear();
   }
 
   /// Discard all buffered samples.
@@ -102,7 +109,7 @@ public:
   }
 
 private:
-  std::vector<T>     buffer_;
+  std::deque<T>      buffer_;  ///< deque: O(1) push_back AND pop_front
   mutable std::mutex mutex_;
 };
 

@@ -52,10 +52,15 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
 
   node.declare_parameter("isam2.relinearize_threshold", cfg.isam2_relinearize_threshold);
   node.declare_parameter("isam2.relinearize_skip",      cfg.isam2_relinearize_skip);
-  node.declare_parameter("node.optimization_rate_hz",  cfg.optimization_rate_hz);
+  node.declare_parameter("isam2.factorization",         cfg.isam2_factorization);
+  node.declare_parameter("node.optimization_rate_hz",   cfg.optimization_rate_hz);
+  node.declare_parameter("node.max_pending_scans",      cfg.max_pending_scans);
+  node.declare_parameter("node.max_pending_imu",        cfg.max_pending_imu);
+  node.declare_parameter("node.max_pending_odom",       cfg.max_pending_odom);
 
   node.declare_parameter("keyframe.translation_threshold", cfg.keyframe_translation_threshold);
   node.declare_parameter("keyframe.rotation_threshold",    cfg.keyframe_rotation_threshold);
+  node.declare_parameter("keyframe.max_time_sec",          cfg.keyframe_max_time_sec);
 
   node.declare_parameter("prior.pose_pos_sigma",   cfg.prior_pose_pos_sigma);
   node.declare_parameter("prior.pose_rot_sigma",   cfg.prior_pose_rot_sigma);
@@ -112,10 +117,15 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
 
   cfg.isam2_relinearize_threshold = node.get_parameter("isam2.relinearize_threshold").as_double();
   cfg.isam2_relinearize_skip      = node.get_parameter("isam2.relinearize_skip").as_int();
+  cfg.isam2_factorization         = node.get_parameter("isam2.factorization").as_string();
   cfg.optimization_rate_hz        = node.get_parameter("node.optimization_rate_hz").as_double();
+  cfg.max_pending_scans           = node.get_parameter("node.max_pending_scans").as_int();
+  cfg.max_pending_imu             = node.get_parameter("node.max_pending_imu").as_int();
+  cfg.max_pending_odom            = node.get_parameter("node.max_pending_odom").as_int();
 
   cfg.keyframe_translation_threshold = node.get_parameter("keyframe.translation_threshold").as_double();
   cfg.keyframe_rotation_threshold    = node.get_parameter("keyframe.rotation_threshold").as_double();
+  cfg.keyframe_max_time_sec          = node.get_parameter("keyframe.max_time_sec").as_double();
 
   cfg.prior_pose_pos_sigma   = node.get_parameter("prior.pose_pos_sigma").as_double();
   cfg.prior_pose_rot_sigma   = node.get_parameter("prior.pose_rot_sigma").as_double();

@@ -64,6 +64,7 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
   keyframe_sel_ = std::make_unique<KeyframeSelector>(
     cfg_.keyframe_translation_threshold,
     cfg_.keyframe_rotation_threshold,
+    cfg_.keyframe_max_time_sec,
     make_init_pose());
 
   // ── Graph manager (owns iSAM2, factor graph, IMU preintegrator) ───────────
@@ -127,11 +128,11 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     publishOdomToBase(msg->header.stamp, raw_pose);
   }
 
-  if (keyframe_sel_->checkAndUpdate(raw_pose)) {
+  if (keyframe_sel_->checkAndUpdate(raw_pose, rclcpp::Time(msg->header.stamp))) {
     OdomSample s;
     s.pose      = raw_pose;
     s.timestamp = rclcpp::Time(msg->header.stamp);
-    odom_buf_.push(s);
+    odom_buf_.push(s, static_cast<std::size_t>(cfg_.max_pending_odom));
   }
 }
 
@@ -161,7 +162,7 @@ void FgoNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
     sample.gyro  = R_imu_to_base_.rotate(sample.gyro);
   }
 
-  imu_buf_.push(sample);
+  imu_buf_.push(sample, static_cast<std::size_t>(cfg_.max_pending_imu));
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

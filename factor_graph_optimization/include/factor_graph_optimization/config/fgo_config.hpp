@@ -91,7 +91,9 @@ struct FgoConfig
   double fallback_bias_gyro_sigma{0.001};  ///< rad/s
 
   // ── Scan buffer ───────────────────────────────────────────────
-  int max_pending_scans{10};  ///< max scan-match poses buffered before oldest is dropped
+  int max_pending_scans{10};   ///< max scan-match poses buffered before oldest is dropped
+  int max_pending_imu{2000};   ///< IMU buffer cap (100 Hz × 20 s); prevents unbounded growth if optimizer stalls
+  int max_pending_odom{500};   ///< odom buffer cap; generous but bounded
   // ── Factory ──────────────────────────────────────────────────────────────
   /// Declare and load all parameters from a ROS 2 node.
   /// Replaces the former declareParameters() + loadParameters() pair.
