@@ -1,9 +1,11 @@
 #include "factor_graph_optimization/scan_matcher.hpp"
 
 #include <cmath>
+#include <thread>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include <std_msgs/msg/float64.hpp>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -71,7 +73,10 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
   // ── Publisher ─────────────────────────────────────────────────────────────
   pub_scan_pose_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
     cfg_.scan_match_pose_topic, rclcpp::QoS(10));
-
+  // Publish the raw fitness score after every match attempt (accepted and rejected).
+  // Subscribe to /scan_match/fitness_score with std_msgs/Float64 for monitoring.
+  pub_fitness_score_ = create_publisher<std_msgs::msg::Float64>(
+    "/scan_match/fitness_score", rclcpp::QoS(10));
   RCLCPP_INFO(get_logger(),
     "[ScanMatcherNode] Started. type=%s lidar_frame=%s",
     cfg_.scan_matcher_type.c_str(), cfg_.lidar_frame.c_str());
@@ -228,6 +233,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
 
 void ScanMatcherNode::fgoPoseCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
+  std::lock_guard<std::mutex> lk(fgo_pose_mutex_);
   current_fgo_pose_ = msg->pose.pose;
   has_fgo_pose_     = true;
 }
@@ -238,6 +244,7 @@ void ScanMatcherNode::fgoPoseCallback(const nav_msgs::msg::Odometry::SharedPtr m
 
 Eigen::Matrix4f ScanMatcherNode::buildInitialGuess() const
 {
+  std::lock_guard<std::mutex> lk(fgo_pose_mutex_);
   if (!has_fgo_pose_) {
     return Eigen::Matrix4f::Identity();
   }

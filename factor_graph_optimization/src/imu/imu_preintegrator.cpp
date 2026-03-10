@@ -60,7 +60,8 @@ void ImuPreintegrator::addFactors(
   int batch_start_key,
   const rclcpp::Time & prev_consumed_stamp,
   const gtsam::imuBias::ConstantBias & current_bias,
-  const gtsam::Vector3 & current_velocity) const
+  const gtsam::Vector3 & current_velocity,
+  const rclcpp::Logger & logger) const
 {
   // Sort once; skip if already ordered (ROS subscriber usually delivers in order).
   auto imu_cmp = [](const ImuSample & a, const ImuSample & b) {
@@ -103,6 +104,7 @@ void ImuPreintegrator::addFactors(
       // bias correction inside CombinedImuFactor.
       gtsam::PreintegratedCombinedMeasurements preint(params_, b_seed);
       int n_integrated = 0;
+      double total_integrated_dt = 0.0;
 
       // Advance past pairs whose right endpoint is already <= t_from; they
       // belong to an earlier keyframe interval and will never overlap this one.
@@ -137,6 +139,21 @@ void ImuPreintegrator::addFactors(
 
         preint.integrateMeasurement(accel, gyro, dt);
         ++n_integrated;
+        total_integrated_dt += dt;
+      }
+
+      // Warn when IMU samples do not fully span the odom interval.
+      // Partial coverage (< 80%) means the CombinedImuFactor is anchored to a
+      // shorter integration window than the odom keyframe delta.
+      if (n_integrated > 0) {
+        const double expected_dt = (t_to - t_from).seconds();
+        if (expected_dt > 1e-6 && (total_integrated_dt / expected_dt) < 0.8) {
+          RCLCPP_WARN(logger,
+            "[ImuPreintegrator] Partial IMU coverage %.0f%% "
+            "(%.3fs of %.3fs expected) for interval [%d->%d].",
+            100.0 * (total_integrated_dt / expected_dt),
+            total_integrated_dt, expected_dt, from_key, to_key);
+        }
       }
 
       if (n_integrated > 0) {

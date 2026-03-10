@@ -3,6 +3,8 @@
 #include <memory>
 #include <vector>
 
+#include <rclcpp/logger.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/time.hpp>
 
 #include <boost/shared_ptr.hpp>
@@ -81,7 +83,8 @@ public:
     int batch_start_key,
     const rclcpp::Time & prev_consumed_stamp,
     const gtsam::imuBias::ConstantBias & current_bias,
-    const gtsam::Vector3 & current_velocity) const;
+    const gtsam::Vector3 & current_velocity,
+    const rclcpp::Logger & logger) const;
 
   /// Returns the underlying `PreintegrationCombinedParams` (read-only after construction).
   const Params & params() const { return *params_; }

@@ -267,7 +267,13 @@ void FgoNode::optimizationStep()
   // ── Publish map→odom TF ──────────────────────────────────────────────────
   if (cfg_.publish_map_to_odom) {
     updateMapToOdomCache();
-    publishMapToOdom(now());
+    // Stamp the TF with the sensor epoch of the last consumed odom sample rather
+    // than now(). Using now() made the transform appear current when the iSAM2
+    // result actually corresponds to a past sensor epoch, which could cause TF
+    // extrapolation errors in nodes that combine this transform with precise
+    // sensor timestamps. The re-publish path (local_odom.empty()) keeps now()
+    // intentionally to prevent Nav2 TF staleness timeouts.
+    publishMapToOdom(graph_mgr_->lastConsumedOdomStamp());
   }
 
   // ── Publish /fgo/odometry ─────────────────────────────────────────────────
@@ -286,11 +292,23 @@ void FgoNode::optimizationStep()
   // ── Publish /fgo/path ─────────────────────────────────────────────────────
   {
     geometry_msgs::msg::PoseStamped ps;
-    ps.header.stamp    = now();
+    ps.header.stamp    = graph_mgr_->lastConsumedOdomStamp();
     ps.header.frame_id = cfg_.map_frame;
     ps.pose            = gtsamToMsg(graph_mgr_->optimizedPose());
     path_msg_.poses.push_back(ps);
-    path_msg_.header.stamp = now();
+
+    // Cap path history to prevent unbounded message growth on long runs.
+    // At default 50 Hz optimization rate, 10 000 poses ≈ 200 s (3.3 min) of history.
+    if (cfg_.max_path_length > 0 &&
+        static_cast<int>(path_msg_.poses.size()) > cfg_.max_path_length)
+    {
+      path_msg_.poses.erase(
+        path_msg_.poses.begin(),
+        path_msg_.poses.begin() +
+          (static_cast<int>(path_msg_.poses.size()) - cfg_.max_path_length));
+    }
+
+    path_msg_.header.stamp = graph_mgr_->lastConsumedOdomStamp();
     pub_path_->publish(path_msg_);
   }
 }

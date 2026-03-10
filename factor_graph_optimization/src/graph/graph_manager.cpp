@@ -175,7 +175,8 @@ bool GraphManager::step(
       new_factors_, new_values_,
       std::move(local_imu), local_odom,
       batch_start_key, prev_consumed_stamp,
-      optimized_bias_, optimized_velocity_);
+      optimized_bias_, optimized_velocity_,
+      logger);
   }
 
   // ── Scan-match PriorFactors ───────────────────────────────────────────────

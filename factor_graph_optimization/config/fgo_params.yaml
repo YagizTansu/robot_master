@@ -105,6 +105,7 @@ fgo_node:
       max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
       max_pending_odom:       500   # generous keyframe buffer cap
       graph_max_size:         2000  # keep at most N key nodes in iSAM2; oldest X/V/B cluster is marginalized when exceeded (0 = unlimited)
+      max_path_length:        10000 # cap on /fgo/path pose history; oldest poses dropped when exceeded (0 = unlimited)
 
     # ── Prior factors on X(0) ───────────────────────────────
     prior:

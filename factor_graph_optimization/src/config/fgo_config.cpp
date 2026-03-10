@@ -58,6 +58,7 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("node.max_pending_imu",        cfg.max_pending_imu);
   node.declare_parameter("node.max_pending_odom",       cfg.max_pending_odom);
   node.declare_parameter("node.graph_max_size",         cfg.graph_max_size);
+  node.declare_parameter("node.max_path_length",        cfg.max_path_length);
 
   node.declare_parameter("keyframe.translation_threshold", cfg.keyframe_translation_threshold);
   node.declare_parameter("keyframe.rotation_threshold",    cfg.keyframe_rotation_threshold);
@@ -124,6 +125,7 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.max_pending_imu             = node.get_parameter("node.max_pending_imu").as_int();
   cfg.max_pending_odom            = node.get_parameter("node.max_pending_odom").as_int();
   cfg.graph_max_size              = node.get_parameter("node.graph_max_size").as_int();
+  cfg.max_path_length             = node.get_parameter("node.max_path_length").as_int();
 
   cfg.keyframe_translation_threshold = node.get_parameter("keyframe.translation_threshold").as_double();
   cfg.keyframe_rotation_threshold    = node.get_parameter("keyframe.rotation_threshold").as_double();

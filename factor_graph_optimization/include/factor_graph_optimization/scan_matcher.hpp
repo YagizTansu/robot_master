@@ -1,8 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -10,6 +12,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -63,6 +66,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr       sub_fgo_pose_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_scan_pose_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr                         pub_fitness_score_;
 
   // ── TF2 (needed by LaserProjection) ──────────────────────────────────────
   std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
@@ -81,8 +85,16 @@ private:
   mutable std::mutex map_mutex_;  ///< guards map_cloud_ and map_received_
 
   // ── Current FGO pose (for initial guess) ─────────────────────────────────
+  // THREADING: written by fgoPoseCallback, read by scanCallback + buildInitialGuess.
+  // Protected by fgo_pose_mutex_ so a future switch to MultiThreadedExecutor is safe.
   geometry_msgs::msg::Pose current_fgo_pose_;
   bool has_fgo_pose_{false};
+  mutable std::mutex fgo_pose_mutex_;  ///< guards current_fgo_pose_ and has_fgo_pose_
+
+  // ── Async scan matching ───────────────────────────────────────────────────
+  // Set to true while a worker thread is running match(); prevents the executor
+  // thread from queuing a second match before the first one finishes.
+  std::atomic<bool> matching_in_progress_{false};
 
   // ── Parameters ───────────────────────────────────────────────────────────
   ScanMatcherConfig cfg_;
