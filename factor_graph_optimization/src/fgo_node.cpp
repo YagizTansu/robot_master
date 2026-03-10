@@ -742,7 +742,10 @@ void FgoNode::optimizationStep()
   // ── Publish /fgo/odometry ─────────────────────────────────────────────────
   {
     nav_msgs::msg::Odometry odom_msg;
-    odom_msg.header.stamp    = now();
+    // Use the sensor timestamp of the last consumed odom sample, NOT now().
+    // now() is called after optimization completes (potentially 10-50ms later),
+    // which breaks ApproximateTimeSynchronizer in downstream nodes (benchmark, etc.).
+    odom_msg.header.stamp    = last_consumed_odom_stamp_;
     odom_msg.header.frame_id = map_frame_;
     odom_msg.child_frame_id  = base_frame_;
     odom_msg.pose.pose       = gtsamToMsg(optimized_pose_);
