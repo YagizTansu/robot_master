@@ -30,10 +30,12 @@ def generate_launch_description():
         executable="fgo_node",
         name="fgo_node",
         output="screen",
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
-    # ── scan_matcher_node ──────────────────────────────────────────────────
+    # ── scan_matcher_node ───────────────────────────────────────────────────────────
     # Subscribes: /map (transient_local), /scan
     # Publishes:  /scan_match_pose (PoseWithCovarianceStamped)
     scan_matcher_node = Node(
@@ -41,6 +43,8 @@ def generate_launch_description():
         executable="scan_matcher_node",
         name="scan_matcher_node",
         output="screen",
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
