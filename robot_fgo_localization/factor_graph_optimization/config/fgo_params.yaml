@@ -162,9 +162,12 @@ fgo_node:
       utm_zone: 0
       utm_hemisphere: "N"   # "N" or "S"; only used when utm_zone != 0
 
-      # Number of consecutive outlier rejections before the outlier baseline
-      # is reset to the current fix position.  Prevents permanent GPS lockout
-      # after graph re-initialisation or extended GPS outage.
+      # Number of consecutive OUTLIER-PATH rejections before the outlier baseline
+      # is reset to the current fix position.  Note: consecutive_rejects_ is
+      # incremented by all rejection types (fix-type, HDOP, NaN, outlier), but
+      # only a rejection in the outlier-distance check can trigger this reset,
+      # because earlier gates return before reaching the outlier block.
+      # Prevents permanent GPS lockout after graph re-initialisation or extended GPS outage.
       outlier_strike_limit: 10
 
       # GPS antenna offset from base_link in the body frame (metres).

@@ -120,16 +120,6 @@ public:
   /// Pass @p out directly to GraphManager::step() as @p local_gps.
   void drain(std::vector<GpsSample> & out);
 
-  // ── Query helpers (called from GraphManager::addGpsBatch) ─────────────────
-
-  /// Build a HDOP-scaled Diagonal noise model for a GPSFactor.
-  ///
-  /// sigma_x = max(hdop, 1.0) * cfg_.noise_gps_sigma_x
-  /// sigma_y = max(hdop, 1.0) * cfg_.noise_gps_sigma_y
-  /// sigma_z = 999.0   (unconstrained Z — 2D robot convention)
-  ///
-  /// @param hdop  Raw HDOP from GpsSample (already clamped to ≥ 1.0 in handler).
-  gtsam::SharedNoiseModel buildNoiseModel(double hdop) const;
 
   // ── State queries ──────────────────────────────────────────────────────────
 
@@ -170,6 +160,7 @@ private:
   // ── Configuration ────────────────────────────────────────────────────────
   const FgoConfig cfg_;
   rclcpp::Logger  logger_;
+  rclcpp::Clock::SharedPtr clock_;  ///< shared clock for RCLCPP_*_THROTTLE macros
 
   // ── Subscription ─────────────────────────────────────────────────────────
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr sub_gps_;

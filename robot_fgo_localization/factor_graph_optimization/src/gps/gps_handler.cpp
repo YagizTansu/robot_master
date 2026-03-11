@@ -18,7 +18,7 @@ namespace factor_graph_optimization
 GpsHandler::GpsHandler(const FgoConfig & cfg,
                        rclcpp::Node & node,
                        const rclcpp::Logger & logger)
-: cfg_(cfg), logger_(logger)
+: cfg_(cfg), logger_(logger), clock_(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME))
 {
   // Validate GPS noise sigmas at construction time — a zero sigma would produce
   // a singular information matrix and crash iSAM2's Cholesky solver at runtime.
@@ -77,7 +77,7 @@ void GpsHandler::onNavSatFix(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
   if (fix_type < cfg_.gps_min_fix_type) {
     std::lock_guard<std::mutex> lk(utm_state_mutex_);
     consecutive_rejects_++;
-    RCLCPP_WARN_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000 /*ms*/,
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000 /*ms*/,
       "[GpsHandler] Fix rejected — fix_type=%d < min=%d  "
       "(consecutive_rejects=%d)",
       fix_type, cfg_.gps_min_fix_type, consecutive_rejects_);
@@ -106,7 +106,7 @@ void GpsHandler::onNavSatFix(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
   if (cfg_.gps_hdop_reject_threshold > 0.0 && hdop > cfg_.gps_hdop_reject_threshold) {
     std::lock_guard<std::mutex> lk(utm_state_mutex_);
     consecutive_rejects_++;
-    RCLCPP_WARN_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000 /*ms*/,
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000 /*ms*/,
       "[GpsHandler] Fix rejected — HDOP=%.2f > threshold=%.2f  "
       "(consecutive_rejects=%d)",
       hdop, cfg_.gps_hdop_reject_threshold, consecutive_rejects_);
@@ -117,7 +117,7 @@ void GpsHandler::onNavSatFix(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
   if (!std::isfinite(msg->latitude) || !std::isfinite(msg->longitude)) {
     std::lock_guard<std::mutex> lk(utm_state_mutex_);
     consecutive_rejects_++;
-    RCLCPP_ERROR_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 10000 /*ms*/,
+    RCLCPP_ERROR_THROTTLE(logger_, *clock_, 10000 /*ms*/,
       "[GpsHandler] Fix rejected — non-finite lat=%.8f lon=%.8f  "
       "(consecutive_rejects=%d)",
       msg->latitude, msg->longitude, consecutive_rejects_);
@@ -147,6 +147,11 @@ void GpsHandler::onNavSatFix(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
     // handler stays free of graph-state dependencies.
 
     // ── STEP 6: Outlier rejection ─────────────────────────────────────────
+    // NOTE: consecutive_rejects_ is also incremented by earlier gates (fix-type,
+    // HDOP, NaN), but the adaptive baseline reset below only fires when an outlier-path
+    // rejection pushes the count over the threshold — earlier paths return before
+    // reaching this block. The YAML comment for gps_outlier_strike_limit documents
+    // this distinction.
     if (has_accepted_once_ && cfg_.gps_outlier_reject_dist_m > 0.0) {
       const double dx   = local_x - last_accepted_x_;
       const double dy   = local_y - last_accepted_y_;
@@ -217,24 +222,6 @@ void GpsHandler::onNavSatFix(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
 void GpsHandler::drain(std::vector<GpsSample> & out)
 {
   gps_buf_.drain(out);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Noise model construction
-// ─────────────────────────────────────────────────────────────────────────────
-
-gtsam::SharedNoiseModel GpsHandler::buildNoiseModel(double hdop) const
-{
-  // Floor HDOP at 1.0 — samples in the buffer already have hdop ≥ 1.0,
-  // but guard against callers passing raw values.
-  const double effective_hdop = std::max(hdop, 1.0);
-  const double sx = cfg_.noise_gps_sigma_x * effective_hdop;
-  const double sy = cfg_.noise_gps_sigma_y * effective_hdop;
-  constexpr double sz = 999.0;  // unconstrained Z — 2D robot convention
-
-  // GPSFactor takes a 3-vector noise model in [x, y, z] order.
-  // This is NOT the 6-vector Pose3 tangent-space model used by makeDiagonalNoise().
-  return gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(sx, sy, sz));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

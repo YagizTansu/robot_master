@@ -147,18 +147,7 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GPS callback
-// ═════════════════════════════════════════════════════════════════════════════
 
-void FgoNode::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
-{
-  // The full rejection pipeline (fix-type gate, HDOP gate, UTM projection,
-  // outlier rejection) runs inside GpsHandler::onNavSatFix().
-  // FgoNode is only responsible for routing the message.
-  gps_handler_->onNavSatFix(msg);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
 // IMU callback
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -279,6 +268,20 @@ void FgoNode::optimizationStep()
   std::vector<GpsSample> local_gps;
   gps_handler_->drain(local_gps);
 
+  // Warn if GPS is enabled but no fix has arrived for a long time.
+  // Unconditional: fires regardless of whether odom keyframes are flowing.
+  if (cfg_.enable_gps) {
+    constexpr double kGpsTimeoutSec = 30.0;
+    const double gps_gap =
+      (now() - gps_handler_->lastAcceptedStamp()).seconds();
+    if (gps_gap > kGpsTimeoutSec) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 30000 /*ms*/,
+        "[FgoNode] GPS enabled but no fix accepted in %.0f s. "
+        "Check topic: %s",
+        gps_gap, cfg_.gps_topic.c_str());
+    }
+  }
+
   // All graph operations are serialised behind graph_mutex_.
   std::lock_guard<std::mutex> graph_lock(graph_mutex_);
 
@@ -286,19 +289,6 @@ void FgoNode::optimizationStep()
   if (local_odom.empty()) {
     if (has_map_to_odom_cache_ && cfg_.publish_map_to_odom) {
       publishMapToOdom(now());
-    }
-
-    // Warn if GPS is enabled but no fix has arrived for a long time.
-    if (cfg_.enable_gps) {
-      constexpr double kGpsTimeoutSec = 30.0;
-      const double gps_gap =
-        (now() - gps_handler_->lastAcceptedStamp()).seconds();
-      if (gps_gap > kGpsTimeoutSec) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 30000 /*ms*/,
-          "[FgoNode] GPS enabled but no fix accepted in %.0f s. "
-          "Check topic: %s",
-          gps_gap, cfg_.gps_topic.c_str());
-      }
     }
     return;
   }
