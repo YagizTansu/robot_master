@@ -44,8 +44,12 @@ fgo_node:
     # ── Noise Models ────────────────────────────────────────
     noise:
       odometry:
-        x:     0.05
-        y:     0.05
+        # SDF gaussian_noise = 0.005 m/step (50 Hz). Over a 0.02 m keyframe interval
+        # (~1-2 steps), accumulated sensor noise ≈ 0.007 m. Adding ~5 % mecanum slip
+        # gives a realistic 1σ of ~0.01 m per keyframe for x and y.
+        # Yaw is less constrained on mecanum (slip-induced heading error) → kept at 0.05.
+        x:     0.01
+        y:     0.01
         z:     0.01   # constrained — flat surface
         roll:  0.01   # constrained — flat surface
         pitch: 0.01   # constrained — flat surface
@@ -142,14 +146,16 @@ scan_matcher_node:
       lidar_frame:  "base_footprint"
 
     # ── LiDAR noise (written into published covariance msg) ─
+    # SICK S30B sensor noise stddev = 0.02 m (SDF). NDT matching adds ~0.02-0.03 m
+    # on top of raw sensor noise → total 1σ ≈ 0.05 m is a conservative but realistic base.
     noise:
       lidar:
-        x:     0.1
-        y:     0.1
+        x:     0.05
+        y:     0.05
         z:     999.0   # 2D scanner provides no z information — keep this DOF unconstrained
         roll:  999.0   # 2D scanner provides no roll information — keep unconstrained
         pitch: 999.0   # 2D scanner provides no pitch information — keep unconstrained
-        yaw:   0.1
+        yaw:   0.05
 
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
