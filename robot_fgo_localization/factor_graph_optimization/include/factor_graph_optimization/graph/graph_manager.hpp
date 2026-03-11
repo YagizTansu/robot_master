@@ -72,7 +72,7 @@ public:
   /// @param key             GTSAM key of the target pose (use X(k)).
   /// @param utm_position    GPS measurement in local-UTM coordinates [x, y, 0].
   /// @param noise           3-vector Diagonal noise model [sx, sy, 999.0].
-  ///                        Build with GpsHandler::buildNoiseModel(hdop).
+  ///                        Constructed inline in addGpsBatch() using HDOP-scaled sigmas.
   /// @param initial_values  Passed for API consistency; GPS does NOT insert a
   ///                        new variable — the parameter is intentionally unused.
   void addGpsFactor(gtsam::Key key,
