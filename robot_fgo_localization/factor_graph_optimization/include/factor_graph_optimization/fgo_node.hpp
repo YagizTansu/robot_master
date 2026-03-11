@@ -14,6 +14,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
 
 // TF2
 #include <tf2_ros/transform_broadcaster.h>
@@ -53,6 +54,7 @@ private:
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
+  void gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
   void scanPoseCallback(
     const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
   void initialPoseCallback(
@@ -77,6 +79,9 @@ private:
   // ── Graph module (owns iSAM2, factor graph, optimised states, IMU preint) ──
   std::unique_ptr<GraphManager>     graph_mgr_;
 
+  // ── GPS module ───────────────────────────────────────────────────────────
+  std::unique_ptr<GpsHandler>       gps_handler_;
+
   // ── Keyframe selector ─────────────────────────────────────────────────────
   std::unique_ptr<KeyframeSelector> keyframe_sel_;     ///< keyframe decision logic
 
@@ -95,6 +100,7 @@ private:
   // ── Publishers / Subscribers / Timer ─────────────────────────────────────
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr                       sub_odom_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr                        sub_imu_;
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr                  sub_gps_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_scan_pose_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_init_pose_;
 

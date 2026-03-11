@@ -10,6 +10,7 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/GPSFactor.h>
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
@@ -17,6 +18,7 @@
 #include "factor_graph_optimization/config/fgo_config.hpp"
 #include "factor_graph_optimization/odometry/sensor_buffer.hpp"  // OdomSample, ImuSample
 #include "factor_graph_optimization/imu/imu_preintegrator.hpp"
+#include "factor_graph_optimization/gps/gps_handler.hpp"         // GpsSample
 
 namespace factor_graph_optimization
 {
@@ -45,6 +47,7 @@ public:
   /// @param local_odom  Keyframe odometry samples drained since last step (non-empty).
   /// @param local_imu   IMU samples (by value; sorted internally before preintegration).
   /// @param local_scan  Scan-match pose estimates for this window.
+  /// @param local_gps   GPS samples drained since last step (may be empty).
   /// @param logger      Caller's logger, used for debug / error messages.
   /// @return true  if iSAM2 was updated successfully.
   /// @return false if iSAM2 threw an exception (caller should skip publishing).
@@ -52,7 +55,30 @@ public:
     const std::vector<OdomSample> & local_odom,
     std::vector<ImuSample>          local_imu,
     const std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> & local_scan,
+    const std::vector<GpsSample> & local_gps,
     const rclcpp::Logger & logger);
+
+  // ── GPS factor interface ────────────────────────────────────────────────────
+
+  /// Add a single GPSFactor to the pending new_factors_ batch.
+  ///
+  /// Called internally by addGpsBatch() after temporal matching, and exposed
+  /// publicly so callers can inject one-off GPS constraints.
+  ///
+  /// @pre   X(@p key) must already exist in new_values_ (added by the odom
+  ///        BetweenFactor loop earlier in the same step() call).
+  ///        If the key is absent, the factor is skipped with a WARN log.
+  ///
+  /// @param key             GTSAM key of the target pose (use X(k)).
+  /// @param utm_position    GPS measurement in local-UTM coordinates [x, y, 0].
+  /// @param noise           3-vector Diagonal noise model [sx, sy, 999.0].
+  ///                        Build with GpsHandler::buildNoiseModel(hdop).
+  /// @param initial_values  Passed for API consistency; GPS does NOT insert a
+  ///                        new variable — the parameter is intentionally unused.
+  void addGpsFactor(gtsam::Key key,
+                    const gtsam::Point3 & utm_position,
+                    const gtsam::SharedNoiseModel & noise,
+                    gtsam::Values & initial_values);
 
   // ── Accessors (all const; call under graph_mutex_) ────────────────────────
   const gtsam::Pose3 &                 optimizedPose()         const { return optimized_pose_; }
@@ -66,6 +92,15 @@ public:
 private:
   void initIsam2();
   void initGraph();
+
+  /// Temporal-match GPS samples to keyframes and call addGpsFactor() for each.
+  /// Called from step() after the odom BetweenFactor loop, ensuring all
+  /// X(k) keys are already present in new_values_ before GPS factors are built.
+  void addGpsBatch(
+    const std::vector<GpsSample> & local_gps,
+    const std::vector<OdomSample> & local_odom,
+    int batch_start_key,
+    const rclcpp::Logger & logger);
 
   /**
    * @brief Marginalize the oldest X/V/B key cluster until the active window

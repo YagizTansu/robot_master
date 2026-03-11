@@ -9,6 +9,7 @@
 
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Rot3.h>
+#include <gtsam/navigation/GPSFactor.h>
 #include <gtsam/nonlinear/ISAM2Params.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
@@ -131,6 +132,7 @@ bool GraphManager::step(
   const std::vector<OdomSample> & local_odom,
   std::vector<ImuSample>          local_imu,
   const std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> & local_scan,
+  const std::vector<GpsSample> & local_gps,
   const rclcpp::Logger & logger)
 {
   // ── Noise model for odometry ──────────────────────────────────────────────
@@ -255,6 +257,13 @@ bool GraphManager::step(
     }
   }
 
+  // ── GPS factors ─────────────────────────────────────────────────────────────
+  // Called after the odometry BetweenFactor loop so all X(k) keys known to
+  // this batch are already present in new_values_.
+  if (!local_gps.empty()) {
+    addGpsBatch(local_gps, local_odom, batch_start_key, logger);
+  }
+
   // ── iSAM2 update ─────────────────────────────────────────────────────────
   try {
     isam2_->update(new_factors_, new_values_);
@@ -315,6 +324,108 @@ void GraphManager::trimOldestKeys(const rclcpp::Logger & logger)
       break;
     }
     ++oldest_kept_key_;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GPS helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+void GraphManager::addGpsFactor(gtsam::Key key,
+                                const gtsam::Point3 & utm_position,
+                                const gtsam::SharedNoiseModel & noise,
+                                gtsam::Values & /*initial_values*/)
+{
+  // GPS does NOT add a new graph variable — it only constrains the translation
+  // component of an existing Pose3 key.  The initial_values parameter is
+  // intentionally unused and exists only for API consistency with other factor
+  // addition helpers.
+
+  // Guard: X(key) must already be in new_values_ (written by the odom loop
+  // earlier in the same step() call).  If the key is absent, something is
+  // badly wrong with call ordering; skip and log rather than insert an
+  // orphaned factor which would crash iSAM2.
+  if (!new_values_.exists(key)) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("GraphManager"),
+      "[GraphManager] addGpsFactor: key %lu not in current Values — "
+      "skipping GPS factor. "
+      "(Check that addGpsBatch is called after the odom BetweenFactor loop.)",
+      static_cast<unsigned long>(key));
+    return;
+  }
+
+  new_factors_.add(gtsam::GPSFactor(key, utm_position, noise));
+}
+
+void GraphManager::addGpsBatch(
+  const std::vector<GpsSample> & local_gps,
+  const std::vector<OdomSample> & local_odom,
+  int batch_start_key,
+  const rclcpp::Logger & logger)
+{
+  for (const auto & sample : local_gps) {
+
+    // ── Find nearest keyframe by timestamp ───────────────────────────────────
+    int    best_i  = static_cast<int>(local_odom.size()) - 1;
+    double best_dt = std::numeric_limits<double>::max();
+    for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
+      const double dt = std::fabs(
+        (local_odom[i].timestamp - sample.timestamp).seconds());
+      if (dt < best_dt) { best_dt = dt; best_i = i; }
+    }
+
+    const int target_key = batch_start_key + best_i + 1;
+
+    // ── Antenna offset correction ────────────────────────────────────────────
+    // Apply the GPS antenna → base_link rigid-body offset using the current
+    // keyframe's estimated yaw.  x/y offsets are expressed in the body frame:
+    //   corrected = R_map_body * offset_body + raw_gps_local
+    // where R = [cos(yaw) -sin(yaw); sin(yaw) cos(yaw)].
+    // This is done here (not in GpsHandler) because the keyframe yaw is
+    // available from new_values_, which lives inside GraphManager.
+    double corrected_x = sample.x;
+    double corrected_y = sample.y;
+
+    if (std::fabs(cfg_.gps_offset_x) > 1e-9 ||
+        std::fabs(cfg_.gps_offset_y) > 1e-9)
+    {
+      if (new_values_.exists(X(target_key))) {
+        const gtsam::Pose3 kf_pose =
+          new_values_.at<gtsam::Pose3>(X(target_key));
+        const double yaw = kf_pose.rotation().yaw();
+        // Rotate offset from body frame to map frame and subtract from raw GPS
+        // (the antenna sits forward/left of base_link, so we subtract to get base_link pos).
+        corrected_x = sample.x
+                      - (cfg_.gps_offset_x * std::cos(yaw)
+                         - cfg_.gps_offset_y * std::sin(yaw));
+        corrected_y = sample.y
+                      - (cfg_.gps_offset_x * std::sin(yaw)
+                         + cfg_.gps_offset_y * std::cos(yaw));
+      }
+      // If key does not exist, addGpsFactor() will catch it — fall through.
+    }
+
+    const gtsam::Point3 measurement(corrected_x, corrected_y, 0.0);
+
+    // ── Build HDOP-scaled noise model ────────────────────────────────────────
+    // hdop in GpsSample is already clamped to ≥ 1.0 by GpsHandler.
+    const double sx     = cfg_.noise_gps_sigma_x * sample.hdop;
+    const double sy     = cfg_.noise_gps_sigma_y * sample.hdop;
+    constexpr double sz = 999.0;  // unconstrained Z — 2D robot convention
+    auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(sx, sy, sz));
+
+    // ── Add factor (guarded) ─────────────────────────────────────────────────
+    // Re-use the public addGpsFactor() for the key-existence guard and logging.
+    gtsam::Values dummy;  // unused — GPS adds no new variable
+    addGpsFactor(X(target_key), measurement, noise, dummy);
+
+    RCLCPP_DEBUG(logger,
+      "[GraphManager] GPS factor -> X(%d)  x=%.3f y=%.3f  "
+      "hdop=%.2f sx=%.3f sy=%.3f  dt=%.3fs  offset=(%.3f, %.3f)",
+      target_key, corrected_x, corrected_y,
+      sample.hdop, sx, sy, best_dt,
+      cfg_.gps_offset_x, cfg_.gps_offset_y);
   }
 }
 

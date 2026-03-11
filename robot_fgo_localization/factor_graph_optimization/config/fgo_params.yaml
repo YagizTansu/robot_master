@@ -12,6 +12,7 @@ fgo_node:
       enable_odom:  true
       enable_imu:   true
       enable_lidar: true
+      enable_gps:   false   # set to true when GPS hardware is present
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
@@ -19,6 +20,7 @@ fgo_node:
       imu_topic:              "/imu"
       scan_match_pose_topic:  "/scan_match_pose"
       initial_pose_topic:     "/initialpose"
+      gps_topic:              "/gps/fix"  # standard nmea_navsat_driver / ublox_gps topic
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
@@ -81,7 +83,13 @@ fgo_node:
 
         # Gravity magnitude (m/s^2). Used in ENU Z-up convention.
         gravity:           9.81
-
+      gps:
+        # Consumer GPS circular error probable (CEP) ≈ 2.5 m.
+        # 1σ = CEP / 0.8326 ≈ 3.0 m at 68% confidence (before HDOP scaling).
+        # Override to 0.05 for RTK-grade receivers.
+        # NOTE: noise.lidar lives in scan_matcher_node below — do NOT add it here.
+        sigma_x: 3.0   # metres (1-sigma, before HDOP scaling)
+        sigma_y: 3.0   # metres (1-sigma, before HDOP scaling)
     # ── LiDAR gating ────────────────────────────────────────
     lidar:
       gating:
@@ -108,6 +116,7 @@ fgo_node:
       max_pending_scans:      10    # max scan-match poses buffered; oldest dropped when exceeded
       max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
       max_pending_odom:       500   # generous keyframe buffer cap
+      max_pending_gps:        100   # 10 Hz × 10 s; prevents unbounded growth if optimizer stalls
       graph_max_size:         2000  # keep at most N key nodes in iSAM2; oldest X/V/B cluster is marginalized when exceeded (0 = unlimited)
       max_path_length:        10000 # cap on /fgo/path pose history; oldest poses dropped when exceeded (0 = unlimited)
 
@@ -130,6 +139,44 @@ fgo_node:
       translation_threshold:  0.02
       rotation_threshold:     0.02
       max_time_sec:           2.0    # force a keyframe after this interval even when stationary
+
+
+    # ── GPS ───────────────────────────────────────────────────────
+    # sensors.enable_gps, topics.gps_topic, node.max_pending_gps, and
+    # noise.gps are defined in their respective sections above.
+    gps:
+      # Quality gates
+      # HDOP < 1: excellent, 1-2: good, 2-5: moderate, > 5: poor.
+      # 2.0 admits standard GPS in open-sky conditions.
+      # Set 0.0 to disable HDOP gating (not recommended).
+      hdop_reject_threshold: 2.0
+
+      # Maximum distance (m) from last accepted fix before a new fix is
+      # rejected as an outlier.  At 1 m/s this is 10 s of motion budget.
+      # Set 0.0 to disable outlier gating.
+      outlier_reject_dist_m: 10.0
+
+      # UTM zone configuration.
+      # utm_zone = 0: auto-detect from first valid fix (recommended).
+      # utm_zone = 1-60: force a specific zone (use for pre-mapped deployments).
+      utm_zone: 0
+      utm_hemisphere: "N"   # "N" or "S"; only used when utm_zone != 0
+
+      # Number of consecutive outlier rejections before the outlier baseline
+      # is reset to the current fix position.  Prevents permanent GPS lockout
+      # after graph re-initialisation or extended GPS outage.
+      outlier_strike_limit: 10
+
+      # GPS antenna offset from base_link in the body frame (metres).
+      # forward = +x, left = +y.  Applied inside GraphManager before factor creation.
+      offset_x: 0.0
+      offset_y: 0.0
+
+      # Minimum accepted NavSatFix quality (internal 0/1/2 convention):
+      #   0 = accept any status (including NO_FIX — rarely useful)
+      #   1 = accept STATUS_FIX and above   (recommended default)
+      #   2 = accept STATUS_SBAS_FIX / DGPS corrections and above (RTK setups)
+      min_fix_type: 1
 
 
 scan_matcher_node:

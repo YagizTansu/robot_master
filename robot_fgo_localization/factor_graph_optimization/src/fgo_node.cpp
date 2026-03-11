@@ -11,6 +11,9 @@
 
 // GTSAM
 
+// GPS
+#include "factor_graph_optimization/gps/gps_handler.hpp"
+
 namespace factor_graph_optimization
 {
 
@@ -78,6 +81,12 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
   }
   graph_mgr_ = std::make_unique<GraphManager>(cfg_, std::move(imu_preint));
 
+  // ── GPS handler ─────────────────────────────────────────────────────────────
+  // Constructed unconditionally so drain() always returns an empty vector
+  // when GPS is disabled — no null-checks needed in optimizationStep().
+  // The subscription is conditionally created inside GpsHandler's constructor.
+  gps_handler_ = std::make_unique<GpsHandler>(cfg_, *this, get_logger());
+
   // ── Path message header ───────────────────────────────────────────────────
   path_msg_.header.frame_id = cfg_.map_frame;
 
@@ -100,6 +109,7 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
   sub_init_pose_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     cfg_.initial_pose_topic, rclcpp::QoS(5),
     std::bind(&FgoNode::initialPoseCallback, this, std::placeholders::_1));
+  // GPS subscription is created inside GpsHandler (conditional on enable_gps).
 
   // ── Publishers ────────────────────────────────────────────────────────────
   pub_odometry_ = create_publisher<nav_msgs::msg::Odometry>("/fgo/odometry", rclcpp::QoS(10));
@@ -134,6 +144,18 @@ void FgoNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     s.timestamp = rclcpp::Time(msg->header.stamp);
     odom_buf_.push(s, static_cast<std::size_t>(cfg_.max_pending_odom));
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GPS callback
+// ═════════════════════════════════════════════════════════════════════════════
+
+void FgoNode::gpsCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
+{
+  // The full rejection pipeline (fix-type gate, HDOP gate, UTM projection,
+  // outlier rejection) runs inside GpsHandler::onNavSatFix().
+  // FgoNode is only responsible for routing the message.
+  gps_handler_->onNavSatFix(msg);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -209,6 +231,9 @@ void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceSt
   odom_buf_.clear();
   imu_buf_.clear();
   scan_buf_.clear();
+  // Reset GPS handler: clears UTM datum and outlier baseline so the new map
+  // origin (set by the /initialpose message) becomes the new GPS datum origin.
+  gps_handler_->reset();
 
   // All cfg_ mutations and graph state changes are serialised under
   // graph_mutex_ to prevent a data race with the optimizationStep() thread.
@@ -249,6 +274,11 @@ void FgoNode::optimizationStep()
   std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> local_scan;
   scan_buf_.drain(local_scan);
 
+  // GPS buffer is drained before acquiring graph_mutex_, consistent with all
+  // other sensor buffers.  If GPS is disabled, drain() returns an empty vector.
+  std::vector<GpsSample> local_gps;
+  gps_handler_->drain(local_gps);
+
   // All graph operations are serialised behind graph_mutex_.
   std::lock_guard<std::mutex> graph_lock(graph_mutex_);
 
@@ -257,10 +287,23 @@ void FgoNode::optimizationStep()
     if (has_map_to_odom_cache_ && cfg_.publish_map_to_odom) {
       publishMapToOdom(now());
     }
+
+    // Warn if GPS is enabled but no fix has arrived for a long time.
+    if (cfg_.enable_gps) {
+      constexpr double kGpsTimeoutSec = 30.0;
+      const double gps_gap =
+        (now() - gps_handler_->lastAcceptedStamp()).seconds();
+      if (gps_gap > kGpsTimeoutSec) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 30000 /*ms*/,
+          "[FgoNode] GPS enabled but no fix accepted in %.0f s. "
+          "Check topic: %s",
+          gps_gap, cfg_.gps_topic.c_str());
+      }
+    }
     return;
   }
 
-  if (!graph_mgr_->step(local_odom, std::move(local_imu), local_scan, get_logger())) {
+  if (!graph_mgr_->step(local_odom, std::move(local_imu), local_scan, local_gps, get_logger())) {
     return;
   }
 
