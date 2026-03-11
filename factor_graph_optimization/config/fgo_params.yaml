@@ -17,24 +17,20 @@ fgo_node:
     topics:
       odom_topic:             "/odometry"
       imu_topic:              "/imu"
-      lidar_topic:            "/scan"
       scan_match_pose_topic:  "/scan_match_pose"
       initial_pose_topic:     "/initialpose"
-      map_topic:              "/map"
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
       map_frame:    "map"
       odom_frame:   "odom"
       base_frame:   "base_footprint"
-      lidar_frame:  "base_footprint"   # merged LiDAR scan arrives in base_footprint
-      imu_frame:    "base_footprint"
+      imu_frame:    "imu_link"
 
     # ── TF Publishing ───────────────────────────────────────
     tf:
       publish_map_to_odom:    true
       publish_odom_to_base:   true
-      tf_publish_rate_hz:     50.0
 
     # ── Initial Pose ────────────────────────────────────────
     initial_pose:
@@ -56,41 +52,43 @@ fgo_node:
         yaw:   0.05
 
       imu:
-        # Accelerometer white noise (σ in m/s²/√Hz).
-        # Typical MEMS IMU: 0.003–0.02. Higher → trust IMU less.
+        # Accelerometer white noise (sigma in m/s^2/sqrt(Hz)).
+        # Typical MEMS IMU: 0.003-0.02. Higher = trust IMU less.
         accel_sigma:       0.02
 
-        # Gyroscope white noise (σ in rad/s/√Hz).
-        # Typical MEMS IMU: 0.0003–0.002. Higher → trust gyro less.
+        # Gyroscope white noise (sigma in rad/s/sqrt(Hz)).
+        # Typical MEMS IMU: 0.0003-0.002. Higher = trust gyro less.
         gyro_sigma:        0.002
 
-        # Accelerometer bias random walk (σ in m/s³/√Hz).
+        # Accelerometer bias random walk (sigma in m/s^3/sqrt(Hz)).
         # Slower process — keep small.
         accel_bias_sigma:  0.0001
 
-        # Gyroscope bias random walk (σ in rad/s²/√Hz).
-        gyro_bias_sigma:   0.000001
+        # Gyroscope bias random walk (sigma in rad/s^2/sqrt(Hz)).
+        # Typical MEMS IMU: 1e-4 to 1e-3. Previously was 1e-6 (too tight).
+        gyro_bias_sigma:   0.0001
 
-        # Numerical integration noise σ (trapezoidal discretisation error).
+        # Numerical integration noise sigma (trapezoidal discretisation error).
         integration_sigma: 0.0001
 
-        # Gravity magnitude (m/s²). Used in ENU Z-up convention.
+        # Bias integration cross-coupling noise (6x6 diagonal, dimensionless scale).
+        # Keeps bias random-walk numerically stable inside preintegration.
+        bias_acc_omega_int: 1.0e-5
+
+        # Gravity magnitude (m/s^2). Used in ENU Z-up convention.
         gravity:           9.81
 
-      lidar:
-        x:     0.1
-        y:     0.1
-        z:     0.01
-        roll:  0.01
-        pitch: 0.01
-        yaw:   0.1
-        icp_fitness_score_threshold: 0.5
-        # Skip scan prior if total batch rotation exceeds this (rad).
-        # Set equal to keyframe.rotation_threshold so any rotation batch is skipped.
-        rotation_gate_rad:   0.02
-        # Sigma scaling: sigma *= (1 + fitness_noise_scale * fitness_score).
-        # Higher value = noisier scan matches have much less influence.
-        fitness_noise_scale: 5.0
+    # ── LiDAR gating ────────────────────────────────────────
+    lidar:
+      gating:
+        # Per-scan rotation gate (rad). Each scan is evaluated independently
+        # against the instantaneous |dyaw| of its nearest keyframe interval.
+        # Must be BELOW keyframe.rotation_threshold (0.02 rad): a rotation
+        # keyframe always contributes dyaw >= 0.02, so 0.015 reliably blocks
+        # scans attributed to rotation keyframes while never blocking scans
+        # attributed to translation keyframes (instantaneous dyaw ~ 0).
+        # NDT is unreliable during ANY in-place rotation.
+        rotation_gate_rad:   0.015
         # Discard scan poses older than this (sec). Prevents stale scans after a pause.
         max_scan_age_sec:    1.0
 
@@ -98,20 +96,36 @@ fgo_node:
     isam2:
       relinearize_threshold:  0.1
       relinearize_skip:       1
+      factorization:          "CHOLESKY"   # "CHOLESKY" (fast) or "QR" (more stable when info matrix is ill-conditioned)
+
+    # ── Node timing ─────────────────────────────────────────
+    node:
       optimization_rate_hz:   50.0
+      max_pending_scans:      10    # max scan-match poses buffered; oldest dropped when exceeded
+      max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
+      max_pending_odom:       500   # generous keyframe buffer cap
+      graph_max_size:         2000  # keep at most N key nodes in iSAM2; oldest X/V/B cluster is marginalized when exceeded (0 = unlimited)
+      max_path_length:        10000 # cap on /fgo/path pose history; oldest poses dropped when exceeded (0 = unlimited)
+
+    # ── Prior factors on X(0) ───────────────────────────────
+    prior:
+      pose_pos_sigma:   0.001    # tight prior on initial position  (1 mm)
+      pose_rot_sigma:   0.001    # tight prior on initial rotation  (~0.057 deg)
+      vel_sigma:        1.0      # generous — robot starts approx. at rest
+      bias_accel_sigma: 0.3      # accel bias uncertainty at startup
+      bias_gyro_sigma:  0.05     # gyro  bias uncertainty at startup
+
+    # ── Fallback noise when IMU is disabled ─────────────────
+    fallback:
+      vel_sigma:        0.5
+      bias_accel_sigma: 0.01
+      bias_gyro_sigma:  0.001
 
     # ── Keyframe Strategy ───────────────────────────────────
     keyframe:
       translation_threshold:  0.02
       rotation_threshold:     0.02
-
-    # ── Scan Matcher (consumed by scan_matcher_node) ─────────
-    scan_matcher:
-      type:                    "NDT"
-      max_iterations:          50
-      max_correspondence_dist: 1.0
-      transformation_epsilon:  1.0e-6
-      map_z_height:            0.0
+      max_time_sec:           2.0    # force a keyframe after this interval even when stationary
 
 
 scan_matcher_node:
@@ -132,11 +146,10 @@ scan_matcher_node:
       lidar:
         x:     0.1
         y:     0.1
-        z:     0.01
-        roll:  0.01
-        pitch: 0.01
+        z:     999.0   # 2D scanner provides no z information — keep this DOF unconstrained
+        roll:  999.0   # 2D scanner provides no roll information — keep unconstrained
+        pitch: 999.0   # 2D scanner provides no pitch information — keep unconstrained
         yaw:   0.1
-        icp_fitness_score_threshold: 0.5
 
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
@@ -145,3 +158,23 @@ scan_matcher_node:
       max_correspondence_dist: 1.0
       transformation_epsilon:  1.0e-6
       map_z_height:            0.0
+      # NDT internal voxel resolution (m). Should be 2-5x the map voxel leaf size.
+      # 1.0m is far too coarse for indoor corridors; 0.3m gives wall-level detail.
+      ndt_resolution:          0.15
+      # Newton gradient-descent step size (m). One of the most impactful NDT
+      # convergence parameters. Smaller = more stable, more iterations.
+      ndt_step_size:           0.1
+      # Discard scan if fitness score > this (applies to both NDT and ICP).
+      fitness_score_threshold: 0.5
+      # sigma *= (1 + fitness_noise_scale * fitness_score) — applied before publishing
+      fitness_noise_scale:     5.0
+      # VoxelGrid leaf size for map cloud downsampling (m)
+      map_voxel_leaf_size:     0.03
+      # VoxelGrid leaf size applied to the source scan before matching (m; 0 = skip)
+      # Should be equal to or smaller than map_voxel_leaf_size so densities are symmetric.
+      scan_voxel_leaf_size:    0.03
+      # Frame written into the published scan-pose message (must match fgo_node map_frame)
+      map_frame:               "map"
+      # ICP-only: RANSAC outlier rejection (0 iterations = disabled)
+      icp_ransac_iterations:   5
+      icp_ransac_threshold:    0.05  # inlier distance threshold (m)

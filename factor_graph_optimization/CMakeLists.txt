@@ -56,6 +56,13 @@ include_directories(
 add_executable(fgo_node
   src/fgo_main.cpp
   src/fgo_node.cpp
+  src/core/pose_conversion.cpp
+  src/core/noise_model.cpp
+  src/core/geometry_2d.cpp
+  src/config/fgo_config.cpp
+  src/odometry/keyframe_selector.cpp
+  src/imu/imu_preintegrator.cpp
+  src/graph/graph_manager.cpp
 )
 
 target_link_libraries(fgo_node
@@ -81,6 +88,11 @@ ament_target_dependencies(fgo_node
 add_executable(scan_matcher_node
   src/scan_matcher_main.cpp
   src/scan_matcher.cpp
+  src/core/geometry_2d.cpp
+  src/config/scan_matcher_config.cpp
+  src/lidar/map_builder.cpp
+  src/lidar/ndt_matcher.cpp
+  src/lidar/icp_matcher.cpp
 )
 
 target_link_libraries(scan_matcher_node
