@@ -63,5 +63,6 @@ install(DIRECTORY launch models worlds DESTINATION share/${PROJECT_NAME})
 install(
   PROGRAMS
     scripts/localization_benchmark.py
+    scripts/amcl_pose_to_odom.py
   DESTINATION lib/${PROJECT_NAME}
 )

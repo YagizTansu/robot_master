@@ -96,6 +96,28 @@ struct FgoConfig
   int max_pending_odom{500};   ///< odom buffer cap; generous but bounded
   int graph_max_size{2000};    ///< sliding-window limit: marginalize oldest keys when graph exceeds this size (0 = unlimited)
   int max_path_length{10000};  ///< cap on /fgo/path history (poses); oldest poses are dropped when exceeded (0 = unlimited)
+  int max_pending_gps{100};    ///< GPS buffer cap; 100 samples ≈ 10 s at 10 Hz — prevents unbounded growth if optimizer stalls
+
+  // ── GPS ──────────────────────────────────────────────────────────────────────
+  // Parameters live under node.max_pending_gps (buffer), sensors.enable_gps (toggle),
+  // topics.gps_topic, noise.gps.*, and gps.* groups in fgo_params.yaml.
+  // They must NOT go under noise.lidar — that group belongs to scan_matcher_node.
+  bool        enable_gps{false};              ///< feature flag — false → no subscription, zero overhead
+  std::string gps_topic{"/gps/fix"};          ///< NavSatFix topic (standard: nmea_navsat_driver / ublox_gps)
+
+  // noise.gps — parallel group to noise.odometry and noise.imu
+  double noise_gps_sigma_x{3.0};  ///< 1σ GPS position noise in X (m). Default = consumer GPS CEP/0.8326 ≈ 3 m. Override to 0.05 for RTK.
+  double noise_gps_sigma_y{3.0};  ///< 1σ GPS position noise in Y (m). Separate field allows anisotropic error modelling.
+
+  // gps.* — quality gates and sensor geometry
+  double gps_hdop_reject_threshold{2.0};  ///< reject fixes with HDOP above this (0 = disable); <1 excellent, 1-2 good, >5 poor
+  double gps_outlier_reject_dist_m{10.0};  ///< reject fix if farther than this from last accepted (m); 0 = disable
+  int    gps_utm_zone{0};                  ///< UTM zone 1-60; 0 = auto-detect from first fix
+  std::string gps_utm_hemisphere{"N"};     ///< "N" or "S"; used only when gps_utm_zone != 0
+  double gps_offset_x{0.0};               ///< GPS antenna offset from base_link, forward axis (m)
+  double gps_offset_y{0.0};               ///< GPS antenna offset from base_link, left axis (m)
+  int    gps_min_fix_type{1};             ///< min accepted quality: 0=any, 1=fix, 2=DGPS/SBAS
+  int    gps_outlier_strike_limit{10};    ///< reset outlier baseline after this many consecutive rejects
   // ── Factory ──────────────────────────────────────────────────────────────
   /// Declare and load all parameters from a ROS 2 node.
   /// Replaces the former declareParameters() + loadParameters() pair.

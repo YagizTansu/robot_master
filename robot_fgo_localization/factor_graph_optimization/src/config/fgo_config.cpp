@@ -1,5 +1,8 @@
 #include "factor_graph_optimization/config/fgo_config.hpp"
 
+#include <stdexcept>
+#include <string>
+
 namespace factor_graph_optimization
 {
 
@@ -59,6 +62,7 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("node.max_pending_odom",       cfg.max_pending_odom);
   node.declare_parameter("node.graph_max_size",         cfg.graph_max_size);
   node.declare_parameter("node.max_path_length",        cfg.max_path_length);
+  node.declare_parameter("node.max_pending_gps",        cfg.max_pending_gps);
 
   node.declare_parameter("keyframe.translation_threshold", cfg.keyframe_translation_threshold);
   node.declare_parameter("keyframe.rotation_threshold",    cfg.keyframe_rotation_threshold);
@@ -73,6 +77,19 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("fallback.vel_sigma",        cfg.fallback_vel_sigma);
   node.declare_parameter("fallback.bias_accel_sigma", cfg.fallback_bias_accel_sigma);
   node.declare_parameter("fallback.bias_gyro_sigma",  cfg.fallback_bias_gyro_sigma);
+
+  node.declare_parameter("sensors.enable_gps",          cfg.enable_gps);
+  node.declare_parameter("topics.gps_topic",             cfg.gps_topic);
+  node.declare_parameter("noise.gps.sigma_x",            cfg.noise_gps_sigma_x);
+  node.declare_parameter("noise.gps.sigma_y",            cfg.noise_gps_sigma_y);
+  node.declare_parameter("gps.hdop_reject_threshold",    cfg.gps_hdop_reject_threshold);
+  node.declare_parameter("gps.outlier_reject_dist_m",    cfg.gps_outlier_reject_dist_m);
+  node.declare_parameter("gps.utm_zone",                 cfg.gps_utm_zone);
+  node.declare_parameter("gps.utm_hemisphere",           cfg.gps_utm_hemisphere);
+  node.declare_parameter("gps.offset_x",                 cfg.gps_offset_x);
+  node.declare_parameter("gps.offset_y",                 cfg.gps_offset_y);
+  node.declare_parameter("gps.min_fix_type",             cfg.gps_min_fix_type);
+  node.declare_parameter("gps.outlier_strike_limit",     cfg.gps_outlier_strike_limit);
 
   // ── Load ──────────────────────────────────────────────────────────────────
   cfg.enable_odom  = node.get_parameter("sensors.enable_odom").as_bool();
@@ -126,6 +143,7 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.max_pending_odom            = node.get_parameter("node.max_pending_odom").as_int();
   cfg.graph_max_size              = node.get_parameter("node.graph_max_size").as_int();
   cfg.max_path_length             = node.get_parameter("node.max_path_length").as_int();
+  cfg.max_pending_gps             = node.get_parameter("node.max_pending_gps").as_int();
 
   cfg.keyframe_translation_threshold = node.get_parameter("keyframe.translation_threshold").as_double();
   cfg.keyframe_rotation_threshold    = node.get_parameter("keyframe.rotation_threshold").as_double();
@@ -140,6 +158,44 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.fallback_vel_sigma        = node.get_parameter("fallback.vel_sigma").as_double();
   cfg.fallback_bias_accel_sigma = node.get_parameter("fallback.bias_accel_sigma").as_double();
   cfg.fallback_bias_gyro_sigma  = node.get_parameter("fallback.bias_gyro_sigma").as_double();
+
+  cfg.enable_gps                = node.get_parameter("sensors.enable_gps").as_bool();
+  cfg.gps_topic                 = node.get_parameter("topics.gps_topic").as_string();
+  cfg.noise_gps_sigma_x         = node.get_parameter("noise.gps.sigma_x").as_double();
+  cfg.noise_gps_sigma_y         = node.get_parameter("noise.gps.sigma_y").as_double();
+  cfg.gps_hdop_reject_threshold = node.get_parameter("gps.hdop_reject_threshold").as_double();
+  cfg.gps_outlier_reject_dist_m = node.get_parameter("gps.outlier_reject_dist_m").as_double();
+  cfg.gps_utm_zone              = node.get_parameter("gps.utm_zone").as_int();
+  cfg.gps_utm_hemisphere        = node.get_parameter("gps.utm_hemisphere").as_string();
+  cfg.gps_offset_x              = node.get_parameter("gps.offset_x").as_double();
+  cfg.gps_offset_y              = node.get_parameter("gps.offset_y").as_double();
+  cfg.gps_min_fix_type          = node.get_parameter("gps.min_fix_type").as_int();
+  cfg.gps_outlier_strike_limit  = node.get_parameter("gps.outlier_strike_limit").as_int();
+
+  // ── Validation ────────────────────────────────────────────────────────────
+  // GPS sigma must be strictly positive — zero would make the iSAM2
+  // information matrix singular and crash the Cholesky solver.
+  if (cfg.noise_gps_sigma_x <= 0.0 || cfg.noise_gps_sigma_y <= 0.0) {
+    throw std::invalid_argument(
+      "[FgoConfig] noise.gps.sigma_x and noise.gps.sigma_y must be > 0. "
+      "Got sigma_x=" + std::to_string(cfg.noise_gps_sigma_x) +
+      " sigma_y=" + std::to_string(cfg.noise_gps_sigma_y));
+  }
+  if (cfg.gps_min_fix_type < 0 || cfg.gps_min_fix_type > 2) {
+    throw std::invalid_argument(
+      "[FgoConfig] gps.min_fix_type must be 0, 1, or 2. "
+      "Got " + std::to_string(cfg.gps_min_fix_type));
+  }
+  if (cfg.gps_utm_hemisphere != "N" && cfg.gps_utm_hemisphere != "S") {
+    throw std::invalid_argument(
+      "[FgoConfig] gps.utm_hemisphere must be \"N\" or \"S\". "
+      "Got \"" + cfg.gps_utm_hemisphere + "\"");
+  }
+  if (cfg.max_pending_gps <= 0) {
+    throw std::invalid_argument(
+      "[FgoConfig] node.max_pending_gps must be > 0. "
+      "Got " + std::to_string(cfg.max_pending_gps));
+  }
 
   return cfg;
 }

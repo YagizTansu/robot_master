@@ -133,6 +133,80 @@
         <topic>/imu</topic>
         <update_rate>30</update_rate>
         <visualize>false</visualize>
+        <imu>
+          <!-- Angular velocity (gyroscope) noise.
+               stddev  = gyro_sigma(fgo) * sqrt(update_rate) = 0.002 * sqrt(30) ≈ 0.011 rad/s
+               dynamic_bias_stddev = gyro_bias_sigma(fgo) * sqrt(update_rate) = 0.0001 * sqrt(30) ≈ 0.0005 rad/s²·s^0.5
+               bias_stddev corresponds to prior.bias_gyro_sigma = 0.05 rad/s -->
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.011</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.05</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>400.0</dynamic_bias_correlation_time>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.011</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.05</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>400.0</dynamic_bias_correlation_time>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.011</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.05</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>400.0</dynamic_bias_correlation_time>
+              </noise>
+            </z>
+          </angular_velocity>
+          <!-- Linear acceleration (accelerometer) noise.
+               stddev  = accel_sigma(fgo) * sqrt(update_rate) = 0.02 * sqrt(30) ≈ 0.11 m/s²
+               dynamic_bias_stddev = accel_bias_sigma(fgo) * sqrt(update_rate) = 0.0001 * sqrt(30) ≈ 0.0005 m/s³·s^0.5
+               bias_stddev corresponds to prior.bias_accel_sigma = 0.3 m/s² -->
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.11</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.3</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300.0</dynamic_bias_correlation_time>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.11</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.3</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300.0</dynamic_bias_correlation_time>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.11</stddev>
+                <bias_mean>0.0</bias_mean>
+                <bias_stddev>0.3</bias_stddev>
+                <dynamic_bias_stddev>0.0005</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300.0</dynamic_bias_correlation_time>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
       </sensor>
     </link>
     <joint name="imu_link_joint" type="fixed">
@@ -2941,6 +3015,12 @@
             <max>30.0</max>
             <resolution>0.01</resolution>
           </range>
+          <!-- SICK S30B: ~20 mm (1σ) statistical range noise -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.02</stddev>
+          </noise>
         </lidar>
       </sensor>
     </link>
@@ -3030,6 +3110,12 @@
             <max>30.0</max>
             <resolution>0.01</resolution>
           </range>
+          <!-- SICK S30B: ~20 mm (1σ) statistical range noise -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.02</stddev>
+          </noise>
         </lidar>
       </sensor>
     </link>
@@ -3208,6 +3294,8 @@
       <robot_base_frame>base_footprint</robot_base_frame>
       <odom_publish_frequency>50.0</odom_publish_frequency>
       <odom_topic>odometry</odom_topic>
+      <!-- Mecanum tekerlek kayması + enkoder gürültüsü: ~5 mm/adım (1σ) -->
+      <gaussian_noise>0.005</gaussian_noise>
     </plugin>
     <plugin filename="gz-sim-mecanum-drive-system" name="gz::sim::systems::MecanumDrive">
       <front_left_joint>wheel_2_joint</front_left_joint>
