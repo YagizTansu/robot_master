@@ -1,0 +1,302 @@
+<?xml version="1.0" ?>
+<robot name="boa_new_urdf" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:include filename="$(find boa_new_urdf_description)/urdf/materials.xacro" />
+<xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.trans" />
+<xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.gazebo" />
+<link name="base_link">
+  <inertial>
+    <origin xyz="0.945398072688781 -0.001011453583043792 1.1145363303175833" rpy="0 0 0"/>
+    <mass value="781.2318135532329"/>
+    <inertia ixx="196.374943" iyy="188.293374" izz="40.387878" ixy="0.085427" iyz="-0.535549" ixz="-13.126993"/>
+  </inertial>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="right_caster_1">
+  <inertial>
+    <origin xyz="-6.465938895416911e-14 0.039999999999999314 9.71445146547012e-17" rpy="0 0 0"/>
+    <mass value="1.3070596235260359"/>
+    <inertia ixx="0.000852" iyy="0.000953" izz="0.000852" ixy="0.0" iyz="-0.0" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.0 0.275 -0.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/right_caster_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0 0.275 -0.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/right_caster_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="left_caster_1">
+  <inertial>
+    <origin xyz="-6.3948846218409e-14 -0.039999999999997454 2.2898349882893854e-16" rpy="0 0 0"/>
+    <mass value="1.3070596235260348"/>
+    <inertia ixx="0.000852" iyy="0.000953" izz="0.000852" ixy="0.0" iyz="0.0" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.0 -0.275 -0.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/left_caster_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0 -0.275 -0.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/left_caster_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="drive_motor_1">
+  <inertial>
+    <origin xyz="1.919312224924131 1.629849831257866e-08 -4.287126238095018e-06" rpy="0 0 0"/>
+    <mass value="17.21864059844125"/>
+    <inertia ixx="0.124174" iyy="0.072747" izz="0.072745" ixy="-0.0" iyz="-0.0" ixz="-3e-06"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.830664 0.0 -0.109" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.830664 0.0 -0.109" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="direction_motor_1">
+  <inertial>
+    <origin xyz="1.1675247319514686 -0.0002473749983548974 -0.065560452505046" rpy="0 0 0"/>
+    <mass value="20.417319679069678"/>
+    <inertia ixx="0.182357" iyy="0.193956" izz="0.141973" ixy="-0.000532" iyz="0.001583" ixz="0.045478"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.045716 0.0 -0.308" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/direction_motor_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.045716 0.0 -0.308" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/direction_motor_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="lift_1">
+  <inertial>
+    <origin xyz="-0.2463841438938288 4.17434188371459e-15 0.15826317440554472" rpy="0 0 0"/>
+    <mass value="84.07963834081151"/>
+    <inertia ixx="5.78863" iyy="11.805331" izz="13.959058" ixy="-0.0" iyz="0.0" ixz="-2.174236"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.82 -0.0 -0.07" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lift_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.82 -0.0 -0.07" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lift_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="lidar_fork_1">
+  <inertial>
+    <origin xyz="0.0003185696935690818 2.8965477646136772e-06 -0.014854120337495023" rpy="0 0 0"/>
+    <mass value="0.2706325212274874"/>
+    <inertia ixx="0.000192" iyy="0.000193" izz="0.000297" ixy="-0.0" iyz="0.0" ixz="-1e-06"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.45 0.235 -0.0685" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_fork_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.45 0.235 -0.0685" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_fork_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="lidar_left_1">
+  <inertial>
+    <origin xyz="-9.36104279709582e-05 -0.0006445792369226822 -0.013527945325587445" rpy="0 0 0"/>
+    <mass value="0.2591621344886043"/>
+    <inertia ixx="0.000118" iyy="0.000112" izz="0.000163" ixy="-0.0" iyz="2e-06" ixz="0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-1.29 -0.313 -0.086" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_left_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-1.29 -0.313 -0.086" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_left_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="lidar_right_1">
+  <inertial>
+    <origin xyz="-9.361045077138641e-05 0.0006445790889220704 -0.01352794539440104" rpy="0 0 0"/>
+    <mass value="0.25916213258976506"/>
+    <inertia ixx="0.000118" iyy="0.000112" izz="0.000163" ixy="0.0" iyz="-2e-06" ixz="0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-1.29 0.313 -0.086" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_right_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-1.29 0.313 -0.086" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/lidar_right_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="slamware_1">
+  <inertial>
+    <origin xyz="-4.3560027251920985e-06 4.649845288881102e-06 0.03323324367886471" rpy="0 0 0"/>
+    <mass value="1.47998358904255"/>
+    <inertia ixx="0.000945" iyy="0.000945" izz="0.000637" ixy="-0.0" iyz="-0.0" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.84 2.6e-05 -2.051002" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/slamware_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.84 2.6e-05 -2.051002" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/slamware_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="case_1">
+  <inertial>
+    <origin xyz="0.826289808277356 -8.38019998043213e-05 -1.0857649471938513" rpy="0 0 0"/>
+    <mass value="64.3759577604728"/>
+    <inertia ixx="21.402375" iyy="19.591691" izz="8.035831" ixy="-0.001323" iyz="-0.002828" ixz="3.543087"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.21 -0.0 -2.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/case_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.21 -0.0 -2.04" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find boa_new_urdf_description)/meshes/case_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="right_caster_joint" type="continuous">
+  <origin xyz="0.0 -0.275 0.04" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="right_caster_1"/>
+  <axis xyz="0.0 1.0 0.0"/>
+</joint>
+
+<joint name="left_caster_joint" type="continuous">
+  <origin xyz="0.0 0.275 0.04" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="left_caster_1"/>
+  <axis xyz="-0.0 -1.0 0.0"/>
+</joint>
+
+<joint name="drive_motor_joint" type="continuous">
+  <origin xyz="-0.784948 0.0 -0.199" rpy="0 0 0"/>
+  <parent link="direction_motor_1"/>
+  <child link="drive_motor_1"/>
+  <axis xyz="1.0 0.0 -0.0"/>
+</joint>
+
+<joint name="direction_motor_joint" type="continuous">
+  <origin xyz="-0.045716 0.0 0.308" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="direction_motor_1"/>
+  <axis xyz="-0.0 0.0 -1.0"/>
+</joint>
+
+<joint name="lift_joint" type="fixed">
+  <origin xyz="0.82 0.0 0.07" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="lift_1"/>
+</joint>
+
+<joint name="lidar_fork_joint" type="fixed">
+  <origin xyz="-0.45 -0.235 0.0685" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="lidar_fork_1"/>
+</joint>
+
+<joint name="lidar_left_joint" type="fixed">
+  <origin xyz="1.29 0.313 0.086" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="lidar_left_1"/>
+</joint>
+
+<joint name="lidar_right_joint" type="fixed">
+  <origin xyz="1.29 -0.313 0.086" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="lidar_right_1"/>
+</joint>
+
+<joint name="slamware_joint" type="fixed">
+  <origin xyz="0.84 -2.6e-05 2.051002" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="slamware_1"/>
+</joint>
+
+<joint name="case_joint" type="fixed">
+  <origin xyz="0.21 0.0 2.04" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="case_1"/>
+</joint>
+
+</robot>
