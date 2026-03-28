@@ -14,6 +14,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
 
 // TF2
 #include <tf2_ros/transform_broadcaster.h>
@@ -76,6 +77,9 @@ private:
 
   // ── Graph module (owns iSAM2, factor graph, optimised states, IMU preint) ──
   std::unique_ptr<GraphManager>     graph_mgr_;
+
+  // ── GPS module ───────────────────────────────────────────────────────────
+  std::unique_ptr<GpsHandler>       gps_handler_;
 
   // ── Keyframe selector ─────────────────────────────────────────────────────
   std::unique_ptr<KeyframeSelector> keyframe_sel_;     ///< keyframe decision logic

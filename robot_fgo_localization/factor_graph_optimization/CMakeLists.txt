@@ -44,12 +44,19 @@ find_package(PCL REQUIRED COMPONENTS common io registration filters)
 # Eigen (pulled in by GTSAM, declared explicitly for clarity)
 find_package(Eigen3 REQUIRED)
 
+# GeographicLib (UTM projection for GPS handler)
+# Find module lives in /usr/share/cmake/geographiclib on Ubuntu systems
+# (package: libgeographiclib-dev).  Add that directory to the module search path.
+list(APPEND CMAKE_MODULE_PATH "/usr/share/cmake/geographiclib")
+find_package(GeographicLib REQUIRED)
+
 # ── Include dirs ──────────────────────────────────────────────────────────────
 include_directories(
   include
   ${GTSAM_INCLUDE_DIR}
   ${EIGEN3_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
+  ${GeographicLib_INCLUDE_DIRS}
 )
 
 # ── fgo_node executable ───────────────────────────────────────────────────────
@@ -63,11 +70,13 @@ add_executable(fgo_node
   src/odometry/keyframe_selector.cpp
   src/imu/imu_preintegrator.cpp
   src/graph/graph_manager.cpp
+  src/gps/gps_handler.cpp
 )
 
 target_link_libraries(fgo_node
   gtsam
   ${PCL_LIBRARIES}
+  ${GeographicLib_LIBRARIES}
 )
 
 ament_target_dependencies(fgo_node
