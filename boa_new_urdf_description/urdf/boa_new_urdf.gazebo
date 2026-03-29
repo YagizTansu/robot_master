@@ -4,7 +4,10 @@
 <xacro:property name="body_color" value="Gazebo/Silver" />
 
 <gazebo>
-  <plugin name="control" filename="libgazebo_ros_control.so"/>
+  <plugin filename="gz_ros2_control-system"
+          name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+    <parameters>$(find boa_new_urdf_description)/config/controllers.yaml</parameters>
+  </plugin>
 </gazebo>
 <gazebo reference="base_link">
   <material>${body_color}</material>
@@ -30,8 +33,8 @@
 
 <gazebo reference="drive_motor_1">
   <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
+  <mu1>1.5</mu1>
+  <mu2>1.5</mu2>
   <self_collide>true</self_collide>
 </gazebo>
 
