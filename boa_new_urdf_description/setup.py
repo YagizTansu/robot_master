@@ -26,6 +26,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'cmd_vel_relay = boa_new_urdf_description.cmd_vel_relay:main',
         ],
     },
 )
