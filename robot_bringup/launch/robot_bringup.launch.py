@@ -30,6 +30,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        gazebo_launch
+        gazebo_launch,
+        demo_laser_merger_launch,
     ])
 

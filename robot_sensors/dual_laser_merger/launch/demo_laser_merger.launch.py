@@ -34,10 +34,10 @@ def generate_launch_description():
                 plugin='merger_node::MergerNode',
                 name='dual_laser_merger',
                 parameters=[
-                    {'laser_1_topic': '/sick_lidar0/scan'},
-                    {'laser_2_topic': '/sick_lidar1/scan'},
+                    {'laser_1_topic': '/lidar_left_1/scan'},
+                    {'laser_2_topic': '/lidar_right_1/scan'},
                     {'merged_scan_topic': '/scan'},
-                    {'target_frame': 'base_footprint'},
+                    {'target_frame': 'base_link'},
                     {'laser_1_x_offset': 0.0},
                     {'laser_1_y_offset': 0.0},
                     {'laser_1_yaw_offset': 0.0},
