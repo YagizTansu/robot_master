@@ -19,15 +19,15 @@
 
 <gazebo reference="right_caster_1">
   <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
+  <mu1>0.01</mu1>
+  <mu2>0.01</mu2>
   <self_collide>true</self_collide>
 </gazebo>
 
 <gazebo reference="left_caster_1">
   <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
+  <mu1>0.01</mu1>
+  <mu2>0.01</mu2>
   <self_collide>true</self_collide>
 </gazebo>
 
@@ -40,8 +40,8 @@
 
 <gazebo reference="direction_motor_1">
   <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
+  <mu1>1.5</mu1>
+  <mu2>1.5</mu2>
   <self_collide>true</self_collide>
 </gazebo>
 
