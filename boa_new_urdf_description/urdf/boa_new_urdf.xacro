@@ -4,6 +4,7 @@
 <xacro:include filename="$(find boa_new_urdf_description)/urdf/materials.xacro" />
 <xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.trans" />
 <xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.gazebo" />
+
 <link name="base_link">
   <inertial>
     <origin xyz="0.945398072688781 -0.001011453583043792 1.1145363303175833" rpy="0 0 0"/>
@@ -69,19 +70,19 @@
 
 <link name="drive_motor_1">
   <inertial>
-    <origin xyz="1.919312224924131 1.629849831257866e-08 -4.287126238095018e-06" rpy="0 0 0"/>
+    <origin xyz="-0.012752 0.0 0.000696" rpy="0 0 0"/>
     <mass value="17.21864059844125"/>
     <inertia ixx="0.124174" iyy="0.072747" izz="0.072745" ixy="-0.0" iyz="-0.0" ixz="-3e-06"/>
   </inertial>
   <visual>
-    <origin xyz="0.830664 0.0 -0.109" rpy="0 0 0"/>
+    <origin xyz="-1.1014 0.0 -0.1083" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
     <material name="silver"/>
   </visual>
   <collision>
-    <origin xyz="0.830664 0.0 -0.109" rpy="0 0 0"/>
+    <origin xyz="-1.1014 0.0 -0.1083" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
@@ -90,19 +91,19 @@
 
 <link name="direction_motor_1">
   <inertial>
-    <origin xyz="1.1675247319514686 -0.0002473749983548974 -0.065560452505046" rpy="0 0 0"/>
+    <origin xyz="0.054600 -0.000200 -0.092060" rpy="0 0 0"/>
     <mass value="20.417319679069678"/>
     <inertia ixx="0.182357" iyy="0.193956" izz="0.141973" ixy="-0.000532" iyz="0.001583" ixz="0.045478"/>
   </inertial>
   <visual>
-    <origin xyz="0.045716 0.0 -0.308" rpy="0 0 0"/>
+    <origin xyz="-1.1129 0.0 -0.3345" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/direction_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
     <material name="silver"/>
   </visual>
   <collision>
-    <origin xyz="0.045716 0.0 -0.308" rpy="0 0 0"/>
+    <origin xyz="-1.1129 0.0 -0.3345" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/direction_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
@@ -250,17 +251,17 @@
 </joint>
 
 <joint name="drive_motor_joint" type="continuous">
-  <origin xyz="-0.784948 0.0 -0.199" rpy="0 0 0"/>
+  <origin xyz="-0.0115 0.0 -0.2262" rpy="0 0 0"/>
   <parent link="direction_motor_1"/>
   <child link="drive_motor_1"/>
   <axis xyz="1.0 0.0 -0.0"/>
 </joint>
 
 <joint name="direction_motor_joint" type="continuous">
-  <origin xyz="-0.045716 0.0 0.308" rpy="0 0 0"/>
+  <origin xyz="1.1129 0.0 0.3345" rpy="0 0 0"/>
   <parent link="base_link"/>
   <child link="direction_motor_1"/>
-  <axis xyz="-0.0 0.0 -1.0"/>
+  <axis xyz="0.0 0.0 1.0"/>
 </joint>
 
 <joint name="lift_joint" type="fixed">
