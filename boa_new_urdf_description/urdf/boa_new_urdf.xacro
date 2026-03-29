@@ -70,19 +70,19 @@
 
 <link name="drive_motor_1">
   <inertial>
-    <origin xyz="-0.012700 0.0 0.000700" rpy="0 0 0"/>
+    <origin xyz="-0.012700 0.0 0.000004" rpy="0 0 0"/>
     <mass value="17.21864059844125"/>
     <inertia ixx="0.124174" iyy="0.072747" izz="0.072745" ixy="-0.0" iyz="-0.0" ixz="-3e-06"/>
   </inertial>
   <visual>
-    <origin xyz="-1.1014 0.0 -0.1083" rpy="0 0 0"/>
+    <origin xyz="-1.1014 0.0 -0.10899" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
     <material name="silver"/>
   </visual>
   <collision>
-    <origin xyz="-1.1014 0.0 -0.1083" rpy="0 0 0"/>
+    <origin xyz="-1.1014 0.0 -0.10899" rpy="0 0 0"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
@@ -251,7 +251,7 @@
 </joint>
 
 <joint name="drive_motor_joint" type="continuous">
-  <origin xyz="0.0057 0.0 -0.2262" rpy="0 0 0"/>
+  <origin xyz="0.0057 0.0 -0.2255" rpy="0 0 0"/>
   <parent link="direction_motor_1"/>
   <child link="drive_motor_1"/>
   <axis xyz="1.0 0.0 -0.0"/>
