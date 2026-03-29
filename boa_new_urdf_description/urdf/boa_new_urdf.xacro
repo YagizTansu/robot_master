@@ -196,7 +196,7 @@
   </collision>
 </link>
 
-<link name="slamware_1">
+<link name="lidar_top">
   <inertial>
     <origin xyz="-4.3560027251920985e-06 4.649845288881102e-06 0.03323324367886471" rpy="0 0 0"/>
     <mass value="1.47998358904255"/>
@@ -295,7 +295,7 @@
 <joint name="slamware_joint" type="fixed">
   <origin xyz="0.84 -2.6e-05 2.051002" rpy="0 0 0"/>
   <parent link="base_link"/>
-  <child link="slamware_1"/>
+  <child link="lidar_top"/>
 </joint>
 
 <joint name="case_joint" type="fixed">
