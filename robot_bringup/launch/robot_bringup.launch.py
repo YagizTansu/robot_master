@@ -32,7 +32,7 @@ def generate_launch_description():
     return LaunchDescription([
         robot_warehouse_launch
     ])
-    
+
     # Simulation-only BT prerequisite topic publishers.
     # Publishes /emergency_stop, /battery_status, /diagnostics_agg,
     # and /fleet_manager/heartbeat so the idle-monitor BT can run in simulation.
