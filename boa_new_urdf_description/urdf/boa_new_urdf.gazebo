@@ -78,6 +78,42 @@
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
+  <sensor name="lidar_top_sensor" type="gpu_lidar">
+    <topic>lidar_top/scan</topic>
+    <gz_frame_id>lidar_top</gz_frame_id>
+    <update_rate>10</update_rate>
+    <lidar>
+      <scan>
+        <horizontal>
+          <!-- 360° horizontal, 1° resolution -->
+          <samples>360</samples>
+          <resolution>1</resolution>
+          <min_angle>-3.14159265</min_angle>
+          <max_angle>3.14159265</max_angle>
+        </horizontal>
+        <vertical>
+          <!-- 16 channel, ±15° vertical FOV (VLP-16 style) -->
+          <samples>16</samples>
+          <resolution>1</resolution>
+          <min_angle>-0.26179938</min_angle>
+          <max_angle>0.26179938</max_angle>
+        </vertical>
+      </scan>
+      <range>
+        <min>0.3</min>
+        <max>30.0</max>
+        <resolution>0.01</resolution>
+      </range>
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>0.01</stddev>
+      </noise>
+    </lidar>
+    <always_on>true</always_on>
+    <enabled>true</enabled>
+    <visualize>true</visualize>
+  </sensor>
 </gazebo>
 
 <gazebo reference="case_1">
