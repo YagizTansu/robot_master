@@ -12,25 +12,143 @@ else:
     import termios
     import tty
 
-MAX_LIN_VEL = 0.5
-MAX_ANG_VEL = 1.57
+MAX_LIN_VEL = 2.0    # m/s  (~3.6 km/h, forklift max)
+MAX_ANG_VEL = 1.57   # rad/s (~90 deg/s)
 
-LIN_VEL_STEP_SIZE = 0.01
+LIN_VEL_STEP_SIZE = 0.05
 ANG_VEL_STEP_SIZE = 0.1
 
 msg = """
-Control Your TurtleBot3!
+Robot Teleop - Tricycle Drive
 ---------------------------
 Moving around:
-   q    w    e
+        w
    a    s    d
         x
-w/x : increase/decrease linear velocity.
-a/d : increase/decrease linear velocity.
-q/e : increase/decrease angular velocity.
-space key, s : force stop
-CTRL-C to quit
+
+w : ileri hız artır
+x : geri hız artır (veya ileriyi azalt)
+a : sola dön
+d : sağa dön
+s / space : dur
+q : çıkış
+---------------------------
 """
+
+e = """
+Communications Failed
+"""
+
+
+def get_key(settings):
+    if os.name == 'nt':
+        return msvcrt.getch().decode('utf-8')
+    tty.setraw(sys.stdin.fileno())
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+    if rlist:
+        key = sys.stdin.read(1)
+    else:
+        key = ''
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+    return key
+
+
+def print_vels(lin, ang):
+    print('linear: {0:.2f} m/s  |  angular: {1:.2f} rad/s'.format(lin, ang))
+
+
+def make_simple_profile(output, input, slop):
+    if input > output:
+        output = min(input, output + slop)
+    elif input < output:
+        output = max(input, output - slop)
+    else:
+        output = input
+    return output
+
+
+def constrain(val, low, high):
+    return max(low, min(high, val))
+
+
+def main():
+    settings = None
+    if os.name != 'nt':
+        settings = termios.tcgetattr(sys.stdin)
+
+    rclpy.init()
+    qos = QoSProfile(depth=10)
+    node = rclpy.create_node('robot_teleop_key')
+    pub = node.create_publisher(Twist, 'cmd_vel', qos)
+
+    target_linear_velocity = 0.0
+    target_angular_velocity = 0.0
+    control_linear_velocity = 0.0
+    control_angular_velocity = 0.0
+
+    try:
+        print(msg)
+        while True:
+            key = get_key(settings)
+
+            if key == 'w':
+                target_linear_velocity = constrain(
+                    target_linear_velocity + LIN_VEL_STEP_SIZE, -MAX_LIN_VEL, MAX_LIN_VEL)
+                print_vels(target_linear_velocity, target_angular_velocity)
+
+            elif key == 'x':
+                target_linear_velocity = constrain(
+                    target_linear_velocity - LIN_VEL_STEP_SIZE, -MAX_LIN_VEL, MAX_LIN_VEL)
+                print_vels(target_linear_velocity, target_angular_velocity)
+
+            elif key == 'a':
+                target_angular_velocity = constrain(
+                    target_angular_velocity + ANG_VEL_STEP_SIZE, -MAX_ANG_VEL, MAX_ANG_VEL)
+                print_vels(target_linear_velocity, target_angular_velocity)
+
+            elif key == 'd':
+                target_angular_velocity = constrain(
+                    target_angular_velocity - ANG_VEL_STEP_SIZE, -MAX_ANG_VEL, MAX_ANG_VEL)
+                print_vels(target_linear_velocity, target_angular_velocity)
+
+            elif key == ' ' or key == 's':
+                target_linear_velocity = 0.0
+                target_angular_velocity = 0.0
+                control_linear_velocity = 0.0
+                control_angular_velocity = 0.0
+                print_vels(0.0, 0.0)
+
+            elif key == '\x03' or key == 'q':
+                break
+
+            control_linear_velocity = make_simple_profile(
+                control_linear_velocity,
+                target_linear_velocity,
+                LIN_VEL_STEP_SIZE / 2.0)
+
+            control_angular_velocity = make_simple_profile(
+                control_angular_velocity,
+                target_angular_velocity,
+                ANG_VEL_STEP_SIZE / 2.0)
+
+            twist = Twist()
+            twist.linear.x = control_linear_velocity
+            twist.angular.z = control_angular_velocity
+            pub.publish(twist)
+
+    except Exception as ex:
+        print(ex)
+
+    finally:
+        twist = Twist()
+        pub.publish(twist)
+        if os.name != 'nt':
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+
+
+if __name__ == '__main__':
+    main()
+
 
 e = """
 Communications Failed
