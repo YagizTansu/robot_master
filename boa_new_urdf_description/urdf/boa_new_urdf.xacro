@@ -298,6 +298,21 @@
   <child link="lidar_top"/>
 </joint>
 
+<link name="imu_link">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-06" iyy="1e-06" izz="1e-06" ixy="0" iyz="0" ixz="0"/>
+  </inertial>
+</link>
+
+<joint name="imu_joint" type="fixed">
+  <!-- Same position as lidar_top -->
+  <origin xyz="0.84 -2.6e-05 2.051002" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="imu_link"/>
+</joint>
+
 <joint name="case_joint" type="fixed">
   <origin xyz="0.21 0.0 2.04" rpy="0 0 0"/>
   <parent link="base_link"/>
