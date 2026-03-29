@@ -82,9 +82,11 @@
     <material name="silver"/>
   </visual>
   <collision>
-    <origin xyz="-1.1014 0.0 -0.10899" rpy="0 0 0"/>
+    <!-- Cylinder collision for proper rolling contact in Gazebo -->
+    <!-- Wheel axle is X axis in this frame; URDF cylinder default is Z, so rotate 90° around Y -->
+    <origin xyz="0 0 0" rpy="0 1.5707963 0"/>
     <geometry>
-      <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
+      <cylinder radius="0.109" length="0.145"/>
     </geometry>
   </collision>
 </link>
@@ -257,11 +259,13 @@
   <axis xyz="1.0 0.0 -0.0"/>
 </joint>
 
-<joint name="direction_motor_joint" type="continuous">
+<joint name="direction_motor_joint" type="revolute">
   <origin xyz="1.0957 0.0 0.3345" rpy="0 0 0"/>
   <parent link="base_link"/>
   <child link="direction_motor_1"/>
   <axis xyz="0.0 0.0 1.0"/>
+  <limit lower="-1.5707" upper="1.5707" effort="100.0" velocity="1.0"/>
+  <dynamics damping="10.0" friction="1.0"/>
 </joint>
 
 <joint name="lift_joint" type="fixed">
@@ -309,7 +313,9 @@
       <param name="min">-1.5707</param>
       <param name="max">1.5707</param>
     </command_interface>
-    <state_interface name="position"/>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
     <state_interface name="velocity"/>
   </joint>
   <joint name="drive_motor_joint">
