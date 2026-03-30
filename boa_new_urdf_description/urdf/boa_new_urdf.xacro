@@ -75,7 +75,7 @@
     <inertia ixx="0.124174" iyy="0.072747" izz="0.072745" ixy="-0.0" iyz="-0.0" ixz="-3e-06"/>
   </inertial>
   <visual>
-    <origin xyz="-1.1014 0.0 -0.10899" rpy="0 0 0"/>
+    <origin xyz="0.0 -1.1014 -0.10899" rpy="0 0 1.5707963"/>
     <geometry>
       <mesh filename="file://$(find boa_new_urdf_description)/meshes/drive_motor_1.stl" scale="0.001 0.001 0.001"/>
     </geometry>
@@ -253,7 +253,7 @@
 </joint>
 
 <joint name="drive_motor_joint" type="continuous">
-  <origin xyz="0.0057 0.0 -0.2255" rpy="0 0 0"/>
+  <origin xyz="0.0057 0.0 -0.2255" rpy="0 0 -1.5707963"/>
   <parent link="direction_motor_1"/>
   <child link="drive_motor_1"/>
   <axis xyz="0.0 1.0 0.0"/>
