@@ -155,8 +155,8 @@
     <lidar>
       <scan>
         <horizontal>
-          <!-- 360° horizontal, 1° resolution -->
-          <samples>360</samples>
+          <!-- Aurora SLAMTEC: 0.33° resolution ≈ 1080 samples/rev, 40m range -->
+          <samples>1080</samples>
           <resolution>1</resolution>
           <min_angle>-3.14159265</min_angle>
           <max_angle>3.14159265</max_angle>
@@ -171,7 +171,7 @@
       </scan>
       <range>
         <min>0.3</min>
-        <max>30.0</max>
+        <max>40.0</max>
         <resolution>0.01</resolution>
       </range>
       <noise>
