@@ -206,7 +206,8 @@ scan_matcher_node:
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
-      lidar_frame:  "base_link"  # safety_scan target_frame = base_link
+      lidar_frame:  "lidar_top"  # scan noktaları lidar_top frame'inde z=0 → map cloud (z=0) ile eşleşir
+                                  # base_link kullansaydık z=2.051m → max_correspondence_dist(1.0m) aşılır → NDT başarısız
 
     # ── LiDAR noise (written into published covariance msg) ─
     # SICK S30B sensor noise stddev = 0.02 m (SDF). NDT matching adds ~0.02-0.03 m
@@ -223,9 +224,9 @@ scan_matcher_node:
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
       type:                    "NDT"
-      max_iterations:          200   # was 100 — more iterations allow full NDT convergence, especially in complex environments (+CPU)
-      max_correspondence_dist: 0.5   # was 1.0 — reject far / potentially erroneous correspondences; indoor walls are always <0.5 m away in the scan
-      transformation_epsilon:  1.0e-8 # was 1.0e-6 — tighter convergence criterion; near-zero cost, prevents premature exit
+      max_iterations:          50
+      max_correspondence_dist: 2.0  # lidar_top 0.84m ilerde → initial_guess ~0.84m offset; 2.0m yeterli margin sağlar
+      transformation_epsilon:  1.0e-6
       map_z_height:            0.0
       # NDT internal voxel resolution (m). Should be 2-5x the map voxel leaf size.
       # PCL VoxelGridCovariance requires >= 6 points per voxel. Walls are 1-D geometry:
