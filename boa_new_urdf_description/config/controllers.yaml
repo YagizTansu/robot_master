@@ -9,6 +9,9 @@ controller_manager:
     tricycle_controller:
       type: tricycle_controller/TricycleController
 
+    lift_controller:
+      type: position_controllers/JointGroupPositionController
+
 tricycle_controller:
   ros__parameters:
     traction_joint_name: drive_motor_joint
@@ -48,3 +51,8 @@ tricycle_controller:
       min_velocity: 0.0
       max_acceleration: 2.0
       min_acceleration: 0.0
+
+lift_controller:
+  ros__parameters:
+    joints:
+      - lift_joint

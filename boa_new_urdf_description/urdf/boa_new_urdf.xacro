@@ -268,10 +268,13 @@
   <dynamics damping="10.0" friction="1.0"/>
 </joint>
 
-<joint name="lift_joint" type="fixed">
+<joint name="lift_joint" type="prismatic">
   <origin xyz="0.82 0.0 0.07" rpy="0 0 0"/>
   <parent link="base_link"/>
   <child link="lift_1"/>
+  <axis xyz="0.0 0.0 1.0"/>
+  <limit lower="0.0" upper="1.5" effort="5000.0" velocity="0.2"/>
+  <dynamics damping="500.0" friction="100.0"/>
 </joint>
 
 <joint name="lidar_fork_joint" type="fixed">
@@ -339,6 +342,16 @@
       <param name="max">5.0</param>
     </command_interface>
     <state_interface name="position"/>
+    <state_interface name="velocity"/>
+  </joint>
+  <joint name="lift_joint">
+    <command_interface name="position">
+      <param name="min">0.0</param>
+      <param name="max">1.5</param>
+    </command_interface>
+    <state_interface name="position">
+      <param name="initial_value">0.0</param>
+    </state_interface>
     <state_interface name="velocity"/>
   </joint>
 </ros2_control>
