@@ -195,7 +195,8 @@ scan_matcher_node:
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
-      lidar_frame:  "base_link"  # safety_scan target_frame = base_link
+      lidar_frame:  "lidar_top"  # scan noktaları lidar_top frame'inde z=0 → map cloud (z=0) ile eşleşir
+                                  # base_link kullansaydık z=2.051m → max_correspondence_dist(1.0m) aşılır → NDT başarısız
 
     # ── LiDAR noise (written into published covariance msg) ─
     # SICK S30B sensor noise stddev = 0.02 m (SDF). NDT matching adds ~0.02-0.03 m
@@ -213,7 +214,7 @@ scan_matcher_node:
     scan_matcher:
       type:                    "NDT"
       max_iterations:          50
-      max_correspondence_dist: 1.0
+      max_correspondence_dist: 2.0  # lidar_top 0.84m ilerde → initial_guess ~0.84m offset; 2.0m yeterli margin sağlar
       transformation_epsilon:  1.0e-6
       map_z_height:            0.0
       # NDT internal voxel resolution (m). Should be 2-5x the map voxel leaf size.
