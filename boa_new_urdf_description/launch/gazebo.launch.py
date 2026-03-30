@@ -101,6 +101,14 @@ def generate_launch_description():
         output='screen'
     )
 
+    lift_controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['lift_controller', '--param-file', controllers_yaml],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
     return LaunchDescription([
         declare_world_arg,
         # Make warehouse models visible to Gazebo
@@ -113,6 +121,7 @@ def generate_launch_description():
         cmd_vel_relay,
         TimerAction(period=5.0, actions=[joint_state_broadcaster_spawner]),
         TimerAction(period=6.0, actions=[tricycle_controller_spawner]),
+        TimerAction(period=7.0, actions=[lift_controller_spawner]),
     ])
 
 
