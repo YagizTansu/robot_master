@@ -30,7 +30,7 @@ tricycle_controller:
     twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
 
     open_loop: false
-    enable_odom_tf: true
+    enable_odom_tf: false   # FGO aktifken false: FGO odom→base_link TF'sini yayınlar
     cmd_vel_timeout: 500
     velocity_rolling_window_size: 10
 

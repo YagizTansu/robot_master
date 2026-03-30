@@ -24,8 +24,9 @@ def generate_launch_description():
 
     # ── FGO Localization (replaces AMCL + EKF) ────────────────────────────────
     # Provides:
-    #   map → odom           (iSAM2 optimised result — replaces AMCL)
-    #   odom → base_footprint (raw odom pass-through    — replaces EKF)
+    #   map → odom      (iSAM2 optimised result — replaces AMCL)
+    #   odom → base_link (raw odom pass-through    — replaces EKF)
+    # NOTE: tricycle_controller enable_odom_tf=false to avoid TF conflict
     fgo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(fgo_dir, "launch", "fgo.launch.py"))
     )
