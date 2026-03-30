@@ -3,8 +3,8 @@ bt_navigator:
     use_sim_time: true
     enable_stamped_cmd_vel: false
     global_frame: map
-    robot_base_frame: base_footprint
-    odom_topic: /odometry
+    robot_base_frame: base_link
+    odom_topic: /tricycle_controller/odom
     bt_loop_duration: 10
     default_server_timeout: 20
     wait_for_service_timeout: 1000
@@ -70,14 +70,14 @@ controller_server:
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
       
-      # Velocity Limits for Holonomic Motion (m/s and rad/s)
+      # Velocity Limits for Tricycle Drive (non-holonomic)
       # X-axis: Forward/Backward
       max_linear_vel_x: 0.5
       min_linear_vel_x: -0.5
-      # Y-axis: Lateral (Strafe) - Mecanum/Omni specific
-      max_linear_vel_y: 0.5
-      min_linear_vel_y: -0.5
-      # Rotation
+      # Y-axis: Tricycle CANNOT move sideways — lock to 0
+      max_linear_vel_y: 0.0
+      min_linear_vel_y: 0.0
+      # Rotation (yaw rate via steering)
       max_angular_vel: 1.0
       min_angular_vel: -1.0
       
@@ -116,7 +116,7 @@ local_costmap:
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: map
-      robot_base_frame: base_footprint
+      robot_base_frame: base_link
       use_sim_time: true
       rolling_window: true
       width: 3
@@ -145,7 +145,7 @@ local_costmap:
         mark_threshold: 0
         observation_sources: scan1 scan2
         scan1:
-          topic: /sick_lidar0/scan
+          topic: /lidar_left_1/scan
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -155,7 +155,7 @@ local_costmap:
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
         scan2:
-          topic: /sick_lidar1/scan
+          topic: /lidar_right_1/scan
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -177,7 +177,7 @@ global_costmap:
       update_frequency: 1.0  # Çok düşük frekans - minimal kullanım
       publish_frequency: 1.0  # Çok düşük frekans - minimal kullanım
       global_frame: map
-      robot_base_frame: base_footprint
+      robot_base_frame: base_link
       use_sim_time: true
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
       resolution: 0.06
@@ -194,7 +194,7 @@ global_costmap:
         enabled: true
         observation_sources: scan1 scan2
         scan1:
-          topic: /sick_lidar0/scan
+          topic: /lidar_left_1/scan
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -204,7 +204,7 @@ global_costmap:
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
         scan2:
-          topic: /sick_lidar1/scan
+          topic: /lidar_right_1/scan
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -272,7 +272,7 @@ behavior_server:
       plugin: "nav2_behaviors::AssistedTeleop"
     global_frame: map
     local_frame: map
-    robot_base_frame: base_footprint
+    robot_base_frame: base_link
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
     max_rotational_vel: 2.0
@@ -290,12 +290,12 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    # Mecanum/Omni: [Vx, Vy, W] - Y axis is active for holonomic motion
-    max_velocity: [0.5, 0.5, 1.0]      # Match planner limits
-    min_velocity: [-0.5, -0.5, -1.0]   # Match planner limits
-    max_accel: [2.5, 2.5, 3.2]         # Match planner acceleration limits
-    max_decel: [-2.5, -2.5, -3.2]      # Match planner acceleration limits
-    odom_topic: "/odometry"
+    # Tricycle (non-holonomic): [Vx, Vy=0, W]
+    max_velocity: [0.5, 0.0, 1.0]      # Y=0: tricycle cannot move sideways
+    min_velocity: [-0.5, 0.0, -1.0]
+    max_accel: [2.5, 0.0, 3.2]
+    max_decel: [-2.5, 0.0, -3.2]
+    odom_topic: "/tricycle_controller/odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
@@ -328,13 +328,13 @@ collision_monitor:
     observation_sources: ["scan1", "scan2"]
     scan1:
       type: "scan"
-      topic: "/sick_lidar0/scan"
-      min_height: 0.15
+      topic: "/lidar_left_1/scan"
+      min_height: 0.05
       max_height: 2.0
       enabled: True
     scan2:
       type: "scan"
-      topic: "/sick_lidar1/scan"
-      min_height: 0.15
+      topic: "/lidar_right_1/scan"
+      min_height: 0.05
       max_height: 2.0
       enabled: True

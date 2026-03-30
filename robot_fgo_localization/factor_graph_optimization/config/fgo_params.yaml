@@ -16,8 +16,8 @@ fgo_node:
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
-      odom_topic:             "/odometry"
-      imu_topic:              "/imu"
+      odom_topic:             "/tricycle_controller/odom"  # doğrudan ros2_controllers çıktısı
+      imu_topic:              "/imu/data"       # ros_gz_bridge: gz → /imu/data
       scan_match_pose_topic:  "/scan_match_pose"
       initial_pose_topic:     "/initialpose"
       gps_topic:              "/gps/fix"  # standard nmea_navsat_driver / ublox_gps topic
@@ -26,7 +26,7 @@ fgo_node:
     frames:
       map_frame:    "map"
       odom_frame:   "odom"
-      base_frame:   "base_footprint"
+      base_frame:   "base_link"   # URDF root link
       imu_frame:    "imu_link"
 
     # ── TF Publishing ───────────────────────────────────────
@@ -46,24 +46,26 @@ fgo_node:
     # ── Noise Models ────────────────────────────────────────
     noise:
       odometry:
-        # SDF gaussian_noise = 0.005 m/step (50 Hz). Over a 0.02 m keyframe interval
-        # (~1-2 steps), accumulated sensor noise ≈ 0.007 m. Adding ~5 % mecanum slip
-        # gives a realistic 1σ of ~0.01 m per keyframe for x and y.
-        # Yaw is less constrained on mecanum (slip-induced heading error) → kept at 0.05.
+        # Tricycle drive (non-holonomic): encoder-based odometry from tricycle_controller.
+        # x: primary motion direction, ~1% slip → 0.01 m per keyframe.
+        # y: tricycle CANNOT slide sideways → very tight (0.005 m).
+        # yaw: steering encoder is precise → 0.03 rad (1.7°) is conservative but safe.
         x:     0.01
-        y:     0.01
+        y:     0.005  # non-holonomic constraint — no lateral slip
         z:     0.01   # constrained — flat surface
         roll:  0.01   # constrained — flat surface
         pitch: 0.01   # constrained — flat surface
-        yaw:   0.05
+        yaw:   0.03   # tricycle steering encoder, tighter than mecanum
 
       imu:
         # Accelerometer white noise (sigma in m/s^2/sqrt(Hz)).
-        # Typical MEMS IMU: 0.003-0.02. Higher = trust IMU less.
-        accel_sigma:       0.02
+        # Gazebo IMU: stddev=0.017 m/s² per sample @ 100 Hz.
+        # PSD conversion: sigma_c = sigma_d × √rate = 0.017 × √100 = 0.17 m/s²/√Hz
+        accel_sigma:       0.17
 
         # Gyroscope white noise (sigma in rad/s/sqrt(Hz)).
-        # Typical MEMS IMU: 0.0003-0.002. Higher = trust gyro less.
+        # Gazebo IMU: stddev=0.0002 rad/s per sample @ 100 Hz.
+        # PSD conversion: sigma_c = 0.0002 × √100 = 0.002 rad/s/√Hz ✓
         gyro_sigma:        0.002
 
         # Accelerometer bias random walk (sigma in m/s^3/sqrt(Hz)).
@@ -187,13 +189,13 @@ scan_matcher_node:
 
     # ── Topics (only those actually subscribed/published) ───
     topics:
-      lidar_topic:            "/scan"
+      lidar_topic:            "/lidar_top/scan"  # VLP-16 @ 2.051m: 360°, stabil duvar/raf geometrisi → NDT için ideal
       scan_match_pose_topic:  "/scan_match_pose"
       map_topic:              "/map"
 
     # ── Frame IDs ───────────────────────────────────────────
     frames:
-      lidar_frame:  "base_footprint"
+      lidar_frame:  "base_link"  # safety_scan target_frame = base_link
 
     # ── LiDAR noise (written into published covariance msg) ─
     # SICK S30B sensor noise stddev = 0.02 m (SDF). NDT matching adds ~0.02-0.03 m
