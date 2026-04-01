@@ -15,6 +15,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 // TF2
 #include <tf2_ros/transform_broadcaster.h>
@@ -25,6 +26,7 @@
 
 // Core utilities (ROS-free math helpers)
 #include "factor_graph_optimization/core/pose_conversion.hpp"
+#include "factor_graph_optimization/core/trust_weights.hpp"
 
 // Configuration struct
 #include "factor_graph_optimization/config/fgo_config.hpp"
@@ -58,6 +60,7 @@ private:
     const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
   void initialPoseCallback(
     const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+  void trustWeightsCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
   // ── Optimization timer ────────────────────────────────────────────────────
   void optimizationStep();
@@ -101,6 +104,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr                        sub_imu_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_scan_pose_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_init_pose_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr              sub_trust_weights_;
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odometry_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr     pub_path_;
@@ -114,6 +118,11 @@ private:
   /// Cached rotation from IMU frame to base frame (looked up once at startup).
   gtsam::Rot3 R_imu_to_base_;
   bool        imu_tf_ready_{false};  ///< true once R_imu_to_base_ is valid
+
+  /// Latest trust weights received from /fgo/trust_weights.
+  /// Protected by graph_mutex_ — written by trustWeightsCallback() and
+  /// read by optimizationStep() on the 50 Hz timer.
+  TrustWeights trust_weights_;
 
   // ── Path history (for /fgo/path) ─────────────────────────────────────────
   nav_msgs::msg::Path path_msg_;

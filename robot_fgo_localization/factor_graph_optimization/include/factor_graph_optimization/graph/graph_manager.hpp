@@ -16,6 +16,7 @@
 #include <gtsam/nonlinear/Values.h>
 
 #include "factor_graph_optimization/config/fgo_config.hpp"
+#include "factor_graph_optimization/core/trust_weights.hpp"
 #include "factor_graph_optimization/odometry/sensor_buffer.hpp"  // OdomSample, ImuSample
 #include "factor_graph_optimization/imu/imu_preintegrator.hpp"
 #include "factor_graph_optimization/gps/gps_handler.hpp"         // GpsSample
@@ -48,6 +49,10 @@ public:
   /// @param local_imu   IMU samples (by value; sorted internally before preintegration).
   /// @param local_scan  Scan-match pose estimates for this window.
   /// @param local_gps   GPS samples drained since last step (may be empty).
+  /// @param trust       Per-sensor trust weights used to scale noise sigmas:
+  ///                    scaled_sigma = base_sigma / max(w, EPSILON).  Passing a
+  ///                    default-constructed TrustWeights{} (all weights = 1.0)
+  ///                    reproduces the original static noise model exactly.
   /// @param logger      Caller's logger, used for debug / error messages.
   /// @return true  if iSAM2 was updated successfully.
   /// @return false if iSAM2 threw an exception (caller should skip publishing).
@@ -56,6 +61,7 @@ public:
     std::vector<ImuSample>          local_imu,
     const std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> & local_scan,
     const std::vector<GpsSample> & local_gps,
+    const TrustWeights & trust,
     const rclcpp::Logger & logger);
 
   // ── GPS factor interface ────────────────────────────────────────────────────
@@ -96,10 +102,33 @@ private:
   /// Temporal-match GPS samples to keyframes and call addGpsFactor() for each.
   /// Called from step() after the odom BetweenFactor loop, ensuring all
   /// X(k) keys are already present in new_values_ before GPS factors are built.
+  /// @param w_gps  GPS trust weight; noise sigmas are divided by max(w_gps, EPSILON).
   void addGpsBatch(
     const std::vector<GpsSample> & local_gps,
     const std::vector<OdomSample> & local_odom,
     int batch_start_key,
+    double w_gps,
+    const rclcpp::Logger & logger);
+
+  /// Add soft PriorFactor<Vector3> on each V(k) produced this batch to
+  /// indirectly modulate the IMU CombinedImuFactor's influence.
+  ///
+  /// WHY: PreintegrationCombinedParams are baked into the preintegrator at
+  /// construction time and cannot be rescaled per-interval without
+  /// rebuilding the entire preintegration object.  Instead, a velocity
+  /// continuity prior is added alongside the CombinedImuFactor:
+  ///
+  ///   sigma_v = cfg_.fallback_vel_sigma / max(w_imu, EPSILON)
+  ///
+  /// At w_imu = 1.0 the prior is (fallback_vel_sigma / 1.0) wide, adding a
+  /// gentle regularisation consistent with the existing V(0) prior.
+  /// As w_imu decreases toward EPSILON, sigma_v grows, the prior weakens,
+  /// and the graph can deviate more freely from the IMU-predicted velocity —
+  /// effectively reducing the IMU's influence on the trajectory estimate.
+  void addImuVelocityPriors(
+    int batch_start_key,
+    int batch_end_key,
+    double w_imu,
     const rclcpp::Logger & logger);
 
   /**

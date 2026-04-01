@@ -48,9 +48,25 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
+    # ── trust_weight_bridge node ───────────────────────────────────────────
+    # Bridges /transformer/trust_scores → /fgo/trust_weights.
+    # Runs in manual_mode=true by default (weights from YAML).
+    # Switch to Transformer mode at runtime:
+    #   ros2 service call /fgo/set_trust_weights std_srvs/srv/SetBool "{data: false}"
+    trust_weight_bridge_node = Node(
+        package="factor_graph_optimization",
+        executable="trust_weight_bridge",
+        name="trust_weight_bridge",
+        output="screen",
+        respawn=True,
+        respawn_delay=2.0,
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+    )
+
     return LaunchDescription(
         [
             declare_use_sim_time_cmd,
+            trust_weight_bridge_node,
             fgo_node,
             scan_matcher_node,
         ]

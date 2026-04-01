@@ -20,6 +20,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # TF2
 find_package(tf2 REQUIRED)
@@ -85,12 +86,24 @@ ament_target_dependencies(fgo_node
   nav_msgs
   sensor_msgs
   std_msgs
+  std_srvs
   tf2
   tf2_ros
   tf2_geometry_msgs
   tf2_sensor_msgs
   pcl_ros
   pcl_conversions
+)
+
+# ── trust_weight_bridge executable ───────────────────────────────────────────
+add_executable(trust_weight_bridge
+  src/core/trust_weight_bridge.cpp
+)
+
+ament_target_dependencies(trust_weight_bridge
+  rclcpp
+  std_msgs
+  std_srvs
 )
 
 # ── scan_matcher_node executable ──────────────────────────────────────────────
@@ -127,6 +140,7 @@ ament_target_dependencies(scan_matcher_node
 install(TARGETS
   fgo_node
   scan_matcher_node
+  trust_weight_bridge
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -138,6 +152,11 @@ install(DIRECTORY include/
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
   USE_SOURCE_PERMISSIONS
+)
+
+install(PROGRAMS
+  scripts/test_trust_weights.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()

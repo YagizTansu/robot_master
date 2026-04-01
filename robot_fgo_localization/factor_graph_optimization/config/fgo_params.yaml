@@ -234,3 +234,27 @@ scan_matcher_node:
       # ICP-only: RANSAC outlier rejection (0 iterations = disabled)
       icp_ransac_iterations:   5
       icp_ransac_threshold:    0.05  # inlier distance threshold (m)
+
+# ============================================================
+# trust_weight_bridge node parameters
+# ============================================================
+trust_weight_bridge:
+  ros__parameters:
+
+    # ── Operating mode ───────────────────────────────────────────────────────
+    # manual_mode: true  → weights come from manual_w_* parameters below.
+    #              false → weights come from /transformer/trust_scores topic.
+    # Switch at runtime with: ros2 service call /fgo/set_trust_weights std_srvs/srv/SetBool "{data: false}"
+    manual_mode: true
+
+    # ── Manual weights (used when manual_mode = true) ────────────────────────
+    # 1.0 = full trust (identical to the original static noise model).
+    # Lower values widen the factor's noise sigma (reduce information weight).
+    manual_w_encoder: 1.0   # wheel odometry  — BetweenFactor<Pose3>
+    manual_w_imu:     1.0   # IMU preint      — CombinedImuFactor (via velocity prior)
+    manual_w_lidar:   1.0   # LiDAR scan match — PriorFactor<Pose3>
+    manual_w_gps:     1.0   # GPS/GNSS         — GPSFactor
+
+    # ── Topic remapping ──────────────────────────────────────────────────────
+    topic_in:  "/transformer/trust_scores"   # std_msgs/Float64MultiArray [encoder, imu, lidar, gps]
+    topic_out: "/fgo/trust_weights"          # same format, after clamping to [EPSILON, 1.0]
