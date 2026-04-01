@@ -111,6 +111,14 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
     std::bind(&FgoNode::initialPoseCallback, this, std::placeholders::_1));
   // GPS subscription is created inside GpsHandler (conditional on enable_gps).
 
+  // Trust-weight subscription — always created so the node accepts weights
+  // regardless of which sensors are active.  Transient-local QoS ensures
+  // FgoNode receives the latest weights published before it starts.
+  sub_trust_weights_ = create_subscription<std_msgs::msg::Float64MultiArray>(
+    "/fgo/trust_weights",
+    rclcpp::QoS(10).transient_local(),
+    std::bind(&FgoNode::trustWeightsCallback, this, std::placeholders::_1));
+
   // ── Publishers ────────────────────────────────────────────────────────────
   pub_odometry_ = create_publisher<nav_msgs::msg::Odometry>("/fgo/odometry", rclcpp::QoS(10));
   pub_path_     = create_publisher<nav_msgs::msg::Path>("/fgo/path", rclcpp::QoS(10));
@@ -248,6 +256,31 @@ void FgoNode::initialPoseCallback(const geometry_msgs::msg::PoseWithCovarianceSt
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Trust-weight callback — /fgo/trust_weights
+// ═════════════════════════════════════════════════════════════════════════════
+
+void FgoNode::trustWeightsCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+{
+  if (msg->data.size() < 4) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000 /*ms*/,
+      "[FgoNode] /fgo/trust_weights has %zu elements; expected 4. Ignored.",
+      msg->data.size());
+    return;
+  }
+
+  TrustWeights w;
+  w.w_encoder = msg->data[0];
+  w.w_imu     = msg->data[1];
+  w.w_lidar   = msg->data[2];
+  w.w_gps     = msg->data[3];
+  w.clamp();
+
+  // graph_mutex_ serialises this write against the 50 Hz optimizationStep().
+  std::lock_guard<std::mutex> graph_lock(graph_mutex_);
+  trust_weights_ = w;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Optimization timer callback
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -293,7 +326,7 @@ void FgoNode::optimizationStep()
     return;
   }
 
-  if (!graph_mgr_->step(local_odom, std::move(local_imu), local_scan, local_gps, get_logger())) {
+  if (!graph_mgr_->step(local_odom, std::move(local_imu), local_scan, local_gps, trust_weights_, get_logger())) {
     return;
   }
 

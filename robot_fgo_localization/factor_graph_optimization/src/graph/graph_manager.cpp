@@ -17,6 +17,7 @@
 #include "factor_graph_optimization/core/pose_conversion.hpp"
 #include "factor_graph_optimization/core/noise_model.hpp"
 #include "factor_graph_optimization/core/geometry_2d.hpp"
+#include "factor_graph_optimization/core/trust_weights.hpp"
 
 namespace factor_graph_optimization
 {
@@ -133,12 +134,24 @@ bool GraphManager::step(
   std::vector<ImuSample>          local_imu,
   const std::vector<geometry_msgs::msg::PoseWithCovarianceStamped> & local_scan,
   const std::vector<GpsSample> & local_gps,
+  const TrustWeights & trust,
   const rclcpp::Logger & logger)
 {
+  RCLCPP_DEBUG(logger,
+    "[GraphManager] TrustWeights — encoder=%.4f  imu=%.4f  lidar=%.4f  gps=%.4f",
+    trust.w_encoder, trust.w_imu, trust.w_lidar, trust.w_gps);
+
   // ── Noise model for odometry ──────────────────────────────────────────────
+  // Scaled sigma = base_sigma / max(w_encoder, EPSILON).
+  // At w_encoder = 1.0 this produces the original static noise model.
+  const double enc_inv = 1.0 / std::max(trust.w_encoder, TrustWeights::EPSILON);
   auto odom_noise = makeDiagonalNoise(
-    cfg_.noise_odom_x, cfg_.noise_odom_y, cfg_.noise_odom_z,
-    cfg_.noise_odom_roll, cfg_.noise_odom_pitch, cfg_.noise_odom_yaw);
+    cfg_.noise_odom_x     * enc_inv,
+    cfg_.noise_odom_y     * enc_inv,
+    cfg_.noise_odom_z     * enc_inv,
+    cfg_.noise_odom_roll  * enc_inv,
+    cfg_.noise_odom_pitch * enc_inv,
+    cfg_.noise_odom_yaw   * enc_inv);
 
   // ── Odometry BetweenFactors ───────────────────────────────────────────────
   geometry_msgs::msg::Pose prev_pose             = last_consumed_odom_pose_;
@@ -179,6 +192,10 @@ bool GraphManager::step(
       batch_start_key, prev_consumed_stamp,
       optimized_bias_, optimized_velocity_,
       logger);
+
+    // Add trust-weight-modulated velocity priors alongside the CombinedImuFactor.
+    // See addImuVelocityPriors() for the architectural rationale.
+    addImuVelocityPriors(batch_start_key, key_, trust.w_imu, logger);
   }
 
   // ── Scan-match PriorFactors ───────────────────────────────────────────────
@@ -225,15 +242,18 @@ bool GraphManager::step(
       }
 
       // GTSAM Pose3 sigma order: [roll, pitch, yaw, x, y, z]
+      // Covariance from scan_matcher already encodes fitness scaling.
+      // Trust weight stacks on top: scaled_sigma = cov_sigma / max(w_lidar, EPSILON).
       const auto & cov = scan_msg.pose.covariance;
+      const double lidar_inv = 1.0 / std::max(trust.w_lidar, TrustWeights::EPSILON);
       auto lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(
         (gtsam::Vector6() <<
-          std::sqrt(cov[21]),   // roll  σ
-          std::sqrt(cov[28]),   // pitch σ
-          std::sqrt(cov[35]),   // yaw   σ
-          std::sqrt(cov[0]),    // x     σ
-          std::sqrt(cov[7]),    // y     σ
-          std::sqrt(cov[14])    // z     σ
+          std::sqrt(cov[21]) * lidar_inv,   // roll  σ
+          std::sqrt(cov[28]) * lidar_inv,   // pitch σ
+          std::sqrt(cov[35]) * lidar_inv,   // yaw   σ
+          std::sqrt(cov[0])  * lidar_inv,   // x     σ
+          std::sqrt(cov[7])  * lidar_inv,   // y     σ
+          std::sqrt(cov[14]) * lidar_inv    // z     σ
         ).finished());
 
       const int target_key = batch_start_key + best_i + 1;
@@ -261,7 +281,7 @@ bool GraphManager::step(
   // Called after the odometry BetweenFactor loop so all X(k) keys known to
   // this batch are already present in new_values_.
   if (!local_gps.empty()) {
-    addGpsBatch(local_gps, local_odom, batch_start_key, logger);
+    addGpsBatch(local_gps, local_odom, batch_start_key, trust.w_gps, logger);
   }
 
   // ── iSAM2 update ─────────────────────────────────────────────────────────
@@ -362,6 +382,7 @@ void GraphManager::addGpsBatch(
   const std::vector<GpsSample> & local_gps,
   const std::vector<OdomSample> & local_odom,
   int batch_start_key,
+  double w_gps,
   const rclcpp::Logger & logger)
 {
   for (const auto & sample : local_gps) {
@@ -408,10 +429,12 @@ void GraphManager::addGpsBatch(
 
     const gtsam::Point3 measurement(corrected_x, corrected_y, 0.0);
 
-    // ── Build HDOP-scaled noise model ────────────────────────────────────────
+    // ── Build HDOP-scaled + trust-weight-scaled noise model ──────────────────
     // hdop in GpsSample is already clamped to ≥ 1.0 by GpsHandler.
-    const double sx     = cfg_.noise_gps_sigma_x * sample.hdop;
-    const double sy     = cfg_.noise_gps_sigma_y * sample.hdop;
+    // Applying trust weight: scaled_sigma = base * hdop / max(w_gps, EPSILON).
+    const double gps_inv = 1.0 / std::max(w_gps, TrustWeights::EPSILON);
+    const double sx     = cfg_.noise_gps_sigma_x * sample.hdop * gps_inv;
+    const double sy     = cfg_.noise_gps_sigma_y * sample.hdop * gps_inv;
     constexpr double sz = 999.0;  // unconstrained Z — 2D robot convention
     auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(sx, sy, sz));
 
@@ -422,10 +445,68 @@ void GraphManager::addGpsBatch(
 
     RCLCPP_DEBUG(logger,
       "[GraphManager] GPS factor -> X(%d)  x=%.3f y=%.3f  "
-      "hdop=%.2f sx=%.3f sy=%.3f  dt=%.3fs  offset=(%.3f, %.3f)",
+      "hdop=%.2f sx=%.3f sy=%.3f  w_gps=%.4f  dt=%.3fs  offset=(%.3f, %.3f)",
       target_key, corrected_x, corrected_y,
-      sample.hdop, sx, sy, best_dt,
+      sample.hdop, sx, sy, w_gps, best_dt,
       cfg_.gps_offset_x, cfg_.gps_offset_y);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMU velocity prior helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+void GraphManager::addImuVelocityPriors(
+  int batch_start_key,
+  int batch_end_key,
+  double w_imu,
+  const rclcpp::Logger & logger)
+{
+  // See graph_manager.hpp::addImuVelocityPriors() for the full architectural
+  // rationale.  Summary:
+  //
+  //   PreintegrationCombinedParams are constructed once (ImuPreintegrator ctor)
+  //   and cannot be safely changed mid-interval without discarding and
+  //   reintegrating all buffered IMU samples — this would introduce latency
+  //   and complexity incompatible with a 50 Hz optimization loop.
+  //
+  //   Workaround: a PriorFactor<Vector3> is added on every V(k) produced in
+  //   this batch, anchored at the latest optimised velocity estimate:
+  //
+  //     sigma_v = fallback_vel_sigma / max(w_imu, EPSILON)
+  //
+  //   At w_imu = 1.0  →  sigma_v = fallback_vel_sigma  (e.g. 1.0 m/s from
+  //     YAML) — a broad regularisation equivalent to the V(0) prior, adding
+  //     essentially no extra constraint beyond what the CombinedImuFactor
+  //     already provides.
+  //
+  //   As w_imu → 0+  →  sigma_v → +∞  (prior vanishes; CombinedImuFactor
+  //     still exists but velocity is left unconstrained by the prior, allowing
+  //     the graph to drift from the IMU prediction).
+  //
+  //   This softens the IMU's hold on velocity states proportionally to trust,
+  //   providing a practical runtime knob without restructuring the preintegrator.
+
+  // Only add priors when the feature is actually active (w_imu < 1 - tol).
+  constexpr double unity_tol = 1e-9;
+  if (w_imu >= 1.0 - unity_tol) return;
+
+  const double sigma_v =
+    cfg_.prior_vel_sigma / std::max(w_imu, TrustWeights::EPSILON);
+  auto v_noise = gtsam::noiseModel::Isotropic::Sigma(3, sigma_v);
+
+  int priors_added = 0;
+  for (int k = batch_start_key + 1; k <= batch_end_key; ++k) {
+    if (!new_values_.exists(V(k))) continue;
+    new_factors_.add(
+      gtsam::PriorFactor<gtsam::Vector3>(V(k), optimized_velocity_, v_noise));
+    ++priors_added;
+  }
+
+  if (priors_added > 0) {
+    RCLCPP_DEBUG(logger,
+      "[GraphManager] IMU velocity priors: %d added  w_imu=%.4f  sigma_v=%.4f m/s",
+      priors_added, w_imu, sigma_v);
   }
 }
 
