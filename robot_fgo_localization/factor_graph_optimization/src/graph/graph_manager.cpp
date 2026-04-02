@@ -311,6 +311,8 @@ bool GraphManager::step(
   } catch (const std::exception & e) {
     RCLCPP_ERROR(logger, "[GraphManager] iSAM2 update failed: %s", e.what());
     key_ = key_before_batch;   // roll back: next step must rebuild from a consistent state
+    last_consumed_odom_pose_  = pre_batch_pose;
+    last_consumed_odom_stamp_ = prev_consumed_stamp;
     new_factors_.resize(0);
     new_values_.clear();
     return false;
