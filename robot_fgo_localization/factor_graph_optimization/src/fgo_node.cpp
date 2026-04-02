@@ -98,7 +98,7 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
   }
   if (cfg_.enable_imu) {
     sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
-      cfg_.imu_topic, rclcpp::QoS(100),
+      cfg_.imu_topic, rclcpp::SensorDataQoS(),
       std::bind(&FgoNode::imuCallback, this, std::placeholders::_1));
   }
   if (cfg_.enable_lidar) {

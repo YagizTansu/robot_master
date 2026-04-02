@@ -46,7 +46,7 @@ GpsHandler::GpsHandler(const FgoConfig & cfg,
 
   sub_gps_ = node.create_subscription<sensor_msgs::msg::NavSatFix>(
     cfg_.gps_topic,
-    rclcpp::QoS(10),
+    rclcpp::SensorDataQoS(),
     [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
       this->onNavSatFix(msg);
     });

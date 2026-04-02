@@ -62,7 +62,7 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
 
   // ── Scan subscription ─────────────────────────────────────────────────────
   sub_scan_ = create_subscription<sensor_msgs::msg::LaserScan>(
-    cfg_.lidar_topic, rclcpp::QoS(10),
+    cfg_.lidar_topic, rclcpp::SensorDataQoS(),
     std::bind(&ScanMatcherNode::scanCallback, this, std::placeholders::_1));
 
   // ── FGO pose subscription (for NDT initial guess) ─────────────────────────
@@ -112,6 +112,14 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
 
 void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
+  // Drop scan if a match is already running — prevents queuing a second
+  // match before the first one finishes.
+  if (matching_in_progress_.exchange(true)) {
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000,
+      "[ScanMatcherNode] Match in progress — scan dropped.");
+    return;
+  }
+
   // Snapshot the current map under the mutex; lock released before the
   // expensive match() call so mapCallback is never blocked on matching.
   pcl::PointCloud<pcl::PointXYZ>::Ptr current_map;
@@ -120,6 +128,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     if (!map_received_) {
       RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
         "[ScanMatcherNode] Waiting for map...");
+      matching_in_progress_ = false;
       return;
     }
     current_map = map_cloud_;  // shared_ptr copy — O(1), data not copied
@@ -131,6 +140,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   if (!has_fgo_pose_) {
     RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
       "[ScanMatcherNode] Waiting for initial FGO pose...");
+    matching_in_progress_ = false;
     return;
   }
 
@@ -142,6 +152,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
       "[ScanMatcherNode] TF error in laser projection: %s", ex.what());
+    matching_in_progress_ = false;
     return;
   }
 
@@ -151,6 +162,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
 
   if (source_cloud->empty()) {
     RCLCPP_WARN(get_logger(), "[ScanMatcherNode] Empty scan cloud — skipping.");
+    matching_in_progress_ = false;
     return;
   }
 
@@ -166,65 +178,82 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     source_cloud = downsampled;
   }
 
-  // ── Run matching ──────────────────────────────────────────────────────────
+  // ── Capture stamp and build initial guess before launching thread ─────────
   const Eigen::Matrix4f initial_guess = buildInitialGuess();
-  Eigen::Matrix4f result_transform    = Eigen::Matrix4f::Identity();
+  const builtin_interfaces::msg::Time stamp = msg->header.stamp;
 
-  const double fitness_score =
-    matcher_->match(source_cloud, current_map, initial_guess, result_transform);
+  // ── Launch asynchronous match ─────────────────────────────────────────────
+  // All pre-match work is done on the callback thread (above). The expensive
+  // NDT/ICP call runs in a worker thread so the executor is never blocked.
+  std::thread([this, source_cloud, current_map, initial_guess, stamp]() {
+    Eigen::Matrix4f result_transform = Eigen::Matrix4f::Identity();
 
-  // ── Fitness gate ──────────────────────────────────────────────────────────
-  if (fitness_score > cfg_.fitness_score_threshold) {
-    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-      "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
-      fitness_score, cfg_.fitness_score_threshold);
-    return;
-  }
+    const double fitness_score =
+      matcher_->match(source_cloud, current_map, initial_guess, result_transform);
 
-  // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
-  const double scan_noise_scale = 1.0 + cfg_.fitness_noise_scale * fitness_score;
+    // Clear the flag immediately after matching so the next scan can proceed.
+    matching_in_progress_ = false;
 
-  // ── Enforce 2D constraints ────────────────────────────────────────────────
-  result_transform = enforce2D(result_transform);
+    // Always publish raw fitness score (accepted and rejected matches).
+    {
+      std_msgs::msg::Float64 fs_msg;
+      fs_msg.data = fitness_score;
+      pub_fitness_score_->publish(fs_msg);
+    }
 
-  // ── Extract pose from transform ───────────────────────────────────────────
-  const float tx  = result_transform(0, 3);
-  const float ty  = result_transform(1, 3);
+    // ── Fitness gate ──────────────────────────────────────────────────────
+    if (fitness_score > cfg_.fitness_score_threshold) {
+      RCLCPP_DEBUG(get_logger(),
+        "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
+        fitness_score, cfg_.fitness_score_threshold);
+      return;
+    }
 
-  // Extract yaw (roll and pitch are 0 after enforce2D)
-  Eigen::Matrix3f rot = result_transform.block<3, 3>(0, 0);
-  const float yaw = std::atan2(rot(1, 0), rot(0, 0));
+    // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
+    const double scan_noise_scale = 1.0 + cfg_.fitness_noise_scale * fitness_score;
 
-  // Convert to quaternion
-  Eigen::Quaternionf q =
-    Eigen::AngleAxisf(0.0f, Eigen::Vector3f::UnitX()) *
-    Eigen::AngleAxisf(0.0f, Eigen::Vector3f::UnitY()) *
-    Eigen::AngleAxisf(yaw,  Eigen::Vector3f::UnitZ());
-  q.normalize();
+    // ── Enforce 2D constraints ────────────────────────────────────────────
+    result_transform = enforce2D(result_transform);
 
-  // ── Build output message ──────────────────────────────────────────────────
-  geometry_msgs::msg::PoseWithCovarianceStamped out;
-  out.header.stamp    = msg->header.stamp;
-  out.header.frame_id = cfg_.map_frame;
+    // ── Extract pose from transform ───────────────────────────────────────
+    const float tx  = result_transform(0, 3);
+    const float ty  = result_transform(1, 3);
 
-  out.pose.pose.position.x    = static_cast<double>(tx);
-  out.pose.pose.position.y    = static_cast<double>(ty);
-  out.pose.pose.position.z    = 0.0;
-  out.pose.pose.orientation.x = static_cast<double>(q.x());
-  out.pose.pose.orientation.y = static_cast<double>(q.y());
-  out.pose.pose.orientation.z = static_cast<double>(q.z());
-  out.pose.pose.orientation.w = static_cast<double>(q.w());
+    // Extract yaw (roll and pitch are 0 after enforce2D)
+    Eigen::Matrix3f rot = result_transform.block<3, 3>(0, 0);
+    const float yaw = std::atan2(rot(1, 0), rot(0, 0));
 
-  // Diagonal covariance [x,y,z,roll,pitch,yaw] — adaptive scaling on planar DOF
-  out.pose.covariance.fill(0.0);
-  out.pose.covariance[0]  = std::pow(cfg_.noise_lidar_x   * scan_noise_scale, 2.0);
-  out.pose.covariance[7]  = std::pow(cfg_.noise_lidar_y   * scan_noise_scale, 2.0);
-  out.pose.covariance[14] = std::pow(cfg_.noise_lidar_z,                      2.0);
-  out.pose.covariance[21] = std::pow(cfg_.noise_lidar_roll,                   2.0);
-  out.pose.covariance[28] = std::pow(cfg_.noise_lidar_pitch,                  2.0);
-  out.pose.covariance[35] = std::pow(cfg_.noise_lidar_yaw * scan_noise_scale, 2.0);
+    // Convert to quaternion
+    Eigen::Quaternionf q =
+      Eigen::AngleAxisf(0.0f, Eigen::Vector3f::UnitX()) *
+      Eigen::AngleAxisf(0.0f, Eigen::Vector3f::UnitY()) *
+      Eigen::AngleAxisf(yaw,  Eigen::Vector3f::UnitZ());
+    q.normalize();
 
-  pub_scan_pose_->publish(out);
+    // ── Build output message ──────────────────────────────────────────────
+    geometry_msgs::msg::PoseWithCovarianceStamped out;
+    out.header.stamp    = stamp;
+    out.header.frame_id = cfg_.map_frame;
+
+    out.pose.pose.position.x    = static_cast<double>(tx);
+    out.pose.pose.position.y    = static_cast<double>(ty);
+    out.pose.pose.position.z    = 0.0;
+    out.pose.pose.orientation.x = static_cast<double>(q.x());
+    out.pose.pose.orientation.y = static_cast<double>(q.y());
+    out.pose.pose.orientation.z = static_cast<double>(q.z());
+    out.pose.pose.orientation.w = static_cast<double>(q.w());
+
+    // Diagonal covariance [x,y,z,roll,pitch,yaw] — adaptive scaling on planar DOF
+    out.pose.covariance.fill(0.0);
+    out.pose.covariance[0]  = std::pow(cfg_.noise_lidar_x   * scan_noise_scale, 2.0);
+    out.pose.covariance[7]  = std::pow(cfg_.noise_lidar_y   * scan_noise_scale, 2.0);
+    out.pose.covariance[14] = std::pow(cfg_.noise_lidar_z,                      2.0);
+    out.pose.covariance[21] = std::pow(cfg_.noise_lidar_roll,                   2.0);
+    out.pose.covariance[28] = std::pow(cfg_.noise_lidar_pitch,                  2.0);
+    out.pose.covariance[35] = std::pow(cfg_.noise_lidar_yaw * scan_noise_scale, 2.0);
+
+    pub_scan_pose_->publish(out);
+  }).detach();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
