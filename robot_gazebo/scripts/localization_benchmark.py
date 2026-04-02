@@ -31,8 +31,10 @@ Usage:
 
 import os
 import csv
+import curses
 import math
 import time
+import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
@@ -41,6 +43,12 @@ import message_filters
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
+
+
+# ── Dashboard colour thresholds ───────────────────────────────────────────────
+_POS_GOOD, _POS_WARN = 0.05, 0.15   # metres
+_YAW_GOOD, _YAW_WARN = 2.0,  5.0    # degrees
+_ATE_GOOD, _ATE_WARN = 0.05, 0.20   # metres
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -75,12 +83,20 @@ class LocalizationBenchmark(Node):
         self.declare_parameter("csv_output_dir",  "/tmp")
         self.declare_parameter("path_max_len",    5000)   # max poses kept in Path msg
         self.declare_parameter("sync_slop_sec",   0.15)   # ApproxTime tolerance [s]
+        self.declare_parameter("dashboard",        True)   # set False for headless/CI
 
         self._est_topic   = self.get_parameter("estimated_topic").get_parameter_value().string_value
         self._algo_name   = self.get_parameter("algorithm_name").get_parameter_value().string_value
         self._csv_dir     = self.get_parameter("csv_output_dir").get_parameter_value().string_value
         self._path_maxlen = self.get_parameter("path_max_len").get_parameter_value().integer_value
         self._sync_slop   = self.get_parameter("sync_slop_sec").get_parameter_value().double_value
+        self.dashboard    = self.get_parameter("dashboard").get_parameter_value().bool_value
+
+        # ── Live metric state (read by dashboard draw loop) ─────────────────
+        self.pos_err:   float = float("nan")
+        self.yaw_err:   float = float("nan")
+        self.ate_rmse:  float = float("nan")
+        self.last_update: float = 0.0   # monotonic time of last sync pair
 
         # ── State ──────────────────────────────────────────────────────────
         self._records: list[dict] = []           # for CSV + ATE
@@ -164,6 +180,12 @@ class LocalizationBenchmark(Node):
         self._sum_sq_err += pos_err_m ** 2
         self._n_samples  += 1
         ate_rmse = math.sqrt(self._sum_sq_err / self._n_samples)
+
+        # ── Update live dashboard state ──────────────────────────────────────
+        self.pos_err    = pos_err_m
+        self.yaw_err    = yaw_err_deg
+        self.ate_rmse   = ate_rmse
+        self.last_update = time.monotonic()
 
         # ── Publish metrics ──────────────────────────────────────────────────
         self._pub_pos_err.publish(Float64(data=pos_err_m))
@@ -261,19 +283,141 @@ class LocalizationBenchmark(Node):
         )
 
 
+# ── Dashboard helpers ─────────────────────────────────────────────────────────
+
+def _colour(value: float, good: float, warn: float) -> int:
+    if math.isnan(value):
+        return curses.color_pair(4)
+    if value <= good:
+        return curses.color_pair(1)   # green
+    if value <= warn:
+        return curses.color_pair(2)   # yellow
+    return curses.color_pair(3)       # red
+
+
+def _bar(value: float, max_val: float, width: int = 16) -> str:
+    if math.isnan(value) or max_val <= 0:
+        return "[" + "?" * width + "]"
+    filled = int(min(value / max_val, 1.0) * width)
+    return "[" + "█" * filled + "░" * (width - filled) + "]"
+
+
+def _draw(stdscr, node: LocalizationBenchmark, stop_event: threading.Event) -> None:
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_GREEN,  -1)
+    curses.init_pair(2, curses.COLOR_YELLOW, -1)
+    curses.init_pair(3, curses.COLOR_RED,    -1)
+    curses.init_pair(4, curses.COLOR_WHITE,  -1)
+    curses.init_pair(5, curses.COLOR_CYAN,   -1)
+
+    TITLE = curses.A_BOLD | curses.color_pair(5)
+    BOLD  = curses.A_BOLD
+    DIM   = curses.color_pair(4)
+
+    while not stop_event.is_set():
+        ch = stdscr.getch()
+        if ch in (ord("q"), ord("Q")):
+            stop_event.set()
+            break
+
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        box_w = min(58, w - 2)
+        bx    = (w - box_w) // 2
+        by    = max(0, (h - 14) // 2)
+        sep   = "─" * (box_w - 2)
+
+        def put(row, col, txt, attr=curses.A_NORMAL):
+            try:
+                stdscr.addstr(by + row, bx + col, txt, attr)
+            except curses.error:
+                pass
+
+        # border
+        put(0,  0, "╔" + sep + "╗", TITLE)
+        title = f"  BENCHMARK  ─  {node._algo_name}  "
+        put(1,  0, "║" + title.center(box_w - 2) + "║", TITLE)
+        put(2,  0, "╠" + sep + "╣", TITLE)
+
+        # metric rows
+        for row, label, val, unit, dec, gd, wd, mx in [
+            (3, "Position Error", node.pos_err,  "m",  3, _POS_GOOD, _POS_WARN, 0.30),
+            (4, "Yaw Error",      node.yaw_err,  "°",  2, _YAW_GOOD, _YAW_WARN, 10.0),
+            (5, "ATE RMSE",       node.ate_rmse, "m",  4, _ATE_GOOD, _ATE_WARN, 0.30),
+        ]:
+            col_attr = _colour(val, gd, wd)
+            val_str  = f"{'—':>8}" if math.isnan(val) else f"{val:>8.{dec}f}"
+            bar      = _bar(val, mx)
+            put(row, 0, "║", TITLE)
+            put(row, 2, f"{label:<18}", BOLD)
+            put(row, 20, f"{val_str} {unit:<2}", col_attr | BOLD)
+            put(row, 32, f"  {bar}", col_attr)
+            put(row, box_w - 1, "║", TITLE)
+
+        put(6, 0, "╠" + sep + "╣", TITLE)
+
+        # samples + last update
+        put(7, 0, "║", TITLE)
+        put(7, 2, f"Samples : {node._n_samples:>8}", BOLD)
+        put(7, box_w - 1, "║", TITLE)
+
+        put(8, 0, "║", TITLE)
+        if node.last_update > 0.0:
+            age = time.monotonic() - node.last_update
+            age_s   = f"{age:.1f} s ago"
+            age_atr = curses.color_pair(1) if age < 1.0 else \
+                      curses.color_pair(2) if age < 5.0 else \
+                      curses.color_pair(3)
+        else:
+            age_s, age_atr = "waiting for data…", DIM
+        put(8, 2, "Last msg: ", BOLD)
+        put(8, 12, f"{age_s:<{box_w - 15}}", age_atr)
+        put(8, box_w - 1, "║", TITLE)
+
+        put(9,  0, "╠" + sep + "╣", TITLE)
+        put(10, 0, "║", TITLE)
+        put(10, 3,  "● Good ", curses.color_pair(1) | BOLD)
+        put(10, 11, "● Warn ", curses.color_pair(2) | BOLD)
+        put(10, 19, "● Bad  ", curses.color_pair(3) | BOLD)
+        put(10, 30, "press Q to quit", DIM)
+        put(10, box_w - 1, "║", TITLE)
+        put(11, 0, "╚" + sep + "╝", TITLE)
+
+        stdscr.refresh()
+        time.sleep(0.1)   # 10 Hz
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = LocalizationBenchmark()
+
+    stop_event = threading.Event()
+
+    # ROS spin in background thread
+    spin_thread = threading.Thread(
+        target=rclpy.spin, args=(node,), daemon=True
+    )
+    spin_thread.start()
+
     try:
-        rclpy.spin(node)
+        if node.dashboard:
+            curses.wrapper(_draw, node, stop_event)
+        else:
+            # Headless: block until Ctrl-C
+            spin_thread.join()
     except KeyboardInterrupt:
         pass
     finally:
+        stop_event.set()
         node.save_csv()
         node.destroy_node()
         rclpy.try_shutdown()
+        spin_thread.join(timeout=2.0)
 
 
 if __name__ == "__main__":
