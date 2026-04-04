@@ -17,6 +17,7 @@
 #include <string>
 #include <memory>
 #include <chrono>
+#include <cmath>
 
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -39,11 +40,25 @@ public:
     this->declare_parameter<std::string>("world_name", "default");
     this->declare_parameter<std::string>("map_frame", "map");
     this->declare_parameter<std::string>("ground_truth_child_frame", "ground_truth_base_link");
+    // Offset from Gazebo world frame to the ROS map frame (translation + yaw).
+    // The SLAM map frame origin is wherever the robot was in the Gazebo world
+    // when the mapping session started.  If that starting position was NOT at
+    // Gazebo world (0, 0), the two frames differ by exactly that offset.
+    // Set these to the robot's Gazebo world (x, y) position at SLAM-start
+    // (equivalently: observe where /fgo/odometry settles when the robot is at
+    // Gazebo world origin after NDT locks on; that reported position is the
+    // offset you need here, with opposite sign).
+    this->declare_parameter<double>("world_to_map_offset_x",   0.0);
+    this->declare_parameter<double>("world_to_map_offset_y",   0.0);
+    this->declare_parameter<double>("world_to_map_offset_yaw", 0.0);
 
     robot_name_   = this->get_parameter("robot_name").as_string();
     world_name_   = this->get_parameter("world_name").as_string();
     map_frame_    = this->get_parameter("map_frame").as_string();
     child_frame_  = this->get_parameter("ground_truth_child_frame").as_string();
+    off_x_   = this->get_parameter("world_to_map_offset_x").as_double();
+    off_y_   = this->get_parameter("world_to_map_offset_y").as_double();
+    off_yaw_ = this->get_parameter("world_to_map_offset_yaw").as_double();
 
     // ── ROS publishers ──────────────────────────────────────────────────────
     odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(
@@ -119,13 +134,40 @@ private:
       odom.header.frame_id = map_frame_;
       odom.child_frame_id  = child_frame_;
 
-      odom.pose.pose.position.x    = pos.x();
-      odom.pose.pose.position.y    = pos.y();
+      // Apply world→map frame offset so the published pose is in the same
+      // coordinate system as /fgo/odometry (the ROS map frame).
+      // T_map_robot = T_world_map^{-1} * T_world_robot
+      // For a pure 2-D offset (tx, ty, yaw) the inverse is: (-tx*cos(yaw)-ty*sin(yaw),
+      // tx*sin(yaw)-ty*cos(yaw), -yaw), but since Gazebo world and map frame have the
+      // same Z-up orientation (yaw offset = 0 by convention for a correctly built map),
+      // this simplifies to a plain XY translation:
+      //   x_map = cos(off_yaw)*(x_world - off_x) + sin(off_yaw)*(y_world - off_y)
+      //   y_map = -sin(off_yaw)*(x_world - off_x) + cos(off_yaw)*(y_world - off_y)
+      const double cos_yaw = std::cos(off_yaw_);
+      const double sin_yaw = std::sin(off_yaw_);
+      const double dx = pos.x() - off_x_;
+      const double dy = pos.y() - off_y_;
+      const double map_x =  cos_yaw * dx + sin_yaw * dy;
+      const double map_y = -sin_yaw * dx + cos_yaw * dy;
+
+      // Yaw in world frame, corrected by map offset yaw
+      // (Extract yaw from quaternion, subtract offset, rebuild quaternion)
+      const double gz_qw = ori.w(), gz_qx = ori.x(), gz_qy = ori.y(), gz_qz = ori.z();
+      const double world_yaw = std::atan2(
+        2.0 * (gz_qw * gz_qz + gz_qx * gz_qy),
+        1.0 - 2.0 * (gz_qy * gz_qy + gz_qz * gz_qz));
+      const double map_yaw = world_yaw - off_yaw_;
+      const double half = map_yaw * 0.5;
+      const double map_qw =  std::cos(half);
+      const double map_qz =  std::sin(half);
+
+      odom.pose.pose.position.x    = map_x;
+      odom.pose.pose.position.y    = map_y;
       odom.pose.pose.position.z    = pos.z();
-      odom.pose.pose.orientation.x = ori.x();
-      odom.pose.pose.orientation.y = ori.y();
-      odom.pose.pose.orientation.z = ori.z();
-      odom.pose.pose.orientation.w = ori.w();
+      odom.pose.pose.orientation.x = 0.0;
+      odom.pose.pose.orientation.y = 0.0;
+      odom.pose.pose.orientation.z = map_qz;
+      odom.pose.pose.orientation.w = map_qw;
       // All covariances are zero → perfect ground truth
       odom.pose.covariance.fill(0.0);
       odom.twist.covariance.fill(0.0);
@@ -150,6 +192,9 @@ private:
   std::string world_name_;
   std::string map_frame_;
   std::string child_frame_;
+  double off_x_{};
+  double off_y_{};
+  double off_yaw_{};
 
   gz::transport::Node gz_node_;
 
