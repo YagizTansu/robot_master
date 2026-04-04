@@ -309,12 +309,18 @@ bool GraphManager::step(
     // removes a key from iSAM2 but the bayes-factor chain is still intact.
     trimOldestKeys(logger);
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(logger, "[GraphManager] iSAM2 update failed: %s", e.what());
-    key_ = key_before_batch;   // roll back: next step must rebuild from a consistent state
-    last_consumed_odom_pose_  = pre_batch_pose;
-    last_consumed_odom_stamp_ = prev_consumed_stamp;
-    new_factors_.resize(0);
-    new_values_.clear();
+    RCLCPP_ERROR(logger,
+      "[GraphManager] iSAM2 update failed: %s. "
+      "Reinitializing graph (partial key rollback is unsafe: if isam2_->update() "
+      "succeeded before the exception, X(%d..%d) are already committed to the "
+      "Bayes tree — re-inserting them on the next step() would cause "
+      "ValuesKeyAlreadyExists and an irrecoverable failure loop).",
+      e.what(), key_before_batch + 1, key_);
+    // Full reinitialization is the only consistent recovery.
+    // reinit() resets: iSAM2, key_, oldest_kept_key_, last_consumed_odom_pose_,
+    // last_consumed_odom_stamp_, optimized_velocity_, optimized_bias_,
+    // new_factors_, new_values_, and re-inserts X(0)/V(0)/B(0) priors.
+    reinit(cfg_);
     return false;
   }
 
