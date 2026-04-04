@@ -178,6 +178,28 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     source_cloud = downsampled;
   }
 
+  // ── Normalise source cloud Z to the map plane ─────────────────────────────
+  // transformLaserScanToPointCloud("base_footprint") preserves the sensor's
+  // physical height above base_footprint.  For the SICK S30B on this robot:
+  //   base_footprint → base_link   z = 0.081572 m
+  //   base_link      → sick_lidar  z = 0.195722 m
+  //   total lidar Z above base_footprint ≈ 0.277 m
+  // The map cloud is built at map_z_height = 0.0 m.  With ndt_resolution =
+  // 0.15 m the Z voxel buckets never overlap: source is in [0.15, 0.30) while
+  // the target is in [0, 0.15).  This gives zero occupancy overlap and NDT
+  // converges to a garbage transform with a fitness score above the rejection
+  // threshold, so every scan match is discarded.
+  // Forcing all source points to the map Z plane fixes the voxel overlap and
+  // is correct for a 2-D horizontal scan: the walls extend in X-Y regardless
+  // of height, so matching the projected X-Y scan against the projected map
+  // cloud is geometrically equivalent.
+  {
+    const float map_z = static_cast<float>(cfg_.map_z_height);
+    for (auto & pt : source_cloud->points) {
+      pt.z = map_z;
+    }
+  }
+
   // ── Capture stamp and build initial guess before launching thread ─────────
   const Eigen::Matrix4f initial_guess = buildInitialGuess();
   const builtin_interfaces::msg::Time stamp = msg->header.stamp;
