@@ -100,8 +100,31 @@ class LocalizationBenchmark(Node):
 
         # ── State ──────────────────────────────────────────────────────────
         self._records: list[dict] = []           # for CSV + ATE
-        self._sum_sq_err: float  = 0.0           # running Σ(pos_err²)
+        self._sum_sq_err: float  = 0.0           # running Σ(pos_err²) — calibrated
         self._n_samples: int     = 0
+
+        # ── First-sample calibration ────────────────────────────────────────
+        # The Gazebo world frame and the ROS map frame share the same frame_id
+        # ("map"), but their origins may differ by a constant offset because
+        # the slam_toolbox map was built with the robot at a non-zero Gazebo
+        # world position.  The result: GT reports (0, 0) at spawn while FGO
+        # (after NDT correction) reports the true map-frame position, showing
+        # a spurious constant error in the benchmark.
+        #
+        # We absorb this by recording the initial FGO-vs-GT residual on the
+        # VERY FIRST synchronised pair and subtracting it from all subsequent
+        # residuals.  This converts the benchmark from measuring "absolute
+        # position in potentially-misaligned frames" to measuring "how well
+        # FGO tracks ground-truth motion relative to the starting pose" — which
+        # is the actually meaningful localisation quality metric.
+        #
+        # The uncalibrated (raw) error is also stored in the CSV so the frame
+        # offset can be read off from the first few rows and, if desired, be
+        # applied to the ground_truth_publisher's world_to_map_offset_x/y
+        # parameters to permanently align the two frames.
+        self._calib_dx:   float | None = None   # (x_est - x_gt) at t=0
+        self._calib_dy:   float | None = None   # (y_est - y_gt) at t=0
+        self._calib_dyaw: float | None = None   # wrap(yaw_est - yaw_gt) at t=0
 
         # ── Subscribers (message_filters for time sync) ─────────────────────
         gt_qos  = QoSProfile(depth=50,
@@ -170,10 +193,32 @@ class LocalizationBenchmark(Node):
         yaw_est = quat_to_yaw(est_msg.pose.pose.orientation)
 
         # ── Error metrics ────────────────────────────────────────────────────
-        dx = xe - xg
-        dy = ye - yg
+        dx_raw = xe - xg
+        dy_raw = ye - yg
+        raw_pos_err_m   = math.sqrt(dx_raw * dx_raw + dy_raw * dy_raw)
+        raw_yaw_err_rad = abs(wrap_angle(yaw_est - yaw_gt))
+        raw_yaw_err_deg = math.degrees(raw_yaw_err_rad)
+
+        # ── First-pair calibration ────────────────────────────────────────
+        # Absorb the constant world→map frame offset into the baseline so
+        # the reported error reflects FGO's tracking quality, not the
+        # accidental alignment of the two starting positions.
+        if self._calib_dx is None:
+            self._calib_dx   = dx_raw
+            self._calib_dy   = dy_raw
+            self._calib_dyaw = wrap_angle(yaw_est - yaw_gt)
+            self.get_logger().info(
+                f"[{self._algo_name}] Frame calibration captured: "
+                f"Δx={self._calib_dx:.4f} m  Δy={self._calib_dy:.4f} m  "
+                f"Δyaw={math.degrees(self._calib_dyaw):.2f}°\n"
+                f"  (non-zero = Gazebo world ≠ ROS map frame origin; "
+                f"set world_to_map_offset_x/y in ground_truth_publisher to fix permanently)"
+            )
+
+        dx = dx_raw - self._calib_dx
+        dy = dy_raw - self._calib_dy
         pos_err_m    = math.sqrt(dx * dx + dy * dy)
-        yaw_err_rad  = abs(wrap_angle(yaw_est - yaw_gt))
+        yaw_err_rad  = abs(wrap_angle((yaw_est - yaw_gt) - self._calib_dyaw))
         yaw_err_deg  = math.degrees(yaw_err_rad)
 
         # ── Running ATE (RMSE of position error) ────────────────────────────
@@ -200,16 +245,20 @@ class LocalizationBenchmark(Node):
 
         # ── Record for CSV ───────────────────────────────────────────────────
         self._records.append({
-            "timestamp":    t,
-            "x_gt":         xg,
-            "y_gt":         yg,
-            "yaw_gt_deg":   math.degrees(yaw_gt),
-            "x_est":        xe,
-            "y_est":        ye,
-            "yaw_est_deg":  math.degrees(yaw_est),
-            "pos_err_m":    pos_err_m,
-            "yaw_err_deg":  yaw_err_deg,
-            "ate_rmse_m":   ate_rmse,
+            "timestamp":        t,
+            "x_gt":             xg,
+            "y_gt":             yg,
+            "yaw_gt_deg":       math.degrees(yaw_gt),
+            "x_est":            xe,
+            "y_est":            ye,
+            "yaw_est_deg":      math.degrees(yaw_est),
+            # Calibrated (frame-offset-corrected) metrics — use these for analysis
+            "pos_err_m":        pos_err_m,
+            "yaw_err_deg":      yaw_err_deg,
+            "ate_rmse_m":       ate_rmse,
+            # Raw (uncalibrated) metrics — first few rows reveal the frame offset
+            "raw_pos_err_m":    raw_pos_err_m,
+            "raw_yaw_err_deg":  raw_yaw_err_deg,
         })
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -237,7 +286,8 @@ class LocalizationBenchmark(Node):
         last = self._records[-1]
         self.get_logger().info(
             f"[{self._algo_name}] n={self._n_samples:5d} | "
-            f"pos_err={last['pos_err_m']:.3f} m | "
+            f"pos_err={last['pos_err_m']:.3f} m (cal) | "
+            f"raw={last['raw_pos_err_m']:.3f} m | "
             f"yaw_err={last['yaw_err_deg']:.2f}° | "
             f"ATE RMSE={ate:.3f} m"
         )
@@ -257,7 +307,10 @@ class LocalizationBenchmark(Node):
             "timestamp",
             "x_gt", "y_gt", "yaw_gt_deg",
             "x_est", "y_est", "yaw_est_deg",
+            # calibrated (frame-offset-corrected) — primary metrics
             "pos_err_m", "yaw_err_deg", "ate_rmse_m",
+            # raw (not frame-corrected) — useful for determining the offset value
+            "raw_pos_err_m", "raw_yaw_err_deg",
         ]
         with open(fname, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -275,9 +328,10 @@ class LocalizationBenchmark(Node):
             f"  BENCHMARK SUMMARY — {self._algo_name}\n"
             f"{'='*60}\n"
             f"  Samples     : {len(self._records)}\n"
-            f"  ATE RMSE    : {ate:.4f} m\n"
-            f"  Mean error  : {mean_e:.4f} m\n"
-            f"  Max error   : {max_e:.4f} m\n"
+            f"  ATE RMSE    : {ate:.4f} m  (calibrated)\n"
+            f"  Mean error  : {mean_e:.4f} m  (calibrated)\n"
+            f"  Max error   : {max_e:.4f} m  (calibrated)\n"
+            f"  Frame offset: Δx={self._calib_dx:.4f} m  Δy={self._calib_dy:.4f} m\n"
             f"  CSV saved   : {fname}\n"
             f"{'='*60}"
         )
