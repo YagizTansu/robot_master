@@ -66,6 +66,25 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 # Disable map→odom TF — slam_toolbox owns this during mapping.
                 'tf.publish_map_to_odom': False,
+                # CRITICAL: Disable LiDAR scan matching during mapping.
+                # scan_matcher_node subscribes to /map published by slam_toolbox.
+                # If enabled, FGO matches against slam_toolbox's incomplete/noisy
+                # map → bad scan_match_pose factors → noisy odom→base_footprint TF
+                # → slam_toolbox builds a worse map → worse NDT → feedback spiral.
+                # During mapping FGO provides clean TF from odom + IMU only.
+                # LiDAR is re-enabled in localization.launch.py (against a finished map).
+                'sensors.enable_lidar': False,
+                # Disable IMU preintegration during mapping.
+                # The only job of FGO here is publishing odom→base_footprint TF
+                # (done in odomCallback, unrelated to the graph optimization).
+                # Running full IMU preintegration wastes CPU that slam_toolbox needs
+                # for its Karto correlative scan matcher.
+                'sensors.enable_imu': False,
+                # Reduce optimization timer rate — odom→base_footprint TF is
+                # published at the /odometry subscription rate (50 Hz), not at
+                # the optimization rate, so lowering this has no impact on TF
+                # quality but saves CPU during mapping.
+                'node.optimization_rate_hz': 10.0,
             },
         ],
     )
