@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pcl/registration/ndt.h>
+
 #include "factor_graph_optimization/lidar/scan_matcher_interface.hpp"
 
 namespace factor_graph_optimization
@@ -8,10 +10,9 @@ namespace factor_graph_optimization
 /**
  * @brief NDT (Normal Distributions Transform) scan matcher.
  *
- * Wraps pcl::NormalDistributionsTransform.  All tuning parameters are
- * supplied at construction time and are immutable afterwards, ensuring
- * thread-safety for the match() call (provided the caller serialises its
- * own pcl::NdtRegistration instance — PCL NDT is not re-entrant).
+ * Wraps pcl::NormalDistributionsTransform.  The target cloud's NDT voxel grid
+ * is built once in setTarget() and reused for all subsequent match() calls,
+ * avoiding the expensive rebuild on every scan.
  */
 class NdtMatcher : public IScanMatcher
 {
@@ -30,18 +31,17 @@ public:
              double ndt_resolution,
              double ndt_step_size = 0.1);
 
+  void setTarget(const pcl::PointCloud<pcl::PointXYZ>::Ptr & target) override;
+  bool hasTarget() const override { return has_target_; }
+
   double match(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr & target,
     const Eigen::Matrix4f & initial_guess,
     Eigen::Matrix4f & result_transform) override;
 
 private:
-  int    max_iterations_;
-  double max_correspondence_dist_;
-  double transformation_epsilon_;
-  double ndt_resolution_;
-  double ndt_step_size_;
+  pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt_;
+  bool has_target_{false};
 };
 
 }  // namespace factor_graph_optimization

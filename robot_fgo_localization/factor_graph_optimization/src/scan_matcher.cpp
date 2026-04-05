@@ -1,7 +1,6 @@
 #include "factor_graph_optimization/scan_matcher.hpp"
 
 #include <cmath>
-#include <thread>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
@@ -80,6 +79,25 @@ ScanMatcherNode::ScanMatcherNode(const rclcpp::NodeOptions & options)
   RCLCPP_INFO(get_logger(),
     "[ScanMatcherNode] Started. type=%s lidar_frame=%s",
     cfg_.scan_matcher_type.c_str(), cfg_.lidar_frame.c_str());
+
+  // ── Start persistent worker thread for async scan matching ────────────────
+  worker_thread_ = std::thread(&ScanMatcherNode::workerLoop, this);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Destruction — join the worker thread
+// ═════════════════════════════════════════════════════════════════════════════
+
+ScanMatcherNode::~ScanMatcherNode()
+{
+  {
+    std::lock_guard<std::mutex> lk(job_mutex_);
+    shutdown_ = true;
+  }
+  job_cv_.notify_one();
+  if (worker_thread_.joinable()) {
+    worker_thread_.join();
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -94,6 +112,10 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
 
   // Build the cloud outside the lock — this is the expensive part.
   auto new_cloud = map_builder_->build(*msg);
+
+  // Cache the target cloud inside the matcher (builds NDT voxel grid / ICP
+  // KD-tree once). This avoids the expensive rebuild on every scan match.
+  matcher_->setTarget(new_cloud);
 
   {
     std::lock_guard<std::mutex> lk(map_mutex_);
@@ -122,16 +144,14 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
 
   // Snapshot the current map under the mutex; lock released before the
   // expensive match() call so mapCallback is never blocked on matching.
-  pcl::PointCloud<pcl::PointXYZ>::Ptr current_map;
   {
     std::lock_guard<std::mutex> lk(map_mutex_);
-    if (!map_received_) {
+    if (!map_received_ || !matcher_->hasTarget()) {
       RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
         "[ScanMatcherNode] Waiting for map...");
       matching_in_progress_ = false;
       return;
     }
-    current_map = map_cloud_;  // shared_ptr copy — O(1), data not copied
   }
 
   // Guard: do not run matching until the FGO node has published an initial pose.
@@ -200,18 +220,42 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     }
   }
 
-  // ── Capture stamp and build initial guess before launching thread ─────────
+  // ── Capture stamp and build initial guess before enqueuing job ──────────
   const Eigen::Matrix4f initial_guess = buildInitialGuess();
   const builtin_interfaces::msg::Time stamp = msg->header.stamp;
 
-  // ── Launch asynchronous match ─────────────────────────────────────────────
+  // ── Enqueue match job for the persistent worker thread ────────────────────
   // All pre-match work is done on the callback thread (above). The expensive
-  // NDT/ICP call runs in a worker thread so the executor is never blocked.
-  std::thread([this, source_cloud, current_map, initial_guess, stamp]() {
+  // NDT/ICP call runs in the worker thread so the executor is never blocked.
+  {
+    std::lock_guard<std::mutex> lk(job_mutex_);
+    job_queue_.push(MatchJob{source_cloud, initial_guess, stamp});
+  }
+  job_cv_.notify_one();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Worker thread — processes match jobs from the queue
+// ═════════════════════════════════════════════════════════════════════════════
+
+void ScanMatcherNode::workerLoop()
+{
+  while (true) {
+    MatchJob job;
+    {
+      std::unique_lock<std::mutex> lk(job_mutex_);
+      job_cv_.wait(lk, [this]() { return shutdown_ || !job_queue_.empty(); });
+      if (shutdown_ && job_queue_.empty()) {
+        return;
+      }
+      job = std::move(job_queue_.front());
+      job_queue_.pop();
+    }
+
     Eigen::Matrix4f result_transform = Eigen::Matrix4f::Identity();
 
     const double fitness_score =
-      matcher_->match(source_cloud, current_map, initial_guess, result_transform);
+      matcher_->match(job.source, job.initial_guess, result_transform);
 
     // Clear the flag immediately after matching so the next scan can proceed.
     matching_in_progress_ = false;
@@ -228,7 +272,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
       RCLCPP_DEBUG(get_logger(),
         "[ScanMatcherNode] Scan match discarded: fitness=%.3f > threshold=%.3f",
         fitness_score, cfg_.fitness_score_threshold);
-      return;
+      continue;
     }
 
     // Adaptive noise: sigma *= (1 + fitness_noise_scale * fitness_score)
@@ -254,7 +298,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
 
     // ── Build output message ──────────────────────────────────────────────
     geometry_msgs::msg::PoseWithCovarianceStamped out;
-    out.header.stamp    = stamp;
+    out.header.stamp    = job.stamp;
     out.header.frame_id = cfg_.map_frame;
 
     out.pose.pose.position.x    = static_cast<double>(tx);
@@ -275,7 +319,7 @@ void ScanMatcherNode::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr 
     out.pose.covariance[35] = std::pow(cfg_.noise_lidar_yaw * scan_noise_scale, 2.0);
 
     pub_scan_pose_->publish(out);
-  }).detach();
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

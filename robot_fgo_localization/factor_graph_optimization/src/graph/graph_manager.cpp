@@ -320,6 +320,21 @@ bool GraphManager::step(
     // reinit() resets: iSAM2, key_, oldest_kept_key_, last_consumed_odom_pose_,
     // last_consumed_odom_stamp_, optimized_velocity_, optimized_bias_,
     // new_factors_, new_values_, and re-inserts X(0)/V(0)/B(0) priors.
+    //
+    // Preserve the last known optimised pose so the graph restarts at the
+    // robot's actual position rather than the configured origin.  This
+    // prevents a dangerous localization jump to init_x/y/yaw after a
+    // transient iSAM2 failure.
+    cfg_.init_x     = optimized_pose_.x();
+    cfg_.init_y     = optimized_pose_.y();
+    cfg_.init_z     = optimized_pose_.z();
+    cfg_.init_roll  = optimized_pose_.rotation().roll();
+    cfg_.init_pitch = optimized_pose_.rotation().pitch();
+    cfg_.init_yaw   = optimized_pose_.rotation().yaw();
+    RCLCPP_WARN(logger,
+      "[GraphManager] Reinitializing at last known pose (%.2f, %.2f, yaw=%.2f) "
+      "instead of configured origin.",
+      cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
     reinit(cfg_);
     return false;
   }
