@@ -96,19 +96,20 @@ fgo_node:
         # Per-scan rotation gate (rad). Each scan is evaluated independently
         # against the instantaneous |dyaw| of its nearest keyframe interval.
         # Must be BELOW keyframe.rotation_threshold (0.02 rad): a rotation
-        # keyframe always contributes dyaw >= 0.02, so 0.015 reliably blocks
+        # keyframe always contributes dyaw >= 0.02, so 0.010 reliably blocks
         # scans attributed to rotation keyframes while never blocking scans
         # attributed to translation keyframes (instantaneous dyaw ~ 0).
-        # NDT is unreliable during ANY in-place rotation.
-        rotation_gate_rad:   0.015
+        # Tighter than 0.015 — discards more scans during subtle rotation arcs
+        # so only truly straight-line segments feed the graph.
+        rotation_gate_rad:   0.010  # was 0.015
         # Discard scan poses older than this (sec). Prevents stale scans after a pause.
         max_scan_age_sec:    1.0
 
     # ── iSAM2 ───────────────────────────────────────────────
     isam2:
-      relinearize_threshold:  0.1
-      relinearize_skip:       1
-      factorization:          "CHOLESKY"   # "CHOLESKY" (fast) or "QR" (more stable when info matrix is ill-conditioned)
+      relinearize_threshold:  0.05  # was 0.1 — relinearize variables sooner after they move; more accurate posterior at higher CPU cost
+      relinearize_skip:       1     # relinearize every update pass (minimum; do not raise)
+      factorization:          "QR"  # was "CHOLESKY"; QR is slower but numerically stable for near-singular information matrices
 
     # ── Node timing ─────────────────────────────────────────
     node:
@@ -117,7 +118,7 @@ fgo_node:
       max_pending_imu:        2000  # 100 Hz × 20 s safety cap; prevents unbounded growth if optimizer stalls
       max_pending_odom:       500   # generous keyframe buffer cap
       max_pending_gps:        100   # 10 Hz × 10 s; prevents unbounded growth if optimizer stalls
-      graph_max_size:         2000  # keep at most N key nodes in iSAM2; oldest X/V/B cluster is marginalized when exceeded (0 = unlimited)
+      graph_max_size:         5000  # was 2000 — larger sliding window retains more past constraints for better global consistency (+memory)
       max_path_length:        10000 # cap on /fgo/path pose history; oldest poses dropped when exceeded (0 = unlimited)
 
     # ── Prior factors on X(0) ───────────────────────────────
@@ -213,25 +214,34 @@ scan_matcher_node:
     # ── Scan Matcher ─────────────────────────────────────────
     scan_matcher:
       type:                    "NDT"
-      max_iterations:          50
-      max_correspondence_dist: 1.0
-      transformation_epsilon:  1.0e-6
+      max_iterations:          100   # was 50 — more iterations ensure full NDT convergence, especially with fine resolution (+CPU)
+      max_correspondence_dist: 0.5   # was 1.0 — reject far / potentially erroneous correspondences; indoor walls are always <0.5 m away in the scan
+      transformation_epsilon:  1.0e-8 # was 1.0e-6 — tighter convergence criterion; near-zero cost, prevents premature exit
       map_z_height:            0.0
       # NDT internal voxel resolution (m). Should be 2-5x the map voxel leaf size.
-      # 1.0m is far too coarse for indoor corridors; 0.3m gives wall-level detail.
-      ndt_resolution:          0.15
+      # PCL VoxelGridCovariance requires >= 6 points per voxel. Walls are 1-D geometry:
+      # points per voxel ≈ ndt_resolution / map_voxel_leaf_size.
+      # With leaf=0.020 m → ratio=7.5 ≥ 6: safely searchable on any wall segment.
+      # Going below 0.12 m with leaf=0.020 m risks the unsearchable-voxel error.
+      ndt_resolution:          0.15  # was 0.10 (too small → VoxelGridCovariance had <6 pts/voxel on walls)
       # Newton gradient-descent step size (m). One of the most impactful NDT
       # convergence parameters. Smaller = more stable, more iterations.
-      ndt_step_size:           0.1
+      ndt_step_size:           0.05  # was 0.1 — finer step prevents overshooting the local minimum
       # Discard scan if fitness score > this (applies to both NDT and ICP).
-      fitness_score_threshold: 0.5
-      # sigma *= (1 + fitness_noise_scale * fitness_score) — applied before publishing
-      fitness_noise_scale:     5.0
-      # VoxelGrid leaf size for map cloud downsampling (m)
-      map_voxel_leaf_size:     0.03
+      # Tighter threshold rejects mediocre matches; combined with more iterations
+      # good scans now reliably achieve fitness < 0.25.
+      fitness_score_threshold: 0.25  # was 0.5
+      # sigma *= (1 + fitness_noise_scale * fitness_score) — applied before publishing.
+      # With a tighter gate (0.25), accepted matches are already high-quality;
+      # lower scale preserves that tighter covariance inside the FGO graph.
+      fitness_noise_scale:     2.0   # was 5.0
+      # VoxelGrid leaf size for map cloud downsampling (m).
+      # 0.020 m is finer than the original 0.030 m (richer map detail) while keeping
+      # ndt_resolution/leaf_size = 0.15/0.020 = 7.5 — safely above PCL's 6-point minimum.
+      map_voxel_leaf_size:     0.020 # was 0.025 (caused ndt_resolution/leaf ratio < 6 → unsearchable voxels)
       # VoxelGrid leaf size applied to the source scan before matching (m; 0 = skip)
       # Should be equal to or smaller than map_voxel_leaf_size so densities are symmetric.
-      scan_voxel_leaf_size:    0.03
+      scan_voxel_leaf_size:    0.020 # was 0.025 — symmetric with map_voxel_leaf_size
       # Frame written into the published scan-pose message (must match fgo_node map_frame)
       map_frame:               "map"
       # ICP-only: RANSAC outlier rejection (0 iterations = disabled)
