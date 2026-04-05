@@ -1,8 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <string>
 #include <thread>
 
@@ -47,6 +50,7 @@ class ScanMatcherNode : public rclcpp::Node
 {
 public:
   explicit ScanMatcherNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  ~ScanMatcherNode() override;
 
 private:
   // ── Callbacks ─────────────────────────────────────────────────────────────
@@ -92,9 +96,23 @@ private:
   mutable std::mutex fgo_pose_mutex_;  ///< guards current_fgo_pose_ and has_fgo_pose_
 
   // ── Async scan matching ───────────────────────────────────────────────────
-  // Set to true while a worker thread is running match(); prevents the executor
-  // thread from queuing a second match before the first one finishes.
-  std::atomic<bool> matching_in_progress_{false};
+  // A single persistent worker thread processes match jobs from a queue.
+  // The executor thread pushes jobs; the worker pops and runs them.
+  // On destruction the queue is drained and the thread is joined.
+  struct MatchJob {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr source;
+    Eigen::Matrix4f                     initial_guess;
+    builtin_interfaces::msg::Time       stamp;
+  };
+  std::thread              worker_thread_;
+  std::mutex               job_mutex_;
+  std::condition_variable  job_cv_;
+  std::queue<MatchJob>     job_queue_;
+  bool                     shutdown_{false};
+  std::atomic<bool>        matching_in_progress_{false};
+
+  /// Worker thread entry point — runs until shutdown_ is set.
+  void workerLoop();
 
   // ── Parameters ───────────────────────────────────────────────────────────
   ScanMatcherConfig cfg_;

@@ -1,7 +1,5 @@
 #include "factor_graph_optimization/lidar/ndt_matcher.hpp"
 
-#include <pcl/registration/ndt.h>
-
 namespace factor_graph_optimization
 {
 
@@ -10,35 +8,33 @@ NdtMatcher::NdtMatcher(int    max_iterations,
                        double transformation_epsilon,
                        double ndt_resolution,
                        double ndt_step_size)
-: max_iterations_(max_iterations)
-, max_correspondence_dist_(max_correspondence_dist)
-, transformation_epsilon_(transformation_epsilon)
-, ndt_resolution_(ndt_resolution)
-, ndt_step_size_(ndt_step_size)
-{}
+{
+  ndt_.setMaximumIterations(max_iterations);
+  ndt_.setMaxCorrespondenceDistance(max_correspondence_dist);
+  ndt_.setTransformationEpsilon(transformation_epsilon);
+  ndt_.setResolution(static_cast<float>(ndt_resolution));
+  ndt_.setStepSize(static_cast<float>(ndt_step_size));
+}
+
+void NdtMatcher::setTarget(const pcl::PointCloud<pcl::PointXYZ>::Ptr & target)
+{
+  ndt_.setInputTarget(target);
+  has_target_ = true;
+}
 
 double NdtMatcher::match(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & source,
-  const pcl::PointCloud<pcl::PointXYZ>::Ptr & target,
   const Eigen::Matrix4f & initial_guess,
   Eigen::Matrix4f & result_transform)
 {
-  pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
-  ndt.setMaximumIterations(max_iterations_);
-  ndt.setMaxCorrespondenceDistance(max_correspondence_dist_);
-  ndt.setTransformationEpsilon(transformation_epsilon_);
-  ndt.setResolution(static_cast<float>(ndt_resolution_));
-  ndt.setStepSize(static_cast<float>(ndt_step_size_));
-
-  ndt.setInputTarget(target);
-  ndt.setInputSource(source);
+  ndt_.setInputSource(source);
 
   pcl::PointCloud<pcl::PointXYZ> aligned;
-  ndt.align(aligned, initial_guess);
+  ndt_.align(aligned, initial_guess);
 
-  if (ndt.hasConverged()) {
-    result_transform = ndt.getFinalTransformation();
-    return static_cast<double>(ndt.getFitnessScore());
+  if (ndt_.hasConverged()) {
+    result_transform = ndt_.getFinalTransformation();
+    return static_cast<double>(ndt_.getFitnessScore());
   }
 
   result_transform = initial_guess;
