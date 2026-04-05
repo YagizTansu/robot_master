@@ -78,8 +78,11 @@ struct FgoConfig
   double keyframe_max_time_sec{2.0};  ///< force a keyframe after this interval even when stationary (prevents pending scans being dropped)
   // ── Prior noise for graph initialisation ─────────────────────────────────
   // These were previously hardcoded `constexpr` inside initGraph().
-  double prior_pose_pos_sigma{0.001};    ///< 1 mm — tight prior on X(0) position
-  double prior_pose_rot_sigma{0.001};    ///< ~0.057 deg — tight prior on X(0) rotation
+  double prior_pose_pos_sigma{0.001};    ///< 1 mm — tight prior on X(0) x/y position
+  double prior_pose_z_sigma{0.001};      ///< 1 mm — flat-ground: pin z separately (use << pos_sigma for planar robots)
+  double prior_pose_rot_sigma{0.001};    ///< ~0.057 deg — tight prior on X(0) yaw
+  double prior_pose_roll_sigma{0.001};   ///< flat-ground: pin roll separately
+  double prior_pose_pitch_sigma{0.001};  ///< flat-ground: pin pitch separately
   double prior_vel_sigma{1.0};           ///< m/s  — generous; robot starts at rest
   double prior_bias_accel_sigma{0.3};    ///< m/s² — moderate uncertainty on accel bias
   double prior_bias_gyro_sigma{0.05};    ///< rad/s — moderate uncertainty on gyro bias

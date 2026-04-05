@@ -69,7 +69,10 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("keyframe.max_time_sec",          cfg.keyframe_max_time_sec);
 
   node.declare_parameter("prior.pose_pos_sigma",   cfg.prior_pose_pos_sigma);
+  node.declare_parameter("prior.pose_z_sigma",     cfg.prior_pose_z_sigma);
   node.declare_parameter("prior.pose_rot_sigma",   cfg.prior_pose_rot_sigma);
+  node.declare_parameter("prior.pose_roll_sigma",  cfg.prior_pose_roll_sigma);
+  node.declare_parameter("prior.pose_pitch_sigma", cfg.prior_pose_pitch_sigma);
   node.declare_parameter("prior.vel_sigma",        cfg.prior_vel_sigma);
   node.declare_parameter("prior.bias_accel_sigma", cfg.prior_bias_accel_sigma);
   node.declare_parameter("prior.bias_gyro_sigma",  cfg.prior_bias_gyro_sigma);
@@ -150,7 +153,10 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.keyframe_max_time_sec          = node.get_parameter("keyframe.max_time_sec").as_double();
 
   cfg.prior_pose_pos_sigma   = node.get_parameter("prior.pose_pos_sigma").as_double();
+  cfg.prior_pose_z_sigma     = node.get_parameter("prior.pose_z_sigma").as_double();
   cfg.prior_pose_rot_sigma   = node.get_parameter("prior.pose_rot_sigma").as_double();
+  cfg.prior_pose_roll_sigma  = node.get_parameter("prior.pose_roll_sigma").as_double();
+  cfg.prior_pose_pitch_sigma = node.get_parameter("prior.pose_pitch_sigma").as_double();
   cfg.prior_vel_sigma        = node.get_parameter("prior.vel_sigma").as_double();
   cfg.prior_bias_accel_sigma = node.get_parameter("prior.bias_accel_sigma").as_double();
   cfg.prior_bias_gyro_sigma  = node.get_parameter("prior.bias_gyro_sigma").as_double();
