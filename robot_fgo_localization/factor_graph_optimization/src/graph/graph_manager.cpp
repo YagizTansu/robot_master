@@ -43,6 +43,7 @@ void GraphManager::reinit(const FgoConfig & cfg)
   last_consumed_odom_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   optimized_velocity_       = gtsam::Vector3::Zero();
   optimized_bias_           = gtsam::imuBias::ConstantBias();
+  has_valid_pose_           = false;
   initIsam2();
   initGraph();
 }
@@ -292,6 +293,7 @@ bool GraphManager::step(
     new_values_.clear();
 
     optimized_pose_ = isam2_->calculateEstimate<gtsam::Pose3>(X(key_));
+    has_valid_pose_ = true;
 
     if (imu_preint_) {
       try {
@@ -325,16 +327,23 @@ bool GraphManager::step(
     // robot's actual position rather than the configured origin.  This
     // prevents a dangerous localization jump to init_x/y/yaw after a
     // transient iSAM2 failure.
-    cfg_.init_x     = optimized_pose_.x();
-    cfg_.init_y     = optimized_pose_.y();
-    cfg_.init_z     = optimized_pose_.z();
-    cfg_.init_roll  = optimized_pose_.rotation().roll();
-    cfg_.init_pitch = optimized_pose_.rotation().pitch();
-    cfg_.init_yaw   = optimized_pose_.rotation().yaw();
-    RCLCPP_WARN(logger,
-      "[GraphManager] Reinitializing at last known pose (%.2f, %.2f, yaw=%.2f) "
-      "instead of configured origin.",
-      cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
+    if (has_valid_pose_) {
+      cfg_.init_x     = optimized_pose_.x();
+      cfg_.init_y     = optimized_pose_.y();
+      cfg_.init_z     = optimized_pose_.z();
+      cfg_.init_roll  = optimized_pose_.rotation().roll();
+      cfg_.init_pitch = optimized_pose_.rotation().pitch();
+      cfg_.init_yaw   = optimized_pose_.rotation().yaw();
+      RCLCPP_WARN(logger,
+        "[GraphManager] Reinitializing at last known pose (%.2f, %.2f, yaw=%.2f) "
+        "instead of configured origin.",
+        cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
+    } else {
+      RCLCPP_WARN(logger,
+        "[GraphManager] No valid optimised pose yet — "
+        "reinitializing at configured origin (%.2f, %.2f, yaw=%.2f).",
+        cfg_.init_x, cfg_.init_y, cfg_.init_yaw);
+    }
     reinit(cfg_);
     return false;
   }

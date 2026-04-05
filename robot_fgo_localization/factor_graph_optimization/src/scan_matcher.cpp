@@ -115,7 +115,13 @@ void ScanMatcherNode::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr 
 
   // Cache the target cloud inside the matcher (builds NDT voxel grid / ICP
   // KD-tree once). This avoids the expensive rebuild on every scan match.
-  matcher_->setTarget(new_cloud);
+  // matcher_mutex_ prevents setTarget() from running while match() is in
+  // progress on the worker thread — PCL registration objects are NOT
+  // thread-safe.
+  {
+    std::lock_guard<std::mutex> lk(matcher_mutex_);
+    matcher_->setTarget(new_cloud);
+  }
 
   {
     std::lock_guard<std::mutex> lk(map_mutex_);
@@ -254,8 +260,14 @@ void ScanMatcherNode::workerLoop()
 
     Eigen::Matrix4f result_transform = Eigen::Matrix4f::Identity();
 
-    const double fitness_score =
-      matcher_->match(job.source, job.initial_guess, result_transform);
+    // matcher_mutex_ prevents match() from running while setTarget() is
+    // rebuilding the NDT voxel grid / ICP KD-tree on the executor thread.
+    double fitness_score;
+    {
+      std::lock_guard<std::mutex> lk(matcher_mutex_);
+      fitness_score =
+        matcher_->match(job.source, job.initial_guess, result_transform);
+    }
 
     // Clear the flag immediately after matching so the next scan can proceed.
     matching_in_progress_ = false;

@@ -82,6 +82,10 @@ private:
   // ── Lidar module objects ──────────────────────────────────────────────────
   std::unique_ptr<MapBuilder>    map_builder_;   ///< OccupancyGrid → PCL cloud
   std::unique_ptr<IScanMatcher>  matcher_;       ///< NDT or ICP, selected from cfg_
+  /// Guards the PCL matcher object itself (setTarget / match are not thread-safe).
+  /// Acquired in mapCallback() before setTarget() and in workerLoop() before match().
+  /// Separate from map_mutex_ which only guards the map_cloud_ pointer and flag.
+  std::mutex matcher_mutex_;
 
   // ── Map state ─────────────────────────────────────────────────────────────
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_cloud_;
