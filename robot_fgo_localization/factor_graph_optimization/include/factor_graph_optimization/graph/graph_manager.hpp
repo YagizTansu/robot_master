@@ -158,6 +158,7 @@ private:
   gtsam::Pose3                    optimized_pose_;
   gtsam::Vector3                  optimized_velocity_{gtsam::Vector3::Zero()};
   gtsam::imuBias::ConstantBias    optimized_bias_{};
+  bool                            has_valid_pose_{false};  ///< true after first successful calculateEstimate
 
   // ── Odom tracking (anchor for map→odom TF) ────────────────────────────────
   geometry_msgs::msg::Pose        last_consumed_odom_pose_;

@@ -124,10 +124,19 @@ FgoNode::FgoNode(const rclcpp::NodeOptions & options) : rclcpp::Node("fgo_node",
   pub_path_     = create_publisher<nav_msgs::msg::Path>("/fgo/path", rclcpp::QoS(10));
 
   // ── Optimization timer ────────────────────────────────────────────────────
+  // Using clock-aware timer so optimization rate scales correctly with
+  // use_sim_time in Gazebo simulation.  When use_sim_time=true and the
+  // simulator runs at Nx real-time, sensor data arrives N× faster and this
+  // timer fires N× faster, keeping the drain rate matched.
+  // For real hardware deployment, wall_timer behavior is equivalent since
+  // sim_time is not used.
   const auto period_ms = std::chrono::milliseconds(
     static_cast<int>(1000.0 / cfg_.optimization_rate_hz));
-  optimization_timer_ = create_wall_timer(
-    period_ms, std::bind(&FgoNode::optimizationStep, this));
+  optimization_timer_ = rclcpp::create_timer(
+    this,
+    get_clock(),
+    period_ms,
+    std::bind(&FgoNode::optimizationStep, this));
 
   RCLCPP_INFO(get_logger(), "[FgoNode] Started. map=%s odom=%s base=%s",
     cfg_.map_frame.c_str(), cfg_.odom_frame.c_str(), cfg_.base_frame.c_str());
