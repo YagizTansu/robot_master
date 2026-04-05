@@ -52,9 +52,9 @@ fgo_node:
         # Yaw is less constrained on mecanum (slip-induced heading error) → kept at 0.05.
         x:     0.01
         y:     0.01
-        z:     0.01   # constrained — flat surface
-        roll:  0.01   # constrained — flat surface
-        pitch: 0.01   # constrained — flat surface
+        z:     0.001  # 1 mm — flat ground robot, z should never change
+        roll:  0.001  # flat surface — roll should never change
+        pitch: 0.001  # flat surface — pitch should never change
         yaw:   0.05
 
       imu:
@@ -127,7 +127,10 @@ fgo_node:
                                  # map position without being overwhelmed by the prior.
                                  # Previously 0.001 m (1 mm) which prevented any
                                  # scan-match correction of startup pose error.
+      pose_z_sigma:     0.001    # 1 mm — flat-ground robot, z is known at startup
       pose_rot_sigma:   0.05     # ~2.9 deg yaw uncertainty at startup
+      pose_roll_sigma:  0.001    # flat surface — roll is known (0) at startup
+      pose_pitch_sigma: 0.001    # flat surface — pitch is known (0) at startup
       vel_sigma:        1.0      # generous — robot starts approx. at rest
       bias_accel_sigma: 0.3      # accel bias uncertainty at startup
       bias_gyro_sigma:  0.05     # gyro  bias uncertainty at startup

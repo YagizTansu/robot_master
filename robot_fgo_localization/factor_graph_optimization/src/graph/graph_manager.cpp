@@ -76,9 +76,11 @@ void GraphManager::initGraph()
     gtsam::Rot3::RzRyRx(cfg_.init_roll, cfg_.init_pitch, cfg_.init_yaw),
     gtsam::Point3(cfg_.init_x, cfg_.init_y, cfg_.init_z));
 
+  // GTSAM Pose3 tangent-space order: [roll, pitch, yaw, x, y, z]
+  // Per-axis sigmas allow flat-ground robots to pin z/roll/pitch independently.
   auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma, cfg_.prior_pose_rot_sigma,
-                         cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma, cfg_.prior_pose_pos_sigma
+    (gtsam::Vector6() << cfg_.prior_pose_roll_sigma, cfg_.prior_pose_pitch_sigma, cfg_.prior_pose_rot_sigma,
+                         cfg_.prior_pose_pos_sigma,  cfg_.prior_pose_pos_sigma,   cfg_.prior_pose_z_sigma
     ).finished());
 
   new_factors_.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), init_pose, prior_noise));
