@@ -72,14 +72,14 @@ controller_server:
       
       # Velocity Limits for Holonomic Motion (m/s and rad/s)
       # X-axis: Forward/Backward
-      max_linear_vel_x: 0.5
-      min_linear_vel_x: -0.5
+      max_linear_vel_x: 1.5
+      min_linear_vel_x: -1.5
       # Y-axis: Lateral (Strafe) - Mecanum/Omni specific
-      max_linear_vel_y: 0.5
-      min_linear_vel_y: -0.5
+      max_linear_vel_y: 1.5
+      min_linear_vel_y: -1.5
       # Rotation
-      max_angular_vel: 1.0
-      min_angular_vel: -1.0
+      max_angular_vel: 2.0
+      min_angular_vel: -2.0
       
       # Acceleration Limits (m/s^2 and rad/s^2)
       linear_acc_limit_x: 2.5    # Forward/backward acceleration
@@ -291,8 +291,8 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     # Mecanum/Omni: [Vx, Vy, W] - Y axis is active for holonomic motion
-    max_velocity: [0.5, 0.5, 1.0]      # Match planner limits
-    min_velocity: [-0.5, -0.5, -1.0]   # Match planner limits
+    max_velocity: [1.5, 1.5, 2.0]      # Match planner limits
+    min_velocity: [-1.5, -1.5, -2.0]   # Match planner limits
     max_accel: [2.5, 2.5, 3.2]         # Match planner acceleration limits
     max_decel: [-2.5, -2.5, -3.2]      # Match planner acceleration limits
     odom_topic: "/odometry"
@@ -320,7 +320,7 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.2
+      time_before_collision: 0.6
       simulation_time_step: 0.1
       min_points: 6
       visualize: False

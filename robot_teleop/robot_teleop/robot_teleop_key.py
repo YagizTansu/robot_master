@@ -12,10 +12,10 @@ else:
     import termios
     import tty
 
-MAX_LIN_VEL = 0.5
-MAX_ANG_VEL = 1.57
+MAX_LIN_VEL = 1.5
+MAX_ANG_VEL = 2.0
 
-LIN_VEL_STEP_SIZE = 0.01
+LIN_VEL_STEP_SIZE = 0.05
 ANG_VEL_STEP_SIZE = 0.1
 
 msg = """
