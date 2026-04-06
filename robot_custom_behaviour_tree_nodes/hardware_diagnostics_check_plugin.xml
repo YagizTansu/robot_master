@@ -1,0 +1,10 @@
+<library path="hardware_diagnostics_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/HardwareDiagnosticsCheck"
+         type="robot_custom_behaviour_tree_nodes::HardwareDiagnosticsCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks hardware health via the ROS 2 diagnostics_agg topic.
+      Returns FAILURE if no diagnostics received, topic is stale, or any component reports ERROR/STALE.
+    </description>
+  </class>
+</library>

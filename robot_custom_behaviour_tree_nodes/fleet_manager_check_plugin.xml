@@ -1,0 +1,10 @@
+<library path="fleet_manager_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/FleetManagerCheck"
+         type="robot_custom_behaviour_tree_nodes::FleetManagerCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks fleet manager connectivity via a heartbeat topic.
+      Returns FAILURE if heartbeat is not received within timeout_sec or value is false.
+    </description>
+  </class>
+</library>

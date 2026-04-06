@@ -33,6 +33,7 @@ find_package(behaviortree_cpp REQUIRED)
 find_package(nav2_behavior_tree REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -68,6 +69,7 @@ set(dependencies
   nav2_behavior_tree
   sensor_msgs
   std_msgs
+  diagnostic_msgs
 )
 
 # Build Battery Check BT Node
@@ -138,11 +140,65 @@ install(TARGETS navigate_to_charge_station_action_bt_node
   RUNTIME DESTINATION bin
 )
 
+# Build Localization Quality Check BT Node
+add_library(localization_quality_check_action_bt_node SHARED
+  src/localization_quality_check_action.cpp
+)
+
+ament_target_dependencies(localization_quality_check_action_bt_node
+  ${dependencies}
+)
+
+target_compile_definitions(localization_quality_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+
+install(TARGETS localization_quality_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build Hardware Diagnostics Check BT Node
+add_library(hardware_diagnostics_check_action_bt_node SHARED
+  src/hardware_diagnostics_check_action.cpp
+)
+
+ament_target_dependencies(hardware_diagnostics_check_action_bt_node
+  ${dependencies}
+)
+
+target_compile_definitions(hardware_diagnostics_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+
+install(TARGETS hardware_diagnostics_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build Fleet Manager Check BT Node
+add_library(fleet_manager_check_action_bt_node SHARED
+  src/fleet_manager_check_action.cpp
+)
+
+ament_target_dependencies(fleet_manager_check_action_bt_node
+  ${dependencies}
+)
+
+target_compile_definitions(fleet_manager_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+
+install(TARGETS fleet_manager_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
 # Install plugin description file
 pluginlib_export_plugin_description_file(nav2_behavior_tree battery_check_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree get_charge_station_pose_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree emergency_stop_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree navigate_to_charge_station_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree localization_quality_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree hardware_diagnostics_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree fleet_manager_check_plugin.xml)
 
 # Install headers
 install(DIRECTORY include/
@@ -156,12 +212,16 @@ ament_export_libraries(
   emergency_stop_action_bt_node
   get_charge_station_pose_action_bt_node
   navigate_to_charge_station_action_bt_node
+  localization_quality_check_action_bt_node
+  hardware_diagnostics_check_action_bt_node
+  fleet_manager_check_action_bt_node
 )
 ament_export_dependencies(
   rclcpp
   behaviortree_cpp
   sensor_msgs
   std_msgs
+  diagnostic_msgs
   geometry_msgs
   tf2_ros
   nav2_behavior_tree

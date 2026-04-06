@@ -18,6 +18,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav2_behavior_tree REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 # Include directories
 include_directories(
@@ -32,6 +33,9 @@ add_executable(monitor_bt_node
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/emergency_stop_action.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/get_charge_station_pose_action.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/navigate_to_charge_station_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/localization_quality_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/hardware_diagnostics_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/fleet_manager_check_action.cpp
 )
 
 ament_target_dependencies(monitor_bt_node
@@ -46,6 +50,7 @@ ament_target_dependencies(monitor_bt_node
   tf2_geometry_msgs
   nav2_behavior_tree
   nav2_msgs
+  diagnostic_msgs
 )
 
 # Install executables

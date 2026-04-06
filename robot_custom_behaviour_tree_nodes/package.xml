@@ -25,6 +25,7 @@
   <depend>nav2_behavior_tree</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>diagnostic_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
@@ -35,5 +36,8 @@
     <nav2_behavior_tree plugin="${prefix}/get_charge_station_pose_plugin.xml" />
     <nav2_behavior_tree plugin="${prefix}/emergency_stop_plugin.xml" />
     <nav2_behavior_tree plugin="${prefix}/navigate_to_charge_station_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/localization_quality_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/hardware_diagnostics_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/fleet_manager_check_plugin.xml" />
   </export>
 </package>

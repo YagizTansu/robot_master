@@ -57,11 +57,13 @@ BT::NodeStatus EmergencyStopAction::tick()
   // Process ROS 2 messages (non-blocking)
   rclcpp::spin_some(node_);
   
-  // If no emergency message received yet, assume it's safe to continue (SUCCESS)
+  // Fail-safe: if no emergency message received, halt the robot.
+  // A missing sensor/topic is treated as unsafe (fail-safe principle).
   if (!last_emergency_msg_) {
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
-      "No emergency stop message received yet. Assuming safe to continue...");
-    return BT::NodeStatus::SUCCESS;
+      "No emergency stop message received. Treating as UNSAFE (fail-safe). "
+      "Ensure '%s' is being published.", emergency_topic_.c_str());
+    return BT::NodeStatus::FAILURE;
   }
   
   // Check if emergency button is pressed

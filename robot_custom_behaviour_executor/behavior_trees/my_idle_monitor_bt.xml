@@ -2,47 +2,127 @@
 <root main_tree_to_execute="MainTree">
     <BehaviorTree ID="MainTree">
         <Sequence name="MonitorSequence">
-            <!-- Emergency Stop Check - Highest priority -->
+
+            <!-- ================================================================
+                 LAYER 1: SAFETY — Highest priority. Any FAILURE here halts all
+                 downstream nodes immediately (Sequence short-circuits).
+                 EmergencyStop uses fail-safe: no message = FAILURE.
+                 ================================================================ -->
             <EmergencyStop name="CheckEmergency"
                 emergency_topic="/emergency_stop"
                 button_pressed_value="true" />
 
-            <!-- Fallback: Continue if battery is sufficient, otherwise go to charging station -->
-            <Fallback name="BatteryManagement">
-                <!-- Battery Check - SUCCESS if battery is above 10% -->
-                <BatteryCheck name="CheckBatteryLow"
-                    battery_topic="/battery_status"
-                    min_battery_percentage="10.0" />
+            <!-- ================================================================
+                 LAYER 2: HARDWARE HEALTH
+                 Checks /diagnostics_agg for ERROR/STALE component status.
+                 Fail-safe: no diagnostics message → FAILURE.
+                 On hardware fault the Fallback also FAILs, propagating up to
+                 halt the MonitorSequence (robot stops until fault is cleared).
+                 ================================================================ -->
+            <Fallback name="HardwareHealthManagement">
+                <HardwareDiagnosticsCheck name="HWDiagCheck"
+                    diagnostics_topic="/diagnostics_agg"
+                    timeout_sec="3.0"
+                    fail_on_level="2" />
+                <!-- Hardware fault cannot be self-recovered — propagate FAILURE -->
+                <AlwaysFailure name="HardwareFaultHalt" />
+            </Fallback>
 
-                <!-- This sequence runs if battery is low -->
-                <Sequence name="GoToCharge">
-                    <!-- Get Charge Station Pose -->
-                    <GetChargeStationPose name="GetChargeStation"
+            <!-- ================================================================
+                 LAYER 3: LOCALIZATION QUALITY
+                 Checks AMCL covariance on /amcl_pose.
+                 Fail-safe: no pose message → FAILURE.
+                 On poor localization the Fallback FAILs, halting the sequence
+                 (navigation is unsafe without reliable pose).
+                 ================================================================ -->
+            <Fallback name="LocalizationManagement">
+                <LocalizationQualityCheck name="LocQualityCheck"
+                    amcl_topic="/amcl_pose"
+                    max_covariance="0.5"
+                    timeout_sec="2.0" />
+                <!-- Poor localization cannot be self-recovered here — halt -->
+                <AlwaysFailure name="LocalizationFaultHalt" />
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 4: BATTERY MANAGEMENT — Three levels
+                   > 30%  : Normal operation   → SUCCESS, nothing to do
+                   20-30% : Low warning        → Navigate to charger, full charge
+                   < 20%  : Critical           → Navigate to charger immediately
+                 The nested Fallback cascades: each BatteryCheck only SUCCEEDs
+                 when battery is ABOVE its threshold, selecting the right branch.
+                 ================================================================ -->
+            <Fallback name="BatteryManagement">
+
+                <!-- NORMAL: battery above 30% — no charging needed -->
+                <BatteryCheck name="CheckBatteryNormal"
+                    battery_topic="/battery_status"
+                    min_battery_percentage="30.0" />
+
+                <!-- LOW WARNING: battery 20–30% — finish soon and go charge -->
+                <Sequence name="LowBatteryWarning">
+                    <!-- This check SUCCEEDs only if battery is still above 20%.
+                         Combined with the outer FAILURE (< 30%), this branch
+                         executes precisely in the 20–30% window. -->
+                    <BatteryCheck name="CheckBatteryWarning"
+                        battery_topic="/battery_status"
+                        min_battery_percentage="20.0" />
+                    <GetChargeStationPose name="GetChargeStationWarning"
                         use_tf="false"
                         charge_station_x="0.8"
                         charge_station_y="-8.0"
                         charge_station_yaw="1.0"
                         frame_id="map"
                         charge_station_pose="{charge_pose}" />
-
-                    <!-- Navigate to Charge Station -->
-                    <NavigateToChargeStation name="NavigateToChargeStation"
+                    <NavigateToChargeStation name="NavigateToChargeWarning"
                         charge_station_pose="{charge_pose}"
                         server_timeout="10.0"
                         action_timeout="300.0" />
-
-                    <!-- Wait Until Battery is Charged -->
-                    <RetryUntilSuccessful name="ChargingLoop" num_attempts="-1">
-                        <BatteryCheck name="CheckBatteryCharged"
+                    <RetryUntilSuccessful name="ChargingLoopWarning" num_attempts="-1">
+                        <BatteryCheck name="CheckBatteryFullWarning"
                             battery_topic="/battery_status"
                             min_battery_percentage="80.0" />
                     </RetryUntilSuccessful>
-
                 </Sequence>
+
+                <!-- CRITICAL: battery below 20% — both above checks failed, go now -->
+                <Sequence name="CriticalBattery">
+                    <GetChargeStationPose name="GetChargeStationCritical"
+                        use_tf="false"
+                        charge_station_x="0.8"
+                        charge_station_y="-8.0"
+                        charge_station_yaw="1.0"
+                        frame_id="map"
+                        charge_station_pose="{charge_pose}" />
+                    <NavigateToChargeStation name="NavigateToChargeCritical"
+                        charge_station_pose="{charge_pose}"
+                        server_timeout="10.0"
+                        action_timeout="300.0" />
+                    <RetryUntilSuccessful name="ChargingLoopCritical" num_attempts="-1">
+                        <BatteryCheck name="CheckBatteryFullCritical"
+                            battery_topic="/battery_status"
+                            min_battery_percentage="80.0" />
+                    </RetryUntilSuccessful>
+                </Sequence>
+
             </Fallback>
 
-            <!-- Monitoring completed -->
+            <!-- ================================================================
+                 LAYER 5: FLEET MANAGER CONNECTIVITY (non-critical)
+                 If the fleet manager is offline, robot continues autonomously.
+                 AlwaysSuccess as fallback: fleet loss degrades gracefully.
+                 ================================================================ -->
+            <Fallback name="FleetConnectivity">
+                <FleetManagerCheck name="FleetCheck"
+                    heartbeat_topic="/fleet_manager/heartbeat"
+                    timeout_sec="5.0" />
+                <!-- Fleet offline is a warning — robot keeps operating -->
+                <AlwaysSuccess name="FleetOfflineWarning" />
+            </Fallback>
+
+            <!-- Monitoring cycle complete -->
             <AlwaysSuccess name="MonitoringComplete" />
+
         </Sequence>
     </BehaviorTree>
 </root>
