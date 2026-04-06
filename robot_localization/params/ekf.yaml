@@ -1,8 +1,9 @@
 ### ekf config file ###
 ekf_filter_node:
     ros__parameters:
-        # Filtre frekansı - Gazebo simülasyon frekansına uygun
-        frequency: 30.0
+        # Filtre frekansı - SDF'de odom_publish_frequency: 50.0 → EKF en az o hızda çalışmalı.
+        # 30 Hz ile EKF her 3 odom mesajından birini işleyemezdi (veri kaybı).
+        frequency: 50.0
 
         # Sensor timeout
         sensor_timeout: 0.1
@@ -49,12 +50,14 @@ ekf_filter_node:
                        false, false, false]
 
         # Queue size - yüksek frekanslı veri için arttırıldı
-        odom0_queue_size: 10
+        odom0_queue_size: 15
         odom0_differential: false
         odom0_relative: false
         odom0_pose_use_child_frame: false
         odom0_pose_rejection_threshold: 5.0
-        odom0_twist_rejection_threshold: 1.0
+        # Mahalanobis mesafesi: 1.0 → mecanum hız spike'larını (straf) yanlışlıkla reddeder.
+        # Chi-squared %95 confidence (1 DoF) = ~3.8; 2.0 iyi bir denge noktasıdır.
+        odom0_twist_rejection_threshold: 2.0
 
         # IMU sensörü - orientation ve angular velocity kullanılıyor
         imu0: /imu
@@ -68,10 +71,12 @@ ekf_filter_node:
                       false, false, false]
         imu0_differential: false
         imu0_relative: false  # IMU absolute ölçümler sağlıyor
-        imu0_queue_size: 10
-        imu0_pose_rejection_threshold: 0.8
-        imu0_twist_rejection_threshold: 0.8
-        imu0_linear_acceleration_rejection_threshold: 0.8
+        imu0_queue_size: 15
+        # 0.8 aşırı sıkı: normal IMU drift/gyro bias'ı bile reddedilir.
+        # Gazebo IMU gürültüsü için 1.5-2.0 Mahalanobis mesafesi daha güvenli.
+        imu0_pose_rejection_threshold: 1.5
+        imu0_twist_rejection_threshold: 1.5
+        imu0_linear_acceleration_rejection_threshold: 1.5
         imu0_remove_gravitational_acceleration: true
 
         use_control: true
