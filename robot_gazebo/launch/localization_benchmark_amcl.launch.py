@@ -6,9 +6,9 @@ AMCL localization against the Gazebo ground truth.
 
 Prerequisites (run in separate terminals / launch files):
   1. Gazebo simulation with ground_truth_publisher running
-     → publishes /ground_truth/odom
+     -> publishes /ground_truth/odom
   2. AMCL running (e.g. via robot_navigation_amcl_ekf.launch.py)
-     → publishes /amcl_pose
+     -> publishes /amcl_pose
 
 Usage:
   ros2 launch robot_gazebo localization_benchmark_amcl.launch.py
@@ -32,20 +32,22 @@ def generate_launch_description():
         default_value="/tmp",
         description="Directory where the CSV benchmark report will be saved on shutdown",
     )
+    # AMCL fires only when robot moves update_min_d/update_min_a thresholds,
+    # not at a fixed rate. 0.3 s slop captures pairs at typical nav speeds.
     declare_sync_slop = DeclareLaunchArgument(
         "sync_slop_sec",
-        default_value="0.15",
+        default_value="0.3",
         description="ApproximateTimeSynchronizer tolerance in seconds",
     )
 
-    # ── AMCL pose → Odometry converter ────────────────────────────────────
+    # ── AMCL pose -> Odometry converter ───────────────────────────────────
     # AMCL publishes geometry_msgs/PoseWithCovarianceStamped on /amcl_pose.
     # The benchmark node expects nav_msgs/Odometry, so we bridge them here.
     amcl_to_odom_node = Node(
         package="robot_gazebo",
         executable="amcl_pose_to_odom.py",
         name="amcl_pose_to_odom",
-        output="screen",
+        output="log",   # dashboard terminali kirletmesin
         parameters=[
             {
                 "use_sim_time":  True,
@@ -61,6 +63,7 @@ def generate_launch_description():
         executable="localization_benchmark.py",
         name="localization_benchmark",
         output="screen",
+        emulate_tty=True,  # curses dashboard için gerçek TTY gerekiyor
         parameters=[
             {
                 "use_sim_time":     True,
