@@ -59,11 +59,12 @@ ekf_filter_node:
         # IMU sensörü - orientation ve angular velocity kullanılıyor
         imu0: /imu
         # Sıralama: x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
-        # IMU'dan roll, pitch, yaw, angular velocities ve linear accelerations kullanılıyor
+        # two_d_mode: true olduğu için z/roll/pitch/vroll/vpitch dondurulur.
+        # Bu boyutları true yapmak runtime uyarısı üretir → sadece yaw ve vyaw kullanılır.
         imu0_config: [false, false, false,
-                      true,  true,  true,
+                      false, false, true,
                       false, false, false,
-                      true,  true,  true,
+                      false, false, true,
                       false, false, false]
         imu0_differential: false
         imu0_relative: false  # IMU absolute ölçümler sağlıyor
@@ -102,5 +103,24 @@ ekf_filter_node:
                                    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.01, 0.0,
                                    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.015]
 
-        initial_estimate_covariance: [1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9, 1e-9]
+        # Başlangıç kovaryansı: robot_localization 225-eleman (15×15 flat) matris bekler.
+        # 15 eleman verilirse std::out_of_range hatası veya default 1e-9'a düşer.
+        # process_noise_covariance gibi 15×15 diagonal matris olarak yazılmalı.
+        # Aktif boyutlar (two_d_mode): x, y, yaw, vx, vy, vyaw
+        # Pasif boyutlar: z, roll, pitch, vz, vroll, vpitch, ax, ay, az → 1e-9
+        initial_estimate_covariance: [0.25,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.25,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.1,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9,  0.0,   0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,
+                                      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   1e-9]
 
