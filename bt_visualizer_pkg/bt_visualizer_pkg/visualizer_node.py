@@ -18,6 +18,8 @@ from tkinter import filedialog, ttk, messagebox
 import xml.etree.ElementTree as ET
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 import io
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -109,6 +111,8 @@ class BTRenderer(tk.Canvas):
         self.scale_factor = 1.0
         self.base_font_size = 10
         self.canvas_font = tkFont.Font(family="Helvetica", size=self.base_font_size, weight="bold")
+        # Maps node instance name → node type string, rebuilt on every draw_tree call
+        self.node_type_map = {}
 
     def set_theme(self, theme):
         """Updates the canvas colors to match the selected theme."""
@@ -144,6 +148,7 @@ class BTRenderer(tk.Canvas):
         self.scale_factor = 1.0
         self.canvas_font.config(size=self.base_font_size)
         self.delete("all")
+        self.node_type_map = {}
         if not bt_root_node or not bt_root_node.children:
             self.create_text(
                 self.winfo_width() / 2, self.winfo_height() / 2,
@@ -165,6 +170,28 @@ class BTRenderer(tk.Canvas):
         bbox = self.bbox("all")
         if bbox:
             self.config(scrollregion=(bbox[0] - 50, bbox[1] - 50, bbox[2] + 50, bbox[3] + 50))
+
+    # --- Status colors used for live monitoring ---
+    _STATUS_COLORS = {
+        "RUNNING": "#FFD600",  # bright amber
+        "SUCCESS": "#00E676",  # bright green
+        "FAILURE": "#FF1744",  # bright red
+    }
+
+    def update_node_status(self, node_name: str, status: str):
+        """Recolors the canvas rectangle for `node_name` to reflect its live BT status.
+        IDLE is never sent by the C++ publisher, so every incoming status is a
+        real state (RUNNING / SUCCESS / FAILURE). We simply apply the color and
+        leave it until the next transition arrives — no flicker, always visible.
+        """
+        safe_name = node_name.replace(' ', '_')
+        tag = f"btname_{safe_name}"
+        items = self.find_withtag(tag)
+        if not items:
+            return
+        color = self._STATUS_COLORS.get(status, self.theme["Unknown"])
+        for item in items:
+            self.itemconfig(item, fill=color)
 
     def first_layout_pass(self, node):
         """Post-order traversal to calculate subtree widths."""
@@ -197,11 +224,18 @@ class BTRenderer(tk.Canvas):
         
         node_type = node.get_type()
         color = self.theme.get(node_type, self.theme["Unknown"])
-        
+
+        # Build a canvas tag from the node's instance name for live status coloring
+        node_name = node.attributes.get('name', '')
+        name_tag = f"btname_{node_name.replace(' ', '_')}" if node_name else ""
+        if node_name:
+            self.node_type_map[node_name] = node_type
+        rect_tags = ("node", "node_body", node_type, name_tag) if name_tag else ("node", "node_body", node_type)
+
         self.create_rectangle(
             x0, y0, x1, y1,
-            fill=color, outline=self.theme["node_outline"], width=2, 
-            tags=("node", "node_body", node_type)
+            fill=color, outline=self.theme["node_outline"], width=2,
+            tags=rect_tags
         )
         
         raw_text = node.get_display_name()
@@ -333,6 +367,7 @@ class BTVisualizerApp(tk.Tk):
         self.geometry("1200x800")
         self.bt_root = None
         self.current_file_path = None
+        self.bt_status_sub = None  # ROS2 live monitor subscription
         self.theme_name = tk.StringVar(value="Dark")
         self.current_theme = THEMES[self.theme_name.get()]
 
@@ -356,6 +391,9 @@ class BTVisualizerApp(tk.Tk):
 
         save_button = ttk.Button(top_bar, text="Save as Image", command=self.save_as_image)
         save_button.pack(side=tk.LEFT, padx=5, pady=10)
+
+        self.live_btn = ttk.Button(top_bar, text="Live Monitor: OFF", command=self.toggle_live_monitor)
+        self.live_btn.pack(side=tk.LEFT, padx=5, pady=10)
         
         theme_label = ttk.Label(top_bar, text="Theme:")
         theme_label.pack(side=tk.LEFT, padx=(20, 5), pady=10)
@@ -504,6 +542,34 @@ class BTVisualizerApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save image: {e}")
             self.ros2_node.get_logger().error(f"Failed to save image: {e}")
+
+    def toggle_live_monitor(self):
+        """Starts or stops the live BT status subscription."""
+        if self.bt_status_sub is None:
+            if self.bt_root is None:
+                messagebox.showinfo(
+                    "Live Monitor",
+                    "Load the BT XML file first, then activate Live Monitor.")
+                return
+            self.bt_status_sub = self.ros2_node.create_subscription(
+                String, '/bt_node_status', self._on_bt_status,
+                QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+            self.live_btn.config(text="Live Monitor: ON")
+            self.info_label.config(text="Live monitoring active — /bt_node_status")
+        else:
+            self.ros2_node.destroy_subscription(self.bt_status_sub)
+            self.bt_status_sub = None
+            self.live_btn.config(text="Live Monitor: OFF")
+            self.info_label.config(text="Live monitoring stopped.")
+            # Redraw to restore original colors
+            self.canvas.draw_tree(self.bt_root)
+
+    def _on_bt_status(self, msg: String):
+        """Callback for /bt_node_status messages. Format: 'node_name|STATUS'."""
+        parts = msg.data.split('|', 1)
+        if len(parts) == 2:
+            node_name, status = parts
+            self.canvas.update_node_status(node_name, status)
 
     def prompt_load_xml(self):
         """Opens a file dialog to select and parse an XML file."""
