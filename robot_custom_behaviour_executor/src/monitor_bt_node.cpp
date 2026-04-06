@@ -3,6 +3,9 @@
 #include "robot_custom_behaviour_tree_nodes/emergency_stop_action.hpp"
 #include "robot_custom_behaviour_tree_nodes/get_charge_station_pose_action.hpp"
 #include "robot_custom_behaviour_tree_nodes/navigate_to_charge_station_action.hpp"
+#include "robot_custom_behaviour_tree_nodes/localization_quality_check_action.hpp"
+#include "robot_custom_behaviour_tree_nodes/hardware_diagnostics_check_action.hpp"
+#include "robot_custom_behaviour_tree_nodes/fleet_manager_check_action.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include "nav2_behavior_tree/plugins/action/navigate_to_pose_action.hpp"
 
@@ -26,6 +29,9 @@ namespace robot_custom_behaviour_executor
         factory_.registerNodeType<robot_custom_behaviour_tree_nodes::EmergencyStopAction>("EmergencyStop");
         factory_.registerNodeType<robot_custom_behaviour_tree_nodes::GetChargeStationPoseAction>("GetChargeStationPose");
         factory_.registerNodeType<robot_custom_behaviour_tree_nodes::NavigateToChargeStationAction>("NavigateToChargeStation");
+        factory_.registerNodeType<robot_custom_behaviour_tree_nodes::LocalizationQualityCheckAction>("LocalizationQualityCheck");
+        factory_.registerNodeType<robot_custom_behaviour_tree_nodes::HardwareDiagnosticsCheckAction>("HardwareDiagnosticsCheck");
+        factory_.registerNodeType<robot_custom_behaviour_tree_nodes::FleetManagerCheckAction>("FleetManagerCheck");
 
         // Create tree from file
         try

@@ -1,0 +1,10 @@
+<library path="localization_quality_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/LocalizationQualityCheck"
+         type="robot_custom_behaviour_tree_nodes::LocalizationQualityCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks AMCL localization quality via pose covariance.
+      Returns FAILURE if no pose received, topic is stale, or covariance exceeds max_covariance.
+    </description>
+  </class>
+</library>
