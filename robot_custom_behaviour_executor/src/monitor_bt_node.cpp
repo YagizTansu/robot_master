@@ -45,6 +45,22 @@ namespace robot_custom_behaviour_executor
             throw;
         }
 
+        // Start Groot2 real-time publisher on port 1667 (default).
+        // Connect Groot2 → "Connect" → Server IP: localhost, Port: 1667
+        groot2_publisher_ = std::make_unique<BT::Groot2Publisher>(tree_, 1667);
+        RCLCPP_INFO(this->get_logger(),
+            "Groot2 live publisher started on port 1667. "
+            "Open Groot2 → Connect → localhost:1667 to monitor live state.");
+
+        // ROS2 live status publisher for bt_visualizer_pkg
+        // Topic: /bt_node_status, format: "node_name|STATUS"
+        bt_status_publisher_ = this->create_publisher<std_msgs::msg::String>(
+            "/bt_node_status", rclcpp::QoS(10).best_effort());
+        ros2_status_logger_ = std::make_unique<ROS2StatusLogger>(tree_, bt_status_publisher_);
+        RCLCPP_INFO(this->get_logger(),
+            "ROS2 live status publisher started on /bt_node_status. "
+            "Open bt_visualizer_pkg and click 'Live Monitor: OFF' to activate.");
+
         // Create timer to tick the tree at 10 Hz
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(100), // 10 Hz tick
