@@ -52,6 +52,7 @@ import os
 import threading
 import time
 
+from ament_index_python.packages import get_package_share_directory
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
@@ -146,14 +147,19 @@ class FeatureExtractorNode(Node):
         super().__init__("feature_extractor")
 
         # ── Parameters ─────────────────────────────────────────────────────
-        self.declare_parameter("csv_output_dir",      "~/fgo_training_data")
+        _default_data_dir = os.path.join(
+            get_package_share_directory("fgo_transformer"), "data")
+        self.declare_parameter("csv_output_dir", _default_data_dir)
         self.declare_parameter("sync_slop_sec",        0.15)
         self.declare_parameter("imu_buffer_size",      50)    # ~0.5 s at 100 Hz
         self.declare_parameter("gravity",              9.81)
         self.declare_parameter("max_fitness_age_sec",  2.0)   # stale → NaN
 
-        csv_dir           = os.path.expanduser(
-            self.get_parameter("csv_output_dir").value)
+        _csv_param = str(self.get_parameter("csv_output_dir").value).strip()
+        csv_dir = (os.path.expanduser(_csv_param)
+                   if _csv_param
+                   else os.path.join(
+                       get_package_share_directory("fgo_transformer"), "data"))
         sync_slop         = float(self.get_parameter("sync_slop_sec").value)
         imu_buf_size      = int(self.get_parameter("imu_buffer_size").value)
         self._gravity     = float(self.get_parameter("gravity").value)

@@ -22,14 +22,16 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import os
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description() -> LaunchDescription:
 
     # ── Launch arguments ───────────────────────────────────────────────────
+    _pkg_share = get_package_share_directory("fgo_transformer")
     declare_csv_dir = DeclareLaunchArgument(
         "csv_output_dir",
-        default_value=os.path.expanduser("~/fgo_training_data"),
+        default_value=os.path.join(_pkg_share, "data"),
         description="Directory where CSV training files will be saved",
     )
     declare_sync_slop = DeclareLaunchArgument(
