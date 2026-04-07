@@ -1,0 +1,34 @@
+# ============================================================
+#  fgo_transformer — Feature Extractor Parameters
+# ============================================================
+
+feature_extractor:
+  ros__parameters:
+
+    # ── Output ───────────────────────────────────────────────────────────────
+    # Directory where CSV files are saved.
+    # Each run creates a new file: features_YYYYMMDD_HHMMSS.csv
+    csv_output_dir: "~/fgo_training_data"
+
+    # ── Time synchronization ─────────────────────────────────────────────────
+    # ApproximateTimeSynchronizer tolerance (seconds).
+    # 0.15 s handles the ~50 Hz FGO output + Gazebo physics jitter.
+    # Increase if you see "Waiting for sync pair..." in the logs.
+    sync_slop_sec: 0.15
+
+    # ── IMU rolling buffer ───────────────────────────────────────────────────
+    # Number of IMU samples kept for std-dev computation.
+    # At 100 Hz: 50 samples = 0.5 s window (captures vibration bursts).
+    # At 200 Hz: increase to 100 for the same 0.5 s window.
+    imu_buffer_size: 50
+
+    # ── Gravity constant ─────────────────────────────────────────────────────
+    # Used to compute accel_norm_dev = |‖accel‖ - gravity|.
+    gravity: 9.81
+
+    # ── Fitness score staleness gate ─────────────────────────────────────────
+    # If no /scan_match/fitness_score message has been received within
+    # this wall-clock window, the fitness_score column is written as 'nan'.
+    # This prevents stale scan scores from polluting rows recorded while
+    # the scan matcher is not running (e.g. robot is stationary).
+    max_fitness_age_sec: 2.0
