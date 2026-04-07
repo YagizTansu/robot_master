@@ -29,7 +29,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "feature_extractor = fgo_transformer.feature_extractor_node:main",
+            "feature_extractor    = fgo_transformer.feature_extractor_node:main",
+            "transformer_inference = fgo_transformer.transformer_inference_node:main",
         ],
     },
 )
