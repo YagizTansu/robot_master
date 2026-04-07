@@ -8,7 +8,9 @@ feature_extractor:
     # ── Output ───────────────────────────────────────────────────────────────
     # Directory where CSV files are saved.
     # Each run creates a new file: features_YYYYMMDD_HHMMSS.csv
-    csv_output_dir: "~/fgo_training_data"
+    # Default is resolved at runtime via ament_index (package share dir).
+    # Override here only if you want a custom fixed path.
+    csv_output_dir: ""
 
     # ── Time synchronization ─────────────────────────────────────────────────
     # ApproximateTimeSynchronizer tolerance (seconds).
