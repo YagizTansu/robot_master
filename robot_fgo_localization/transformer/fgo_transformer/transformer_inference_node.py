@@ -62,8 +62,6 @@ _FEATURE_COLS = [
     "linear_vel",
     "angular_vel",
     "jerk",
-    "fgo_cov_trace",
-    "fgo_cov_yaw",
 ]
 _N_FEATURES = len(_FEATURE_COLS)
 _TRUST_EPSILON = 1e-6
@@ -137,10 +135,6 @@ class TransformerInferenceNode(Node):
         self._prev_lin_vel:  float = float("nan")
         self._prev_odom_sec: float = float("nan")
 
-        # FGO covariance
-        self._fgo_cov_trace: float = float("nan")
-        self._fgo_cov_yaw:   float = float("nan")
-
         # NDT fitness
         self._fitness_score:    float = float("nan")
         self._fitness_mono_sec: float = float("nan")
@@ -163,7 +157,6 @@ class TransformerInferenceNode(Node):
         # ── Subscribers ─────────────────────────────────────────────────────
         self.create_subscription(Imu,      "/imu",                      self._on_imu,     sensor_qos)
         self.create_subscription(Odometry, "/odometry",                 self._on_odom,    reliable_qos)
-        self.create_subscription(Odometry, "/fgo/odometry",             self._on_fgo,     reliable_qos)
         self.create_subscription(Float64,  "/scan_match/fitness_score", self._on_fitness, reliable_qos)
 
         # ── Publisher ────────────────────────────────────────────────────────
@@ -246,12 +239,6 @@ class TransformerInferenceNode(Node):
             self._prev_lin_vel  = vx
             self._prev_odom_sec = sec
 
-    def _on_fgo(self, msg: Odometry) -> None:
-        cov = msg.pose.covariance
-        with self._lock:
-            self._fgo_cov_trace = cov[0] + cov[7]
-            self._fgo_cov_yaw   = cov[35]
-
     def _on_fitness(self, msg: Float64) -> None:
         with self._lock:
             self._fitness_score    = msg.data
@@ -277,8 +264,6 @@ class TransformerInferenceNode(Node):
             lin         = self._linear_vel
             ang         = self._angular_vel
             jerk        = self._jerk
-            cov_trace   = self._fgo_cov_trace
-            cov_yaw     = self._fgo_cov_yaw
 
         accel_dev = (abs(accel_norm - self._gravity)
                      if not math.isnan(accel_norm) else float("nan"))
@@ -286,7 +271,7 @@ class TransformerInferenceNode(Node):
         gyro_std  = _pop_std(gyro_buf)
 
         return [fitness, fit_age, accel_dev, gyro_z, accel_std,
-                gyro_std, lin, ang, jerk, cov_trace, cov_yaw]
+                gyro_std, lin, ang, jerk]
 
     # ── Normalise a single row ────────────────────────────────────────────────
 

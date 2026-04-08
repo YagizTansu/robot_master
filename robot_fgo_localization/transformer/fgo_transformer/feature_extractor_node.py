@@ -28,10 +28,6 @@ linear_vel        — wheel-odometry linear velocity  vx (m/s)
 angular_vel       — wheel-odometry angular velocity wz (rad/s)
 jerk              — |Δvx / Δt|  sudden-slip proxy (m/s²)
 
---- FGO uncertainty features ---
-fgo_cov_trace     — σ²_x + σ²_y from /fgo/odometry covariance (m²)
-fgo_cov_yaw       — σ²_yaw from /fgo/odometry covariance (rad²)
-
 --- Ground truth labels (TRAINING TARGETS) ---
 gt_x, gt_y        — Gazebo ground truth position (m)
 gt_yaw_rad        — Gazebo ground truth yaw (rad)
@@ -82,9 +78,6 @@ _CSV_COLUMNS = [
     "linear_vel",
     "angular_vel",
     "jerk",
-    # fgo uncertainty
-    "fgo_cov_trace",
-    "fgo_cov_yaw",
     # ground truth + fgo poses (labels)
     "gt_x",
     "gt_y",
@@ -307,14 +300,6 @@ class FeatureExtractorNode(Node):
         fgo_y   = fgo_msg.pose.pose.position.y
         fgo_yaw = _quat_to_yaw(fgo_msg.pose.pose.orientation)
 
-        # ── FGO covariance ──────────────────────────────────────────────────
-        # nav_msgs/Odometry.pose.covariance is a 6×6 row-major matrix
-        # with order [x, y, z, roll, pitch, yaw].
-        # Indices: (0,0)=xx → idx 0,  (1,1)=yy → idx 7,  (5,5)=yaw → idx 35
-        cov           = fgo_msg.pose.covariance
-        fgo_cov_trace = cov[0] + cov[7]    # σ²_x + σ²_y
-        fgo_cov_yaw   = cov[35]            # σ²_yaw
-
         # ── Error labels ────────────────────────────────────────────────────
         dx      = fgo_x - gt_x
         dy      = fgo_y - gt_y
@@ -360,8 +345,6 @@ class FeatureExtractorNode(Node):
             "linear_vel":      _fmt(linear_vel),
             "angular_vel":     _fmt(angular_vel),
             "jerk":            _fmt(jerk),
-            "fgo_cov_trace":   _fmt(fgo_cov_trace, 8),
-            "fgo_cov_yaw":     _fmt(fgo_cov_yaw, 8),
             "gt_x":            _fmt(gt_x),
             "gt_y":            _fmt(gt_y),
             "gt_yaw_rad":      _fmt(gt_yaw),
