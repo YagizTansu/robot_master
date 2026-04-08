@@ -12,7 +12,7 @@ from typing import List
 # CSV schema
 # ─────────────────────────────────────────────────────────────────────────────
 
-# The 11 columns fed as input features to the Transformer.
+# The 9 columns fed as input features to the Transformer.
 # Order here defines column order in the normalisation stats file.
 FEATURE_COLS: List[str] = [
     "fitness_score",    # NDT match quality        (lower = better)
@@ -24,8 +24,6 @@ FEATURE_COLS: List[str] = [
     "linear_vel",       # wheel-odometry vx         (m/s)
     "angular_vel",      # wheel-odometry wz         (rad/s)
     "jerk",             # |Δvx / Δt|               (slip proxy)
-    "fgo_cov_trace",    # σ²_x + σ²_y              (FGO XY uncertainty)
-    "fgo_cov_yaw",      # σ²_yaw                   (FGO heading uncertainty)
 ]
 
 # Primary training target column
