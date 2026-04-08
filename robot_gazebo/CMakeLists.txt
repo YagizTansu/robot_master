@@ -19,6 +19,8 @@ find_package(rclcpp REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 # ── Gazebo transport / msgs (bundled inside Jazzy ROS overlay) ────────────────
 # Tell CMake where to find gz vendor cmake configs.
@@ -58,6 +60,11 @@ install(TARGETS ground_truth_publisher
 ament_package()
 
 install(DIRECTORY launch models worlds DESTINATION share/${PROJECT_NAME})
+
+install(PROGRAMS
+  scripts/sim_bt_topic_publishers.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Python benchmark scripts
 install(
