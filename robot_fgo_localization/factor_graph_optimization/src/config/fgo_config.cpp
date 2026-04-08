@@ -50,8 +50,9 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   node.declare_parameter("noise.imu.gravity",            cfg.imu_gravity);
   node.declare_parameter("noise.imu.bias_acc_omega_int", cfg.imu_bias_acc_omega_int);
 
-  node.declare_parameter("lidar.gating.rotation_gate_rad", cfg.lidar_rotation_gate_rad);
-  node.declare_parameter("lidar.gating.max_scan_age_sec",  cfg.max_scan_age_sec);
+  node.declare_parameter("lidar.gating.rotation_gate_rad",        cfg.lidar_rotation_gate_rad);
+  node.declare_parameter("lidar.gating.max_scan_age_sec",          cfg.max_scan_age_sec);
+  node.declare_parameter("lidar.gating.scan_keyframe_history_sec", cfg.scan_keyframe_history_sec);
 
   node.declare_parameter("isam2.relinearize_threshold", cfg.isam2_relinearize_threshold);
   node.declare_parameter("isam2.relinearize_skip",      cfg.isam2_relinearize_skip);
@@ -134,8 +135,9 @@ FgoConfig FgoConfig::fromNode(rclcpp::Node & node)
   cfg.imu_gravity                 = node.get_parameter("noise.imu.gravity").as_double();
   cfg.imu_bias_acc_omega_int      = node.get_parameter("noise.imu.bias_acc_omega_int").as_double();
 
-  cfg.lidar_rotation_gate_rad = node.get_parameter("lidar.gating.rotation_gate_rad").as_double();
-  cfg.max_scan_age_sec        = node.get_parameter("lidar.gating.max_scan_age_sec").as_double();
+  cfg.lidar_rotation_gate_rad        = node.get_parameter("lidar.gating.rotation_gate_rad").as_double();
+  cfg.max_scan_age_sec               = node.get_parameter("lidar.gating.max_scan_age_sec").as_double();
+  cfg.scan_keyframe_history_sec      = node.get_parameter("lidar.gating.scan_keyframe_history_sec").as_double();
 
   cfg.isam2_relinearize_threshold = node.get_parameter("isam2.relinearize_threshold").as_double();
   cfg.isam2_relinearize_skip      = node.get_parameter("isam2.relinearize_skip").as_int();

@@ -44,6 +44,7 @@ void GraphManager::reinit(const FgoConfig & cfg)
   optimized_velocity_       = gtsam::Vector3::Zero();
   optimized_bias_           = gtsam::imuBias::ConstantBias();
   has_valid_pose_           = false;
+  keyframe_history_.clear();
   initIsam2();
   initGraph();
 }
@@ -201,25 +202,58 @@ bool GraphManager::step(
     addImuVelocityPriors(batch_start_key, key_, trust.w_imu, logger);
   }
 
-  // ── Scan-match PriorFactors ───────────────────────────────────────────────
-  // Each scan is gated against the |dyaw| of its nearest keyframe interval.
-  // NDT is unreliable during in-place rotation.
-  if (!local_scan.empty()) {
-    // Pre-compute |dyaw| per keyframe interval; index 0 uses the pre-batch pose.
-    std::vector<double> keyframe_dyaw(local_odom.size());
-    {
-      double yaw_prev = extractYaw(pre_batch_pose.orientation);
-      for (std::size_t i = 0; i < local_odom.size(); ++i) {
-        double dy = std::fmod(
-          std::fabs(extractYaw(local_odom[i].pose.orientation) - yaw_prev),
-          2.0 * M_PI);
-        if (dy > M_PI) dy = 2.0 * M_PI - dy;
-        keyframe_dyaw[i] = dy;
-        yaw_prev = extractYaw(local_odom[i].pose.orientation);
+  // ── Pre-compute |dyaw| per keyframe interval ─────────────────────────────
+  // Computed unconditionally so every keyframe batch populates the history
+  // even when no scans arrived this step (a late scan in the next step may
+  // need to match these keyframes retroactively).
+  std::vector<double> keyframe_dyaw(local_odom.size());
+  {
+    double yaw_prev = extractYaw(pre_batch_pose.orientation);
+    for (std::size_t i = 0; i < local_odom.size(); ++i) {
+      double dy = std::fmod(
+        std::fabs(extractYaw(local_odom[i].pose.orientation) - yaw_prev),
+        2.0 * M_PI);
+      if (dy > M_PI) dy = 2.0 * M_PI - dy;
+      keyframe_dyaw[i] = dy;
+      yaw_prev = extractYaw(local_odom[i].pose.orientation);
+    }
+  }
+
+  // ── Populate keyframe history for retroactive scan matching ───────────────
+  // Each consumed keyframe is recorded with its timestamp, GTSAM key, and
+  // |dyaw|.  Entries older than scan_keyframe_history_sec are pruned so the
+  // deque stays bounded (~50-100 entries at 50 Hz, 0.5 s window).
+  {
+    for (std::size_t i = 0; i < local_odom.size(); ++i) {
+      keyframe_history_.push_back({
+        local_odom[i].timestamp,
+        batch_start_key + static_cast<int>(i) + 1,
+        keyframe_dyaw[i]
+      });
+    }
+    const rclcpp::Time t_newest = local_odom.back().timestamp;
+    while (!keyframe_history_.empty()) {
+      const double age =
+        (t_newest - keyframe_history_.front().timestamp).seconds();
+      if (age > cfg_.scan_keyframe_history_sec) {
+        keyframe_history_.pop_front();
+      } else {
+        break;
       }
     }
+  }
 
-    // One scan prior per keyframe per batch — prevents silent noise halving
+  // ── Scan-match PriorFactors ───────────────────────────────────────────────
+  // Each scan is matched to the nearest keyframe by timestamp, searching both
+  // the current batch (local_odom) and the recent keyframe history buffer.
+  // When NDT latency (50-150 ms) causes a scan to arrive after its true
+  // acquisition-time keyframe has already been consumed, the history buffer
+  // lets us retroactively attach the PriorFactor to the correct key.
+  // iSAM2 handles retroactive factors natively: adding a factor to a key that
+  // was committed in a previous batch re-linearizes the affected Bayes-tree
+  // branches and propagates the correction forward through the full chain.
+  if (!local_scan.empty()) {
+    // One scan prior per keyframe per step — prevents silent noise halving
     // when multiple scan messages happen to map to the same nearest keyframe.
     std::unordered_set<int> assigned_scan_keys;
 
@@ -227,23 +261,54 @@ bool GraphManager::step(
       const rclcpp::Time scan_t(scan_msg.header.stamp);
       const gtsam::Pose3 scan_pose = msgToGtsam(scan_msg.pose.pose);
 
-      // Find nearest keyframe by timestamp.
-      int    best_i  = static_cast<int>(local_odom.size()) - 1;
-      double best_dt = std::numeric_limits<double>::max();
+      // ── Search current batch ────────────────────────────────────────────
+      int    best_batch_i  = static_cast<int>(local_odom.size()) - 1;
+      double best_batch_dt = std::numeric_limits<double>::max();
       for (int i = 0; i < static_cast<int>(local_odom.size()); ++i) {
         const double dt = std::fabs((local_odom[i].timestamp - scan_t).seconds());
-        if (dt < best_dt) { best_dt = dt; best_i = i; }
+        if (dt < best_batch_dt) { best_batch_dt = dt; best_batch_i = i; }
       }
 
-      // Skip this scan if its keyframe interval had significant rotation.
-      const double local_dyaw = keyframe_dyaw[best_i];
-      if (local_dyaw > cfg_.lidar_rotation_gate_rad) {
+      // ── Search history buffer (retroactive matching) ────────────────────
+      // Finds keyframes from previous batches that are closer in time to the
+      // scan's acquisition timestamp.  Only considers keys that are still in
+      // iSAM2 (not yet marginalized by the sliding-window trimmer).
+      int    best_hist_idx = -1;
+      double best_hist_dt  = std::numeric_limits<double>::max();
+      for (int h = 0; h < static_cast<int>(keyframe_history_.size()); ++h) {
+        if (keyframe_history_[h].key < oldest_kept_key_) continue;
+        const double dt =
+          std::fabs((keyframe_history_[h].timestamp - scan_t).seconds());
+        if (dt < best_hist_dt) { best_hist_dt = dt; best_hist_idx = h; }
+      }
+
+      // ── Select best match across batch + history ────────────────────────
+      int    target_key;
+      double target_dyaw;
+      double best_dt;
+      bool   is_retroactive = false;
+
+      if (best_hist_idx >= 0 && best_hist_dt < best_batch_dt) {
+        const auto & rec = keyframe_history_[best_hist_idx];
+        target_key     = rec.key;
+        target_dyaw    = rec.abs_dyaw;
+        best_dt        = best_hist_dt;
+        is_retroactive = true;
+      } else {
+        target_key  = batch_start_key + best_batch_i + 1;
+        target_dyaw = keyframe_dyaw[best_batch_i];
+        best_dt     = best_batch_dt;
+      }
+
+      // ── Rotation gate ───────────────────────────────────────────────────
+      if (target_dyaw > cfg_.lidar_rotation_gate_rad) {
         RCLCPP_DEBUG(logger,
-          "[GraphManager] Scan prior skipped: keyframe[%d] |dyaw|=%.4f rad > gate=%.4f rad",
-          best_i, local_dyaw, cfg_.lidar_rotation_gate_rad);
+          "[GraphManager] Scan prior skipped: X(%d) |dyaw|=%.4f rad > gate=%.4f rad",
+          target_key, target_dyaw, cfg_.lidar_rotation_gate_rad);
         continue;
       }
 
+      // ── Build noise model ───────────────────────────────────────────────
       // GTSAM Pose3 sigma order: [roll, pitch, yaw, x, y, z]
       // Covariance from scan_matcher already encodes fitness scaling.
       // Trust weight stacks on top: scaled_sigma = cov_sigma / max(w_lidar, EPSILON).
@@ -259,14 +324,12 @@ bool GraphManager::step(
           std::sqrt(cov[14]) * lidar_inv    // z     σ
         ).finished());
 
-      const int target_key = batch_start_key + best_i + 1;
-
-      // Guard: allow at most one scan prior per keyframe per batch.
-      // A burst of scans all mapping to the same X(k) would be fused as
-      // independent measurements, silently halving the noise sigma each time.
+      // ── Uniqueness guard ────────────────────────────────────────────────
+      // At most one scan prior per keyframe per step — a second prior on the
+      // same key would silently halve the effective noise sigma.
       if (!assigned_scan_keys.insert(target_key).second) {
         RCLCPP_DEBUG(logger,
-          "[GraphManager] Scan prior skipped: X(%d) already has a prior this batch (dt=%.3fs)",
+          "[GraphManager] Scan prior skipped: X(%d) already assigned this step (dt=%.3fs)",
           target_key, best_dt);
         continue;
       }
@@ -275,10 +338,11 @@ bool GraphManager::step(
         gtsam::PriorFactor<gtsam::Pose3>(X(target_key), scan_pose, lidar_noise));
 
       RCLCPP_DEBUG(logger,
-        "[GraphManager] Scan prior -> X(%d), dt=%.3fs, dyaw=%.4f rad",
-        target_key, best_dt, local_dyaw);
+        "[GraphManager] Scan prior -> X(%d)  dt=%.3fs  dyaw=%.4f rad  retroactive=%s",
+        target_key, best_dt, target_dyaw, is_retroactive ? "yes" : "no");
     }
   }
+
 
   // ── GPS factors ─────────────────────────────────────────────────────────────
   // Called after the odometry BetweenFactor loop so all X(k) keys known to

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -166,6 +167,18 @@ private:
 
   // ── IMU preintegrator ─────────────────────────────────────────────────────
   std::unique_ptr<ImuPreintegrator> imu_preint_;
+
+  // ── Keyframe history for retroactive scan matching ────────────────────────
+  // Records every consumed keyframe so that scans arriving late (after NDT
+  // latency) can still be matched to their true acquisition-time keyframe
+  // rather than the closest keyframe in the current batch.
+  // Entries older than cfg_.scan_keyframe_history_sec are pruned each step.
+  struct KeyframeRecord {
+    rclcpp::Time timestamp;   ///< acquisition timestamp of this keyframe
+    int          key;         ///< GTSAM key index (used with X(key))
+    double       abs_dyaw;    ///< |dyaw| of this keyframe's motion interval (rad)
+  };
+  std::deque<KeyframeRecord> keyframe_history_;
 };
 
 }  // namespace factor_graph_optimization
