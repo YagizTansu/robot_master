@@ -36,6 +36,12 @@ add_executable(monitor_bt_node
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/localization_quality_check_action.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/hardware_diagnostics_check_action.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/fleet_manager_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/topic_alive_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/action_server_alive_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/thermal_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/proximity_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/system_resource_check_action.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../robot_custom_behaviour_tree_nodes/src/time_sync_check_action.cpp
 )
 
 ament_target_dependencies(monitor_bt_node
