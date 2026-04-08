@@ -61,8 +61,9 @@ struct FgoConfig
   double imu_bias_acc_omega_int{1.0e-5};     ///< initial bias-integral uncertainty (numerical stability)
 
   // ── LiDAR gating ────────────────────────────────────────────────────────
-  double lidar_rotation_gate_rad{0.015};  ///< skip scan if keyframe |dyaw| > this (rad)
-  double max_scan_age_sec{1.0};           ///< discard scans older than this (sec)
+  double lidar_rotation_gate_rad{0.015};      ///< skip scan if keyframe |dyaw| > this (rad)
+  double max_scan_age_sec{1.0};               ///< discard scans older than this (sec)
+  double scan_keyframe_history_sec{0.5};      ///< retroactive matching: how far back (sec) to search for the nearest keyframe to a scan
 
   // ── iSAM2 ───────────────────────────────────────────────
   double      isam2_relinearize_threshold{0.1};

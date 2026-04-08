@@ -104,6 +104,10 @@ fgo_node:
         rotation_gate_rad:   0.010  # was 0.015
         # Discard scan poses older than this (sec). Prevents stale scans after a pause.
         max_scan_age_sec:    2.0    # was 1.0 — safety margin for slower NDT with finer voxels (0.010 m leaf)
+        # How far back (sec) to search past keyframes when matching a scan.
+        # NDT latency is ~60 ms → 0.3 s gives 5× safety margin at 1.5 m/s.
+        # The deque holds ~15-30 KeyframeRecords at 50 Hz — negligible memory.
+        scan_keyframe_history_sec: 0.6
 
     # ── iSAM2 ───────────────────────────────────────────────
     isam2:
