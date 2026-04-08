@@ -54,4 +54,26 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_node)
     ld.add_action(demo_laser_merger_launch)
 
+    # Simulation-only BT prerequisite topic publishers.
+    # Publishes /emergency_stop, /battery_status, /diagnostics_agg,
+    # and /fleet_manager/heartbeat so the idle-monitor BT can run in simulation.
+    # Override parameters to inject fault scenarios, e.g.:
+    #   ros2 param set /sim_bt_topic_publishers battery_percentage 15.0
+    sim_bt_publishers_node = Node(
+        package='robot_gazebo',
+        executable='sim_bt_topic_publishers.py',
+        name='sim_bt_topic_publishers',
+        output='screen',
+        parameters=[{
+            'publish_rate_hz':          2.0,
+            'emergency_active':         False,
+            'battery_percentage':       85.0,
+            'battery_voltage':          24.0,
+            'fleet_online':             True,
+            'diagnostics_ok':           True,
+            'motor_temperature_celsius': 35.0,
+        }],
+    )
+    ld.add_action(sim_bt_publishers_node)
+
     return ld
