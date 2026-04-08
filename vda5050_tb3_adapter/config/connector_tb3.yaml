@@ -1,0 +1,20 @@
+mqtt_bridge:
+  ros__parameters:
+    mqtt_address: "localhost"    # "mosquitto" değil, lokal çalıştırıyorsan
+    mqtt_port: 1883
+    mqtt_username: ""
+    mqtt_password: ""
+    manufacturer_name: "YourCompany"   # istediğin isim
+    serial_number: "ROBOT_001"         # robotun seri no
+
+controller:
+  ros__parameters:
+    robot_name: "ROBOT_001"
+    manufacturer_name: "YourCompany"
+    serial_number: "ROBOT_001"
+
+tb3_adapter:
+  ros__parameters:
+    robot_name: "ROBOT_001"
+    manufacturer_name: "YourCompany"
+    serial_number: "ROBOT_001"
