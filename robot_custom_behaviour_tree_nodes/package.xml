@@ -39,5 +39,11 @@
     <nav2_behavior_tree plugin="${prefix}/localization_quality_check_plugin.xml" />
     <nav2_behavior_tree plugin="${prefix}/hardware_diagnostics_check_plugin.xml" />
     <nav2_behavior_tree plugin="${prefix}/fleet_manager_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/topic_alive_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/action_server_alive_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/thermal_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/proximity_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/system_resource_check_plugin.xml" />
+    <nav2_behavior_tree plugin="${prefix}/time_sync_check_plugin.xml" />
   </export>
 </package>

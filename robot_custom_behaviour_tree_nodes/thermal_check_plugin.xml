@@ -1,0 +1,10 @@
+<library path="thermal_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/ThermalCheck"
+         type="robot_custom_behaviour_tree_nodes::ThermalCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Monitors component temperature via /diagnostics_agg.
+      Returns FAILURE when temperature exceeds max_temp_celsius or status is ERROR/STALE.
+    </description>
+  </class>
+</library>

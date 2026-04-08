@@ -1,0 +1,10 @@
+<library path="action_server_alive_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/ActionServerAliveCheck"
+         type="robot_custom_behaviour_tree_nodes::ActionServerAliveCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks that a ROS 2 action server is reachable by querying the DDS graph.
+      Returns SUCCESS if the send_goal service endpoint is found, FAILURE otherwise.
+    </description>
+  </class>
+</library>

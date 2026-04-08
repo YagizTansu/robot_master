@@ -1,0 +1,10 @@
+<library path="topic_alive_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/TopicAliveCheck"
+         type="robot_custom_behaviour_tree_nodes::TopicAliveCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks that a ROS 2 topic is actively publishing within a timeout window.
+      Returns SUCCESS if a recent message was received, FAILURE otherwise.
+    </description>
+  </class>
+</library>

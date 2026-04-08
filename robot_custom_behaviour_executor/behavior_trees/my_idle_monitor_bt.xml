@@ -29,6 +29,28 @@
             </Fallback>
 
             <!-- ================================================================
+                 LAYER 2.5: SENSOR HEALTH
+                 Checks that critical sensor topics are publishing actively.
+                 Fail-safe: silent sensor (topic not alive) → FAILURE.
+                 A dead LiDAR or IMU makes navigation unsafe — halt.
+                 ================================================================ -->
+            <Fallback name="SensorHealthManagement">
+                <Sequence name="SensorAliveChecks">
+                    <TopicAliveCheck name="LidarAlive"
+                        topic="/scan"
+                        timeout_sec="2.0" />
+                    <TopicAliveCheck name="OdomAlive"
+                        topic="/odometry"
+                        timeout_sec="2.0" />
+                    <TopicAliveCheck name="ImuAlive"
+                        topic="/imu/data"
+                        timeout_sec="2.0" />
+                </Sequence>
+                <!-- Sensor failure is unrecoverable here — propagate FAILURE -->
+                <AlwaysFailure name="SensorFaultHalt" />
+            </Fallback>
+
+            <!-- ================================================================
                  LAYER 3: LOCALIZATION QUALITY
                  Checks AMCL covariance on /amcl_pose.
                  Fail-safe: no pose message → FAILURE.
@@ -42,6 +64,20 @@
                     timeout_sec="2.0" />
                 <!-- Poor localization cannot be self-recovered here — halt -->
                 <AlwaysFailure name="LocalizationFaultHalt" />
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 3.5: NAVIGATION STACK HEALTH
+                 Verifies that the Nav2 action server is alive before any
+                 navigation attempt. A crashed planner would block indefinitely
+                 without this guard.
+                 ================================================================ -->
+            <Fallback name="NavigationStackHealth">
+                <ActionServerAliveCheck name="NavServerCheck"
+                    action_name="/navigate_to_pose"
+                    timeout_sec="3.0" />
+                <!-- Nav stack down — alert and halt until recovered -->
+                <AlwaysFailure name="NavStackHalt" />
             </Fallback>
 
             <!-- ================================================================
@@ -78,7 +114,7 @@
                         charge_station_pose="{charge_pose}"
                         server_timeout="10.0"
                         action_timeout="300.0" />
-                    <RetryUntilSuccessful name="ChargingLoopWarning" num_attempts="-1">
+                    <RetryUntilSuccessful name="ChargingLoopWarning" num_attempts="3600">
                         <BatteryCheck name="CheckBatteryFullWarning"
                             battery_topic="/battery_status"
                             min_battery_percentage="80.0" />
@@ -98,13 +134,28 @@
                         charge_station_pose="{charge_pose}"
                         server_timeout="10.0"
                         action_timeout="300.0" />
-                    <RetryUntilSuccessful name="ChargingLoopCritical" num_attempts="-1">
+                    <RetryUntilSuccessful name="ChargingLoopCritical" num_attempts="7200">
                         <BatteryCheck name="CheckBatteryFullCritical"
                             battery_topic="/battery_status"
                             min_battery_percentage="80.0" />
                     </RetryUntilSuccessful>
                 </Sequence>
 
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 4.5: THERMAL MANAGEMENT
+                 Monitors motor driver and compute board temperatures via
+                 /diagnostics_agg. Overheating causes irreversible hardware
+                 damage — robot must stop immediately.
+                 ================================================================ -->
+            <Fallback name="ThermalManagement">
+                <ThermalCheck name="MotorTempCheck"
+                    diagnostics_topic="/diagnostics_agg"
+                    component_name="motor_driver"
+                    max_temp_celsius="70.0" />
+                <!-- Overheating — propagate FAILURE to halt all motion -->
+                <AlwaysFailure name="ThermalHalt" />
             </Fallback>
 
             <!-- ================================================================
@@ -118,6 +169,50 @@
                     timeout_sec="5.0" />
                 <!-- Fleet offline is a warning — robot keeps operating -->
                 <AlwaysSuccess name="FleetOfflineWarning" />
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 6: PROXIMITY SAFETY (non-critical)
+                 Checks for obstacles within the safety zone from /scan.
+                 In human-shared environments the robot slows/stops when an
+                 obstacle enters the inner safety radius.
+                 AlwaysSuccess fallback: handled gracefully, does not halt.
+                 ================================================================ -->
+            <Fallback name="ProximitySafety">
+                <ProximityCheck name="SafetyZoneCheck"
+                    laser_topic="/scan"
+                    safety_radius_m="0.4"
+                    warning_radius_m="0.8" />
+                <!-- Obstacle in safety zone — issue warning, keep operating -->
+                <AlwaysSuccess name="ProximityWarningIssued" />
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 7: SYSTEM RESOURCES
+                 Guards against CPU/RAM exhaustion and full-disk conditions
+                 that could crash ROS2 nodes silently during long missions.
+                 Non-critical: warns but does not halt operation.
+                 ================================================================ -->
+            <Fallback name="SystemResources">
+                <SystemResourceCheck name="ResourceCheck"
+                    max_cpu_percent="90.0"
+                    max_memory_percent="85.0"
+                    min_disk_free_mb="500" />
+                <!-- Resource pressure — warn operator, continue operating -->
+                <AlwaysSuccess name="ResourceWarningIssued" />
+            </Fallback>
+
+            <!-- ================================================================
+                 LAYER 8: TIME SYNCHRONISATION
+                 ROS2 TF transforms use wall-clock timestamps; NTP drift above
+                 100 ms causes transform extrapolation errors in Nav2.
+                 Non-critical: warns but does not halt (may self-recover).
+                 ================================================================ -->
+            <Fallback name="TimeSync">
+                <TimeSyncCheck name="CheckNTP"
+                    max_offset_ms="100.0" />
+                <!-- Clock drift warning — robot keeps operating -->
+                <AlwaysSuccess name="TimeSyncWarning" />
             </Fallback>
 
             <!-- Monitoring cycle complete -->
