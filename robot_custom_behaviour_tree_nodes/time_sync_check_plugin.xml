@@ -1,0 +1,10 @@
+<library path="time_sync_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/TimeSyncCheck"
+         type="robot_custom_behaviour_tree_nodes::TimeSyncCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Verifies NTP clock synchronisation using the Linux adjtimex() syscall.
+      Returns FAILURE when the clock is unsynchronised or offset exceeds max_offset_ms.
+    </description>
+  </class>
+</library>

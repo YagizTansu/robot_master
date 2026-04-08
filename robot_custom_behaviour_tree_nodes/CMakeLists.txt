@@ -191,6 +191,78 @@ install(TARGETS fleet_manager_check_action_bt_node
   RUNTIME DESTINATION bin
 )
 
+# Build TopicAliveCheck BT Node
+add_library(topic_alive_check_action_bt_node SHARED
+  src/topic_alive_check_action.cpp
+)
+ament_target_dependencies(topic_alive_check_action_bt_node ${dependencies})
+target_compile_definitions(topic_alive_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS topic_alive_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build ActionServerAliveCheck BT Node
+add_library(action_server_alive_check_action_bt_node SHARED
+  src/action_server_alive_check_action.cpp
+)
+ament_target_dependencies(action_server_alive_check_action_bt_node ${dependencies})
+target_compile_definitions(action_server_alive_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS action_server_alive_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build ThermalCheck BT Node
+add_library(thermal_check_action_bt_node SHARED
+  src/thermal_check_action.cpp
+)
+ament_target_dependencies(thermal_check_action_bt_node ${dependencies})
+target_compile_definitions(thermal_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS thermal_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build ProximityCheck BT Node
+add_library(proximity_check_action_bt_node SHARED
+  src/proximity_check_action.cpp
+)
+ament_target_dependencies(proximity_check_action_bt_node ${dependencies})
+target_compile_definitions(proximity_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS proximity_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build SystemResourceCheck BT Node
+add_library(system_resource_check_action_bt_node SHARED
+  src/system_resource_check_action.cpp
+)
+ament_target_dependencies(system_resource_check_action_bt_node ${dependencies})
+target_compile_definitions(system_resource_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS system_resource_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Build TimeSyncCheck BT Node
+add_library(time_sync_check_action_bt_node SHARED
+  src/time_sync_check_action.cpp
+)
+ament_target_dependencies(time_sync_check_action_bt_node ${dependencies})
+target_compile_definitions(time_sync_check_action_bt_node PRIVATE BT_PLUGIN_EXPORT)
+install(TARGETS time_sync_check_action_bt_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
 # Install plugin description file
 pluginlib_export_plugin_description_file(nav2_behavior_tree battery_check_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree get_charge_station_pose_plugin.xml)
@@ -199,6 +271,12 @@ pluginlib_export_plugin_description_file(nav2_behavior_tree navigate_to_charge_s
 pluginlib_export_plugin_description_file(nav2_behavior_tree localization_quality_check_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree hardware_diagnostics_check_plugin.xml)
 pluginlib_export_plugin_description_file(nav2_behavior_tree fleet_manager_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree topic_alive_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree action_server_alive_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree thermal_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree proximity_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree system_resource_check_plugin.xml)
+pluginlib_export_plugin_description_file(nav2_behavior_tree time_sync_check_plugin.xml)
 
 # Install headers
 install(DIRECTORY include/
@@ -215,6 +293,12 @@ ament_export_libraries(
   localization_quality_check_action_bt_node
   hardware_diagnostics_check_action_bt_node
   fleet_manager_check_action_bt_node
+  topic_alive_check_action_bt_node
+  action_server_alive_check_action_bt_node
+  thermal_check_action_bt_node
+  proximity_check_action_bt_node
+  system_resource_check_action_bt_node
+  time_sync_check_action_bt_node
 )
 ament_export_dependencies(
   rclcpp

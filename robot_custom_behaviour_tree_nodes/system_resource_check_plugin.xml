@@ -1,0 +1,10 @@
+<library path="system_resource_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/SystemResourceCheck"
+         type="robot_custom_behaviour_tree_nodes::SystemResourceCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Monitors CPU utilisation, RAM usage, and disk free space via Linux /proc.
+      Returns FAILURE (with WARN log) when any threshold is exceeded.
+    </description>
+  </class>
+</library>

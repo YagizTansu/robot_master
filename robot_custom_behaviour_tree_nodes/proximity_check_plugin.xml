@@ -1,0 +1,10 @@
+<library path="proximity_check_action_bt_node">
+  <class name="robot_custom_behaviour_tree_nodes/ProximityCheck"
+         type="robot_custom_behaviour_tree_nodes::ProximityCheckAction"
+         base_class_type="BT::ConditionNode">
+    <description>
+      Checks LaserScan for obstacles within warning and safety radii.
+      Returns FAILURE when an obstacle is detected within warning_radius_m.
+    </description>
+  </class>
+</library>
