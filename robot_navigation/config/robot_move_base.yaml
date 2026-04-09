@@ -80,8 +80,8 @@ controller_server:
       max_linear_vel_x: 1.5
       min_linear_vel_x: -1.5
       # Y-axis: Lateral (Strafe) - Mecanum/Omni specific
-      max_linear_vel_y: 1.5
-      min_linear_vel_y: -1.5
+      max_linear_vel_y: 0.0
+      min_linear_vel_y: 0.0
       # Rotation
       max_angular_vel: 2.0
       min_angular_vel: -2.0
@@ -107,12 +107,11 @@ controller_server:
       control_duration: 0.5
       
       # Cost Function Weights
-      # path_distance_weight: use moderate value — 200 was too aggressive and caused
-      # curved-path penalty to dominate, keeping the robot at 0.1-0.2 m/s.
-      path_distance_weight: 40.0    # Weight for path alignment
-      goal_distance_weight: 10.0    # Weight for goal proximity
+      path_distance_weight: 80.0    # Weight for path alignment (2x increase for tighter tracking)
+      goal_distance_weight: 30.0    # Weight for reaching local carrot point
       obstacle_weight: 1.0          # Weight for obstacle avoidance
-      velocity_reward_weight: 40.0  # Reward for speed; must be high enough to overcome path weight
+      velocity_reward_weight: 30.0  # Speed reward reduced slightly to let path weight dominate
+      heading_alignment_weight: 50.0 # Penalty for pointing away from path direction [0..pi]
       
       # Tolerances
       xy_goal_tolerance: 0.25
@@ -120,7 +119,7 @@ controller_server:
       transform_tolerance: 0.5
       
       # Plan Pruning - How far ahead to look on global plan
-      prune_plan_distance: 3.0      # Distance (m) to prune global plan for local tracking
+      prune_plan_distance: 4.0      # Increased: robot looks further ahead, anticipates turns earlier
 
 local_costmap:
   local_costmap:

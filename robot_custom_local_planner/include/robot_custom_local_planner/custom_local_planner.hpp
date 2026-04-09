@@ -124,6 +124,11 @@ protected:
   double calculateGoalDistanceScore(const Trajectory & trajectory);
 
   /**
+   * @brief Calculate heading alignment score (trajectory end vs path direction)
+   */
+  double calculateHeadingAlignmentScore(const Trajectory & trajectory);
+
+  /**
    * @brief Transform global plan to local frame
    */
   nav_msgs::msg::Path transformGlobalPlan(const geometry_msgs::msg::PoseStamped & pose);
@@ -185,6 +190,7 @@ protected:
   double goal_distance_weight_;
   double obstacle_weight_;
   double velocity_reward_weight_;
+  double heading_alignment_weight_;
   
   double transform_tolerance_;
   double xy_goal_tolerance_;

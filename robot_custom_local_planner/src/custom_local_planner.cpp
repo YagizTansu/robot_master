@@ -64,6 +64,8 @@ void CustomLocalPlanner::configure(
     node, plugin_name_ + ".obstacle_weight", rclcpp::ParameterValue(1.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".velocity_reward_weight", rclcpp::ParameterValue(20.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".heading_alignment_weight", rclcpp::ParameterValue(25.0));
   
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(0.5));
@@ -96,6 +98,7 @@ void CustomLocalPlanner::configure(
   node->get_parameter(plugin_name_ + ".goal_distance_weight", goal_distance_weight_);
   node->get_parameter(plugin_name_ + ".obstacle_weight", obstacle_weight_);
   node->get_parameter(plugin_name_ + ".velocity_reward_weight", velocity_reward_weight_);
+  node->get_parameter(plugin_name_ + ".heading_alignment_weight", heading_alignment_weight_);
   
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance_);
   node->get_parameter(plugin_name_ + ".xy_goal_tolerance", xy_goal_tolerance_);
@@ -333,6 +336,7 @@ double CustomLocalPlanner::scoreTrajectory(const Trajectory & trajectory)
   double path_score = calculatePathAlignmentScore(trajectory);
   double obstacle_score = calculateObstacleScore(trajectory);
   double goal_score = calculateGoalDistanceScore(trajectory);
+  double heading_score = calculateHeadingAlignmentScore(trajectory);
 
   // Check if trajectory collides
   if (std::isinf(obstacle_score)) {
@@ -350,6 +354,7 @@ double CustomLocalPlanner::scoreTrajectory(const Trajectory & trajectory)
     path_distance_weight_ * path_score +
     obstacle_weight_ * obstacle_score +
     goal_distance_weight_ * goal_score +
+    heading_alignment_weight_ * heading_score +
     velocity_reward;
 
   return total_cost;
@@ -432,18 +437,68 @@ double CustomLocalPlanner::calculateObstacleScore(const Trajectory & trajectory)
 
 double CustomLocalPlanner::calculateGoalDistanceScore(const Trajectory & trajectory)
 {
-  if (global_plan_.poses.empty() || trajectory.poses.empty()) {
+  if (pruned_plan_.poses.empty() || trajectory.poses.empty()) {
     return 0.0;
   }
 
-  // Distance from end of trajectory to goal
-  const auto & goal = global_plan_.poses.back();
+  // Use end of PRUNED plan (local "carrot" point) not the global goal.
+  // The global goal can be 10+ m away, making this term nearly constant across
+  // all trajectories (zero differentiation). The carrot changes every cycle
+  // and actively pulls the robot forward along the plan.
+  const auto & carrot = pruned_plan_.poses.back();
   const auto & traj_end = trajectory.poses.back();
 
-  double dx = goal.pose.position.x - traj_end.pose.position.x;
-  double dy = goal.pose.position.y - traj_end.pose.position.y;
+  double dx = carrot.pose.position.x - traj_end.pose.position.x;
+  double dy = carrot.pose.position.y - traj_end.pose.position.y;
 
   return sqrt(dx * dx + dy * dy);
+}
+
+double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & trajectory)
+{
+  if (pruned_plan_.poses.size() < 2 || trajectory.poses.empty()) {
+    return 0.0;
+  }
+
+  // Get the heading of the trajectory at its end point
+  const auto & traj_end = trajectory.poses.back();
+  double traj_heading = tf2::getYaw(traj_end.pose.orientation);
+
+  // Find the closest plan point to the trajectory end
+  size_t closest_idx = 0;
+  double min_dist = std::numeric_limits<double>::max();
+  for (size_t i = 0; i < pruned_plan_.poses.size(); ++i) {
+    double dx = traj_end.pose.position.x - pruned_plan_.poses[i].pose.position.x;
+    double dy = traj_end.pose.position.y - pruned_plan_.poses[i].pose.position.y;
+    double dist = std::sqrt(dx * dx + dy * dy);
+    if (dist < min_dist) {
+      min_dist = dist;
+      closest_idx = i;
+    }
+  }
+
+  // Calculate path direction at closest point using forward or backward segment
+  double path_heading;
+  if (closest_idx + 1 < pruned_plan_.poses.size()) {
+    const auto & p1 = pruned_plan_.poses[closest_idx];
+    const auto & p2 = pruned_plan_.poses[closest_idx + 1];
+    path_heading = std::atan2(
+      p2.pose.position.y - p1.pose.position.y,
+      p2.pose.position.x - p1.pose.position.x);
+  } else {
+    const auto & p1 = pruned_plan_.poses[closest_idx - 1];
+    const auto & p2 = pruned_plan_.poses[closest_idx];
+    path_heading = std::atan2(
+      p2.pose.position.y - p1.pose.position.y,
+      p2.pose.position.x - p1.pose.position.x);
+  }
+
+  // Return absolute angular difference in [0, pi]
+  double heading_diff = std::fabs(std::atan2(
+    std::sin(traj_heading - path_heading),
+    std::cos(traj_heading - path_heading)));
+
+  return heading_diff;
 }
 
 nav_msgs::msg::Path CustomLocalPlanner::transformGlobalPlan(
