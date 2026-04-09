@@ -62,6 +62,8 @@ void CustomLocalPlanner::configure(
     node, plugin_name_ + ".goal_distance_weight", rclcpp::ParameterValue(24.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_weight", rclcpp::ParameterValue(1.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".velocity_reward_weight", rclcpp::ParameterValue(20.0));
   
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(0.5));
@@ -71,6 +73,8 @@ void CustomLocalPlanner::configure(
     node, plugin_name_ + ".yaw_goal_tolerance", rclcpp::ParameterValue(0.25));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".prune_plan_distance", rclcpp::ParameterValue(3.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".control_duration", rclcpp::ParameterValue(0.05));
 
   node->get_parameter(plugin_name_ + ".max_linear_vel_x", max_linear_vel_x_);
   node->get_parameter(plugin_name_ + ".min_linear_vel_x", min_linear_vel_x_);
@@ -91,13 +95,16 @@ void CustomLocalPlanner::configure(
   node->get_parameter(plugin_name_ + ".path_distance_weight", path_distance_weight_);
   node->get_parameter(plugin_name_ + ".goal_distance_weight", goal_distance_weight_);
   node->get_parameter(plugin_name_ + ".obstacle_weight", obstacle_weight_);
+  node->get_parameter(plugin_name_ + ".velocity_reward_weight", velocity_reward_weight_);
   
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance_);
   node->get_parameter(plugin_name_ + ".xy_goal_tolerance", xy_goal_tolerance_);
   node->get_parameter(plugin_name_ + ".yaw_goal_tolerance", yaw_goal_tolerance_);
   node->get_parameter(plugin_name_ + ".prune_plan_distance", prune_plan_distance_);
+  node->get_parameter(plugin_name_ + ".control_duration", control_dt_);
 
   speed_limit_ratio_ = 1.0;
+  last_closest_idx_ = 0;
 
   // Create publishers for visualization
   local_plan_pub_ = node->create_publisher<nav_msgs::msg::Path>(
@@ -135,6 +142,7 @@ void CustomLocalPlanner::deactivate()
 void CustomLocalPlanner::setPlan(const nav_msgs::msg::Path & path)
 {
   global_plan_ = path;
+  last_closest_idx_ = 0;  // Reset for new plan — prevent pruning from old position
   RCLCPP_INFO(logger_, "Received new global plan with %zu poses", global_plan_.poses.size());
 }
 
@@ -197,10 +205,10 @@ geometry_msgs::msg::TwistStamped CustomLocalPlanner::computeVelocityCommands(
     global_plan_transformed_pub_->publish(pruned_plan_);
   }
 
-  // Apply speed limit to both X and Y velocities for holonomic motion
+  // Apply speed limit to all velocity components
   cmd_vel.twist.linear.x = best_trajectory->linear_vel_x * speed_limit_ratio_;
   cmd_vel.twist.linear.y = best_trajectory->linear_vel_y * speed_limit_ratio_;
-  cmd_vel.twist.angular.z = best_trajectory->angular_vel;
+  cmd_vel.twist.angular.z = best_trajectory->angular_vel * speed_limit_ratio_;
 
   RCLCPP_DEBUG(
     logger_, "Best trajectory - Vx: %.2f, Vy: %.2f, W: %.2f, Cost: %.2f",
@@ -216,27 +224,30 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
 {
   std::vector<Trajectory> trajectories;
 
-  // Calculate velocity limits based on acceleration for holonomic motion
+  // Calculate velocity limits based on acceleration for holonomic motion.
+  // Use control_dt_ (= 1/controller_frequency) NOT sim_granularity_ here:
+  // sim_granularity_ is the simulation step; control_dt_ is how long the robot
+  // actually has to change its velocity between two controller calls.
   double max_vel_x = std::min(
     max_linear_vel_x_,
-    velocity.linear.x + linear_acc_limit_x_ * sim_granularity_);
+    velocity.linear.x + linear_acc_limit_x_ * control_dt_);
   double min_vel_x = std::max(
     min_linear_vel_x_,
-    velocity.linear.x - linear_acc_limit_x_ * sim_granularity_);
+    velocity.linear.x - linear_acc_limit_x_ * control_dt_);
   
   double max_vel_y = std::min(
     max_linear_vel_y_,
-    velocity.linear.y + linear_acc_limit_y_ * sim_granularity_);
+    velocity.linear.y + linear_acc_limit_y_ * control_dt_);
   double min_vel_y = std::max(
     min_linear_vel_y_,
-    velocity.linear.y - linear_acc_limit_y_ * sim_granularity_);
+    velocity.linear.y - linear_acc_limit_y_ * control_dt_);
   
   double max_ang_vel = std::min(
     max_angular_vel_,
-    velocity.angular.z + angular_acc_limit_ * sim_granularity_);
+    velocity.angular.z + angular_acc_limit_ * control_dt_);
   double min_ang_vel = std::max(
     min_angular_vel_,
-    velocity.angular.z - angular_acc_limit_ * sim_granularity_);
+    velocity.angular.z - angular_acc_limit_ * control_dt_);
 
   // Sample velocities for holonomic robot (X, Y, Theta)
   double vel_x_step = (max_vel_x - min_vel_x) / std::max(1, linear_samples_x_ - 1);
@@ -328,11 +339,18 @@ double CustomLocalPlanner::scoreTrajectory(const Trajectory & trajectory)
     return std::numeric_limits<double>::infinity();
   }
 
-  // Combine scores
+  // Combine scores (velocity_reward is negative: higher speed = lower cost = preferred)
+  // Use total holonomic speed sqrt(vx²+vy²) so lateral motion is also rewarded
+  double total_speed = std::sqrt(
+    trajectory.linear_vel_x * trajectory.linear_vel_x +
+    trajectory.linear_vel_y * trajectory.linear_vel_y);
+  double velocity_reward = -velocity_reward_weight_ * total_speed;
+
   double total_cost = 
     path_distance_weight_ * path_score +
     obstacle_weight_ * obstacle_score +
-    goal_distance_weight_ * goal_score;
+    goal_distance_weight_ * goal_score +
+    velocity_reward;
 
   return total_cost;
 }
@@ -375,6 +393,7 @@ double CustomLocalPlanner::calculatePathAlignmentScore(const Trajectory & trajec
 double CustomLocalPlanner::calculateObstacleScore(const Trajectory & trajectory)
 {
   double obstacle_cost = 0.0;
+  int scored_steps = 0;
 
   for (const auto & pose : trajectory.poses) {
     unsigned int mx, my;
@@ -383,12 +402,15 @@ double CustomLocalPlanner::calculateObstacleScore(const Trajectory & trajectory)
         pose.pose.position.y,
         mx, my))
     {
-      // Outside map bounds
-      return std::numeric_limits<double>::infinity();
+      // Trajectory step exits the local costmap window.
+      // Stop scoring here instead of discarding the whole trajectory —
+      // otherwise ANY trajectory faster than (costmap_radius / sim_time)
+      // would always get infinite cost and never be selected.
+      break;
     }
 
     unsigned char cost = costmap_->getCost(mx, my);
-    
+
     // Check for collision
     if (cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
         cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
@@ -396,11 +418,16 @@ double CustomLocalPlanner::calculateObstacleScore(const Trajectory & trajectory)
       return std::numeric_limits<double>::infinity();
     }
 
-    // Accumulate obstacle cost
     obstacle_cost += cost;
+    ++scored_steps;
   }
 
-  return obstacle_cost / trajectory.poses.size();
+  // Require at least one step to have been in the costmap
+  if (scored_steps == 0) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  return obstacle_cost / scored_steps;
 }
 
 double CustomLocalPlanner::calculateGoalDistanceScore(const Trajectory & trajectory)
@@ -445,11 +472,13 @@ nav_msgs::msg::Path CustomLocalPlanner::pruneGlobalPlan(
     return pruned_plan;
   }
 
-  // Find closest point on global plan to current pose
-  size_t closest_idx = 0;
+  // Search forward only from last known position — never go backward.
+  // This prevents the robot re-visiting already-passed waypoints after
+  // a brief detour or overshoot.
+  size_t closest_idx = last_closest_idx_;
   double min_dist = std::numeric_limits<double>::max();
   
-  for (size_t i = 0; i < global_plan_.poses.size(); ++i) {
+  for (size_t i = last_closest_idx_; i < global_plan_.poses.size(); ++i) {
     double dx = pose.pose.position.x - global_plan_.poses[i].pose.position.x;
     double dy = pose.pose.position.y - global_plan_.poses[i].pose.position.y;
     double dist = sqrt(dx * dx + dy * dy);
@@ -460,8 +489,11 @@ nav_msgs::msg::Path CustomLocalPlanner::pruneGlobalPlan(
     }
   }
 
-  RCLCPP_DEBUG(logger_, "Closest point on plan at index %zu, distance: %.2f m", 
-    closest_idx, min_dist);
+  // Persist progress — index can only advance, never retreat
+  last_closest_idx_ = closest_idx;
+
+  RCLCPP_DEBUG(logger_, "Closest point on plan at index %zu/%zu, distance: %.2f m", 
+    closest_idx, global_plan_.poses.size(), min_dist);
 
   // Add points from closest point onwards, up to prune_distance
   double accumulated_dist = 0.0;
