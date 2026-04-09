@@ -47,7 +47,12 @@ controller_server:
   ros__parameters:
     use_sim_time: true
     enable_stamped_cmd_vel: false
-    controller_frequency: 20.0 
+    controller_frequency: 20.0
+    # CRITICAL: must match the actual odom publisher topic.
+    # Default is 'odom', but this robot publishes to '/odometry'.
+    # Without this, controller always sees velocity=0, DWA window is stuck at
+    # [0, acc*control_dt] = [0, 0.125 m/s] and robot never exceeds ~0.1 m/s.
+    odom_topic: "/odometry"
     transform_tolerance: 0.5
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
@@ -92,13 +97,22 @@ controller_server:
       linear_samples_x: 7      # Number of forward/backward velocity samples
       linear_samples_y: 7      # Number of lateral velocity samples
       angular_samples: 9       # Number of angular velocity samples
-      sim_time: 2.0            # Time to simulate trajectory (seconds) - increased for better path following
+      sim_time: 1.5            # Time to simulate trajectory (seconds)
+      # NOTE: sim_time x max_linear_vel must be < costmap_radius (width/2)
+      # 1.5s x 1.5 m/s = 2.25m < 2.5m (5m costmap radius) ✓
       sim_granularity: 0.1     # Time step for simulation (seconds)
+      # control_duration controls the DWA velocity window width: +/- (acc * control_duration).
+      # With 0.05s (one control cycle) window was only ±0.125 m/s — robot could never
+      # rapidly accelerate. 0.5s gives ±1.25 m/s window so full speed range is sampled.
+      control_duration: 0.5
       
       # Cost Function Weights
-      path_distance_weight: 200.0   # Weight for path alignment (higher = stay closer to path)
-      goal_distance_weight: 10.0    # Weight for goal proximity (higher = prefer getting closer to goal)
-      obstacle_weight: 1.0          # Weight for obstacle avoidance (higher = stay further from obstacles)
+      # path_distance_weight: use moderate value — 200 was too aggressive and caused
+      # curved-path penalty to dominate, keeping the robot at 0.1-0.2 m/s.
+      path_distance_weight: 40.0    # Weight for path alignment
+      goal_distance_weight: 10.0    # Weight for goal proximity
+      obstacle_weight: 1.0          # Weight for obstacle avoidance
+      velocity_reward_weight: 40.0  # Reward for speed; must be high enough to overcome path weight
       
       # Tolerances
       xy_goal_tolerance: 0.25
@@ -119,8 +133,8 @@ local_costmap:
       robot_base_frame: base_footprint
       use_sim_time: true
       rolling_window: true
-      width: 3
-      height: 3
+      width: 5
+      height: 5
       resolution: 0.06
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
       plugins: ["static_layer", "voxel_layer", "prohibited_layer", "inflation_layer"]

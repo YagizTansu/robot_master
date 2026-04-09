@@ -184,6 +184,7 @@ protected:
   double path_distance_weight_;
   double goal_distance_weight_;
   double obstacle_weight_;
+  double velocity_reward_weight_;
   
   double transform_tolerance_;
   double xy_goal_tolerance_;
@@ -191,6 +192,8 @@ protected:
   double prune_plan_distance_;   // Distance to look ahead on global plan
   
   double speed_limit_ratio_;
+  double control_dt_;          // Control cycle duration [s] = 1/controller_frequency
+  size_t last_closest_idx_;    // Last closest index for forward-only plan pruning
 };
 
 }  // namespace robot_custom_local_planner
