@@ -184,7 +184,6 @@ class RobotVDA5050Adapter(Node):
             Odometry, self._odom_topic, self._odom_callback, 10
         )
 
-        qos_reliable = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
         qos_best_effort = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
         self._battery_sub = self.create_subscription(
@@ -198,7 +197,7 @@ class RobotVDA5050Adapter(Node):
             Bool,
             self._emergency_topic,
             self._emergency_callback,
-            qos_reliable,
+            qos_best_effort,
         )
 
         self._diagnostics_sub = self.create_subscription(
@@ -334,7 +333,9 @@ class RobotVDA5050Adapter(Node):
                 e for e in self._errors if not e.error_type.startswith("hw_")
             ]
             for status in msg.status:
-                if status.level >= 2:  # ERROR or STALE
+                # level is bytes in ROS 2 Jazzy, convert to int for comparison
+                level = int.from_bytes(status.level, byteorder='little') if isinstance(status.level, bytes) else int(status.level)
+                if level >= 2:  # ERROR or STALE
                     self._errors.append(
                         VDAError(
                             error_type=f"hw_{status.name}",

@@ -66,7 +66,7 @@ robot_adapter:
     base_frame: "base_link"
 
     # ROS topic names
-    odom_topic: "/odom"
+    odom_topic: "/odometry"
     battery_topic: "/battery_status"
     emergency_topic: "/emergency_stop"
     diagnostics_topic: "/diagnostics_agg"
