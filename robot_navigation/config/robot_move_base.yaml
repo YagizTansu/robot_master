@@ -115,7 +115,7 @@ controller_server:
       #
       # 0.1m sapma @ 150: 150×0.1=15  |  speed @ 20: 20×1.5=30 → hız kazanır ama dar marj
       # 0.3m sapma @ 150: 150×0.3=45  |  speed @ 20: 20×1.5=30 → path kazanır → robot geri döner
-      path_distance_weight: 150.0   # Path'e mesafe cezası [1/m] — artık m cinsinden, m² değil
+      path_distance_weight: 250.0   # Path'e mesafe cezası [1/m] — artık m cinsinden, m² değil
       goal_distance_weight: 30.0    # Carrot point'e çekim
       obstacle_weight: 1.0          # Engel cezası
       velocity_reward_weight: 20.0  # Hız ödülü — path'i geçemeyecek şekilde dengelendi
