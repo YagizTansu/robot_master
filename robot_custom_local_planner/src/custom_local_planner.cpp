@@ -388,7 +388,10 @@ double CustomLocalPlanner::calculatePathAlignmentScore(const Trajectory & trajec
     // Weight increases linearly along trajectory (emphasize end position)
     // This makes the robot look further ahead on the path
     double weight = 1.0 + (static_cast<double>(i) / trajectory.poses.size()) * 2.0;
-    total_distance += min_dist * min_dist * weight;  // Square distance for stronger penalty
+    total_distance += min_dist * weight;  // Linear distance (not squared) so score is in [m],
+                                          // which is comparable to velocity (m/s) and heading (rad).
+                                          // Squared distance was in m² → path cost was ~10x too small
+                                          // relative to velocity reward → robot ignored the path.
     total_weight += weight;
   }
 

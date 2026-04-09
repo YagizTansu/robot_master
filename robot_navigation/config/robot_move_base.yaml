@@ -107,11 +107,19 @@ controller_server:
       control_duration: 0.5
       
       # Cost Function Weights
-      path_distance_weight: 80.0    # Weight for path alignment (2x increase for tighter tracking)
-      goal_distance_weight: 30.0    # Weight for reaching local carrot point
-      obstacle_weight: 1.0          # Weight for obstacle avoidance
-      velocity_reward_weight: 30.0  # Speed reward reduced slightly to let path weight dominate
-      heading_alignment_weight: 50.0 # Penalty for pointing away from path direction [0..pi]
+      #
+      # Unit analizi (linear mesafe düzeltmesi sonrası):
+      #   path_score   → ortalama [m]  (yola sapma mesafesi)
+      #   heading_score → [0..π rad]
+      #   velocity_reward → -[m/s]
+      #
+      # 0.1m sapma @ 150: 150×0.1=15  |  speed @ 20: 20×1.5=30 → hız kazanır ama dar marj
+      # 0.3m sapma @ 150: 150×0.3=45  |  speed @ 20: 20×1.5=30 → path kazanır → robot geri döner
+      path_distance_weight: 150.0   # Path'e mesafe cezası [1/m] — artık m cinsinden, m² değil
+      goal_distance_weight: 30.0    # Carrot point'e çekim
+      obstacle_weight: 1.0          # Engel cezası
+      velocity_reward_weight: 20.0  # Hız ödülü — path'i geçemeyecek şekilde dengelendi
+      heading_alignment_weight: 60.0 # Yön hizalama cezası [1/rad]
       
       # Tolerances
       xy_goal_tolerance: 0.25
