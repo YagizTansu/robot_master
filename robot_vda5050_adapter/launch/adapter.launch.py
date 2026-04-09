@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from vda5050_connector_py.rewritten_yaml import RewrittenYaml
 
 
 def generate_launch_description():
@@ -28,12 +29,19 @@ def generate_launch_description():
         description="Full path to the VDA5050 connector config file",
     )
 
+    configured_params = RewrittenYaml(
+        source_file=parameters_config_file,
+        root_key=namespace,
+        param_rewrites={},
+        convert_types=False,
+    )
+
     adapter_node = Node(
         package=package_name,
         executable="robot_adapter",
         name="robot_adapter",
         namespace=namespace,
-        parameters=[parameters_config_file],
+        parameters=[configured_params],
         output="screen",
     )
 
