@@ -48,8 +48,9 @@ from vda5050_connector_py.utils import json_camel_to_snake_case
 from vda5050_connector_py.utils import read_str_parameter, read_int_parameter
 from vda5050_connector_py.utils import convert_ros_message_to_json
 from vda5050_connector_py.utils import get_vda5050_ts
+from vda5050_connector_py.utils import generate_vda5050_topic_alias, SUPPORTED_PROTOCOL_VERSIONS
 
-from vda5050_connector_py.vda5050_controller import DEFAULT_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS
+from vda5050_connector_py.vda5050_controller import DEFAULT_PROTOCOL_VERSION
 
 # ROS msgs / srvs / actions
 from vda5050_msgs.msg import Action as VDAAction
@@ -194,32 +195,6 @@ def generate_vda_instant_action_msg(instant_action):
     # TODO(@leandropineda): Consider returning a ROS2 Order message
     return vda_instant_action
 
-
-def generate_vda5050_topic_alias(vda_version):
-    """
-    Create an alias for the current vda5050 version. The aliases are needed to
-    create the mqtt topics.
-
-    Args:
-    ----
-        vda_version (string): VDA5050 version with format x.x.x.
-
-    Raises:
-    ------
-        ValueError if the alias is not within the supported values.
-
-    Returns
-    -------
-        The alias of the version. For example, for the version '2.0.0', the alias is
-        'v2'
-    """
-    if vda_version in SUPPORTED_PROTOCOL_VERSIONS:
-        return f"v{vda_version[0]}"
-    else:
-        raise ValueError(
-            f"Invalid protocol major version. Supported versions are: {SUPPORTED_PROTOCOL_VERSIONS},"
-            f"but got {vda_version}"
-        )
 
 class MQTTBridge(Node):
     """Translates VDA5050 MQTT messages from and to ROS2."""
@@ -407,7 +382,8 @@ class MQTTBridge(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="state",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
             ),
             callback=self._publish_state,
             qos_profile=10,
@@ -419,7 +395,8 @@ class MQTTBridge(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="connection",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
             ),
             callback=self._publish_connection,
             qos_profile=10,
@@ -431,7 +408,8 @@ class MQTTBridge(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="visualization",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
             ),
             callback=self._publish_visualization,
             qos_profile=10,
@@ -443,7 +421,8 @@ class MQTTBridge(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="order",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
             ),
             qos_profile=10,
         )
@@ -454,7 +433,8 @@ class MQTTBridge(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="instantActions",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
             ),
             qos_profile=10,
         )

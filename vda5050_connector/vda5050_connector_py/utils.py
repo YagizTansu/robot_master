@@ -58,6 +58,20 @@ def get_vda5050_ts():
     return f"{ts}Z"
 
 
+SUPPORTED_PROTOCOL_VERSIONS = ["1.1.0", "2.0.0"]
+
+
+def generate_vda5050_topic_alias(vda_version):
+    """Create a version alias (e.g. 'v2') from a VDA5050 version string (e.g. '2.0.0')."""
+    if vda_version in SUPPORTED_PROTOCOL_VERSIONS:
+        return f"v{vda_version[0]}"
+    else:
+        raise ValueError(
+            f"Invalid protocol major version. Supported versions are: {SUPPORTED_PROTOCOL_VERSIONS},"
+            f"but got {vda_version}"
+        )
+
+
 def read_bool_parameter(node: Node, param_name: str, alternative: bool) -> bool:
     """Declare and read a bool parameter."""
     node.declare_parameter(

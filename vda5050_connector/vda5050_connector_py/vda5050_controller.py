@@ -44,6 +44,7 @@ from rclpy.task import Future
 
 from vda5050_connector_py.utils import get_vda5050_ros2_topic
 from vda5050_connector_py.utils import get_vda5050_ts
+from vda5050_connector_py.utils import generate_vda5050_topic_alias
 from vda5050_connector_py.utils import read_bool_parameter
 from vda5050_connector_py.utils import read_double_parameter
 from vda5050_connector_py.utils import read_int_parameter
@@ -232,6 +233,7 @@ class VDA5050Controller(Node):
             self, "execute_order_period", DEFAULT_EXECUTE_ORDER_PERIOD
         )
         self._interface_name = read_str_parameter(self, "interface_name", DEFAULT_INTERFACE_NAME)
+        self._version_alias = generate_vda5050_topic_alias(self._protocol_version)
 
 
     # ---- Configure ROS interfaces ----
@@ -297,7 +299,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="order",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             callback=self.process_order,
             qos_profile=10,
@@ -310,7 +313,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="instantActions",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             callback=self.process_instant_actions,
             qos_profile=10,
@@ -325,7 +329,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="state",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             qos_profile=10,
         )
@@ -337,7 +342,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="connection",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             qos_profile=10,
         )
@@ -349,7 +355,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="visualization",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             qos_profile=10,
         )
@@ -361,7 +368,8 @@ class VDA5050Controller(Node):
                 manufacturer=self._manufacturer_name,
                 serial_number=self._serial_number,
                 topic="factsheet",
-                interface_name=self._interface_name
+                interface_name=self._interface_name,
+                major_version=self._version_alias
             ),
             qos_profile=10,
         )
