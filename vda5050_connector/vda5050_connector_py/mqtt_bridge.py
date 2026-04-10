@@ -65,6 +65,7 @@ from vda5050_msgs.msg import Order as VDAOrder
 from vda5050_msgs.msg import OrderState as VDAOrderState
 from vda5050_msgs.msg import Trajectory as VDATrajectory
 from vda5050_msgs.msg import Visualization as VDAVisualization
+from vda5050_msgs.msg import Factsheet as VDAFactsheet
 
 NODE_NAME = "mqtt_bridge"
 
@@ -427,6 +428,19 @@ class MQTTBridge(Node):
             qos_profile=10,
         )
 
+        self._factsheet_sub = self.create_subscription(
+            msg_type=VDAFactsheet,
+            topic=get_vda5050_ros2_topic(
+                manufacturer=self._manufacturer_name,
+                serial_number=self._serial_number,
+                topic="factsheet",
+                interface_name=self._interface_name,
+                major_version=self.vda5050_version_alias
+            ),
+            callback=self._publish_factsheet,
+            qos_profile=10,
+        )
+
         self._instant_actions_pub = self.create_publisher(
             msg_type=VDAInstantActions,
             topic=get_vda5050_ros2_topic(
@@ -481,7 +495,7 @@ class MQTTBridge(Node):
 
         self.mqtt_client.disconnect()
 
-    def _publish_to_topic(self, msg, topic):
+    def _publish_to_topic(self, msg, topic, **kwargs):
         """
         Publish a ROS2 message to an MQTT topic.
 
@@ -493,7 +507,7 @@ class MQTTBridge(Node):
         """
         json_msg = convert_ros_message_to_json(msg)
         self.logger.debug(f"Publishing MQTT message to topic {topic}: {json_msg}")
-        self.mqtt_client.publish(topic, json_msg)
+        self.mqtt_client.publish(topic, json_msg, **kwargs)
 
     def _publish_state(self, msg: VDAOrderState):
         """
@@ -511,7 +525,7 @@ class MQTTBridge(Node):
             major_version=self.vda5050_version_alias,
             interface_name=self._interface_name
         )
-        self._publish_to_topic(msg, topic)
+        self._publish_to_topic(msg, topic, qos=1, retain=True)
 
     def _publish_connection(self, msg: VDAConnection):
         """
@@ -535,7 +549,7 @@ class MQTTBridge(Node):
             major_version=self.vda5050_version_alias,
             interface_name=self._interface_name
         )
-        self._publish_to_topic(msg, topic)
+        self._publish_to_topic(msg, topic, qos=1, retain=True)
 
     def _publish_visualization(self, msg: VDAVisualization):
         """
@@ -554,3 +568,14 @@ class MQTTBridge(Node):
             interface_name=self._interface_name
         )
         self._publish_to_topic(msg, topic)
+
+    def _publish_factsheet(self, msg: VDAFactsheet):
+        """Publish ROS2 Factsheet message to the corresponding VDA5050 MQTT topic."""
+        topic = get_vda5050_mqtt_topic(
+            manufacturer=self._manufacturer_name,
+            serial_number=self._serial_number,
+            topic="factsheet",
+            major_version=self.vda5050_version_alias,
+            interface_name=self._interface_name
+        )
+        self._publish_to_topic(msg, topic, qos=1, retain=True)
