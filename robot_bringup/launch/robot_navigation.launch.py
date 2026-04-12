@@ -1,7 +1,9 @@
+import launch
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -14,6 +16,15 @@ def generate_launch_description():
     robot_slam_dir = get_package_share_directory("robot_slam")
     robot_database_dir = get_package_share_directory("robot_database")
     fgo_dir = get_package_share_directory("factor_graph_optimization")
+    vda5050_adapter_dir = get_package_share_directory("robot_vda5050_adapter")
+
+    # Launch argument: enable/disable VDA5050 adapter
+    enable_vda5050 = LaunchConfiguration("enable_vda5050", default="true")
+    ld.add_action(DeclareLaunchArgument(
+        "enable_vda5050",
+        default_value="true",
+        description="Launch VDA5050 adapter stack (MQTT bridge + controller + adapter)",
+    ))
 
     # Map
     map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
@@ -106,6 +117,14 @@ def generate_launch_description():
         )
     )
 
+    # ── VDA5050 Adapter Stack ─────────────────────────────────────────────────
+    vda5050_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(vda5050_adapter_dir, "launch", "connector.launch.py")
+        ),
+        condition=launch.conditions.IfCondition(enable_vda5050),
+    )
+
     ld.add_action(fgo_launch)
     ld.add_action(custom_navigation_launch)
     ld.add_action(rviz_node)
@@ -113,5 +132,6 @@ def generate_launch_description():
     ld.add_action(lifecycle_manager_map)
     ld.add_action(graph_visualizer_node)
     ld.add_action(robot_database_launch)
+    ld.add_action(vda5050_launch)
 
     return ld

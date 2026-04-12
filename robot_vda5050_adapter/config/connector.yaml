@@ -1,0 +1,73 @@
+# =============================================================================
+# VDA5050 v2.0.0 Connector Configuration
+# =============================================================================
+#
+# Three-tier architecture:
+#   MQTT Broker ←→ mqtt_bridge ←→ controller ←→ robot_adapter ←→ ROS 2 Stack
+#
+# This file configures all three nodes under a shared namespace.
+# =============================================================================
+
+# --- MQTT Bridge ---
+mqtt_bridge:
+  ros__parameters:
+    # MQTT Broker connection
+    mqtt_address: "localhost"
+    mqtt_port: 1883
+    mqtt_username: ""
+    mqtt_password: ""
+    # mqtt_use_tls: false          # Uncomment for production
+
+    # Robot identity (must match across all nodes)
+    manufacturer_name: "YourCompany"
+    serial_number: "ROBOT_001"
+
+# --- VDA5050 Controller ---
+controller:
+  ros__parameters:
+    # Robot identity
+    robot_name: "ROBOT_001"
+    manufacturer_name: "YourCompany"
+    serial_number: "ROBOT_001"
+    protocol_version: "2.0.0"
+    interface_name: "uagv"
+
+    # Starting node (empty if unknown)
+    starting_node_id: ""
+
+    # Publish periods (seconds)
+    state_pub_period: 5.0
+    connection_pub_period: 15.0
+    visualization_pub_period: 1.0
+    execute_order_period: 0.1
+
+    # Adapter interface names (must match adapter config)
+    get_state_svc_name: "adapter/get_state"
+    supported_actions_svc_name: "adapter/supported_actions"
+    vda_action_act_name: "adapter/vda_action"
+    nav_to_node_act_name: "adapter/nav_to_node"
+
+# --- Robot Adapter ---
+robot_adapter:
+  ros__parameters:
+    # Robot identity (must match controller config)
+    robot_name: "ROBOT_001"
+    manufacturer_name: "YourCompany"
+    serial_number: "ROBOT_001"
+
+    # Adapter interface names (must match controller config)
+    get_state_svc_name: "adapter/get_state"
+    supported_actions_svc_name: "adapter/supported_actions"
+    vda_action_act_name: "adapter/vda_action"
+    nav_to_node_act_name: "adapter/nav_to_node"
+
+    # Frame IDs
+    map_frame: "map"
+    base_frame: "base_link"
+
+    # ROS topic names
+    odom_topic: "/odometry"
+    battery_topic: "/battery_status"
+    emergency_topic: "/emergency_stop"
+    diagnostics_topic: "/diagnostics_agg"
+    nav2_action_name: "/navigate_to_pose"
