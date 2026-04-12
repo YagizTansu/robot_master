@@ -32,7 +32,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>-5.79514 -0.95663500000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_001'>
@@ -40,7 +40,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>4.73156 0.57943 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_002'>
@@ -48,7 +48,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>4.73156 -4.8270499999999998 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003'>
@@ -56,7 +56,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>4.73156 -8.6651000000000007 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01_001'>
@@ -64,7 +64,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>4.73156 -1.2426699999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01_002'>
@@ -72,7 +72,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>4.73156 -3.0385499999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01_003'>
@@ -80,23 +80,23 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>4.73156 -6.75054 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_001'>
       <include>
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
-      <pose>0 0 -0.090092000000000005 0 0 0</pose>
-      <static>false</static>
+      <pose>0 0 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Lamp_01_005'>
       <include>
         <uri>model://aws_robomaker_warehouse_Lamp_01</uri>
       </include>
-      <pose>0 0 -4 0 0 0</pose>
-      <static>false</static>
+      <pose>0 0 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_020'>
@@ -104,7 +104,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>0.43344899999999997 9.63171 0 0 0 -1.5631600000000003</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_021'>
@@ -112,7 +112,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>-1.8321000000000001 -6.3752000000000004 0 0 0 -1.5631600000000003</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_022'>
@@ -120,47 +120,47 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>0.43344899999999997 8.5899999999999999 0 0 0 -1.5631600000000003</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_016'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
-      <pose>5.7081400000000002 8.6168399999999998 -0.017476999999999999 0 0 0</pose>
-      <static>false</static>
+      <pose>5.7081400000000002 8.6168399999999998 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_017'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
-      <pose>3.4086400000000001 8.6168399999999998 -0.017476999999999999 0 0 0</pose>
-      <static>false</static>
+      <pose>3.4086400000000001 8.6168399999999998 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_018'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
-      <pose>-1.49129 5.2224300000000001 -0.017476999999999999 0 0 -1.5831900000000003</pose>
-      <static>false</static>
+      <pose>-1.49129 5.2224300000000001 0 0 0 -1.5831900000000003</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_027'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>3.3249599999999999 3.8224499999999999 -0.012064 0 0 1.5638700000000005</pose>
-      <static>false</static>
+      <pose>3.3249599999999999 3.8224499999999999 0 0 0 1.5638700000000005</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_028'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>5.5417100000000001 3.8164799999999999 -0.015663 0 0 -1.5831900000000003</pose>
-      <static>false</static>
+      <pose>5.5417100000000001 3.8164799999999999 0 0 0 -1.5831900000000003</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_029'>
@@ -168,7 +168,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
       <pose>5.3842400000000001 6.1371500000000001 0 0 0 -3.1331899999999999</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_030'>
@@ -176,31 +176,31 @@
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
       <pose>3.2360000000000002 6.1371500000000001 0 0 0 -3.1331899999999999</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>-1.57368 2.30199 -0.015663 0 0 -3.1331899999999999</pose>
-      <static>false</static>
+      <pose>-1.57368 2.30199 0 0 0 -3.1331899999999999</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_032'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>-1.2196 9.407 -0.015663 0 0 1.5638700000000005</pose>
-      <static>false</static>
+      <pose>-1.2196 9.407 0 0 0 1.5638700000000005</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringD_01_005'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringD_01</uri>
       </include>
-      <pose>-1.6346799999999999 -7.8118100000000004 -0.31955899999999998 0 0 0</pose>
-      <static>false</static>
+      <pose>-1.6346799999999999 -7.8118100000000004 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_TrashCanC_01_002'>
@@ -208,15 +208,15 @@
         <uri>model://aws_robomaker_warehouse_TrashCanC_01</uri>
       </include>
       <pose>-1.5924400000000001 7.7154199999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_PalletJackB_01_001'>
       <include>
         <uri>model://aws_robomaker_warehouse_PalletJackB_01</uri>
       </include>
-      <pose>-0.27609800000000001 -9.4819399999999998 0.023265999999999998 0 0 0</pose>
-      <static>false</static>
+      <pose>-0.27609800000000001 -9.4819399999999998 0 0 0 0</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01'>
@@ -224,7 +224,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>0.14191400000000001 -1.4011499999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_DeskC_01'>
@@ -232,7 +232,7 @@
         <uri>model://aws_robomaker_warehouse_DeskC_01</uri>
       </include>
       <pose>-0.14191599999999999 1.4011400000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01'>
@@ -240,7 +240,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>-0.062713000000000005 20.815899999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_1'>
@@ -248,7 +248,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>13.854043006896973 -0.046908501535654068 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_2'>
@@ -256,7 +256,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>13.870522499084473 20.795499801635742 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_0'>
@@ -264,7 +264,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>5.7057599999999997 16.421500000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_3'>
@@ -272,7 +272,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>-0.045232001692056656 41.662166595458984 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_0'>
@@ -280,7 +280,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>27.812900543212891 -7.0749740600585938 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_4'>
@@ -288,7 +288,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>27.723110198974609 13.760000228881836 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_5'>
@@ -296,7 +296,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>13.888400077819824 41.632377624511719 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_1'>
@@ -304,7 +304,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>5.32193 26.847300000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_2'>
@@ -312,7 +312,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>5.6397899999999996 34.8748 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01'>
@@ -320,7 +320,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>4.53165 39.347900000000003 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_PalletJackB_01'>
@@ -328,7 +328,7 @@
         <uri>model://aws_robomaker_warehouse_PalletJackB_01</uri>
       </include>
       <pose>4.5503400000000003 48.647500000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01'>
@@ -336,7 +336,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>5.90008 47.615299999999998 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_TrashCanC_01'>
@@ -344,7 +344,7 @@
         <uri>model://aws_robomaker_warehouse_TrashCanC_01</uri>
       </include>
       <pose>6.0750900000000003 20.323799999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01_0'>
@@ -352,7 +352,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>5.05335 29.984100000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01'>
@@ -360,7 +360,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>5.4681199999999999 37.970599999999997 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01'>
@@ -368,7 +368,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>-5.8506 19.985900000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_TrashCanC_01_0'>
@@ -376,7 +376,7 @@
         <uri>model://aws_robomaker_warehouse_TrashCanC_01</uri>
       </include>
       <pose>12.5113 48.272799999999997 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_0'>
@@ -384,7 +384,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>-5.53864 41.572600000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_0'>
@@ -392,7 +392,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>3.6289899999999999 18.395600000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_DeskC_01_0'>
@@ -400,7 +400,7 @@
         <uri>model://aws_robomaker_warehouse_DeskC_01</uri>
       </include>
       <pose>7.5765399999999996 16.699300000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringD_01'>
@@ -408,7 +408,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringD_01</uri>
       </include>
       <pose>3.4807999999999999 15.5985 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_1'>
@@ -416,7 +416,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>6.03172 14.3582 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringD_01_0'>
@@ -424,7 +424,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringD_01</uri>
       </include>
       <pose>3.5918100000000002 13.736599999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_3'>
@@ -432,7 +432,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>3.6267999999999998 20.587700000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_0'>
@@ -440,7 +440,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>-0.81840400000000002 14.102600000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_PalletJackB_01_0'>
@@ -448,7 +448,7 @@
         <uri>model://aws_robomaker_warehouse_PalletJackB_01</uri>
       </include>
       <pose>6.9460699999999997 11.6812 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_TrashCanC_01_1'>
@@ -456,7 +456,7 @@
         <uri>model://aws_robomaker_warehouse_TrashCanC_01</uri>
       </include>
       <pose>-0.94008400000000003 16.480699999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfD_01_1'>
@@ -464,7 +464,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfD_01</uri>
       </include>
       <pose>-0.85152399999999995 18.339400000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_1'>
@@ -472,7 +472,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>4.6867900000000002 22.065200000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_4'>
@@ -480,7 +480,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>-1.0961799999999999 20.798400000000001 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_5'>
@@ -488,7 +488,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>-2.1381700000000001 19.511500000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_6'>
@@ -496,7 +496,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>0.42346899999999998 19.756 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_DeskC_01_1'>
@@ -504,7 +504,7 @@
         <uri>model://aws_robomaker_warehouse_DeskC_01</uri>
       </include>
       <pose>-0.62927200000000005 22.965199999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Lamp_01'>
@@ -512,7 +512,7 @@
         <uri>model://aws_robomaker_warehouse_Lamp_01</uri>
       </include>
       <pose>-0.10816000000000001 13.7255 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Lamp_01_0'>
@@ -520,7 +520,7 @@
         <uri>model://aws_robomaker_warehouse_Lamp_01</uri>
       </include>
       <pose>-1.9719100000000001 27.2819 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Lamp_01_1'>
@@ -528,7 +528,7 @@
         <uri>model://aws_robomaker_warehouse_Lamp_01</uri>
       </include>
       <pose>-2.6365400000000001 37.615499999999997 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Lamp_01_2'>
@@ -536,7 +536,7 @@
         <uri>model://aws_robomaker_warehouse_Lamp_01</uri>
       </include>
       <pose>-2.35812 47.550600000000003 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_PalletJackB_01_1'>
@@ -544,7 +544,7 @@
         <uri>model://aws_robomaker_warehouse_PalletJackB_01</uri>
       </include>
       <pose>-0.78154400000000002 26.689299999999999 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_2'>
@@ -552,7 +552,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>-0.62228300000000003 34.302700000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01'>
@@ -560,7 +560,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
       <pose>-0.69785200000000003 37.451900000000002 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <include>
@@ -573,47 +573,47 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>27.728081144755457 34.611191136196695 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031_1'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>12.425217474789722 -7.0938335907952608 -0.015662999823689461 0 0 -3.133190000080512</pose>
-      <static>false</static>
+      <pose>12.425217474789722 -7.0938335907952608 0 0 0 -3.133190000080512</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031_2'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>12.364999672362263 -4.3986379334746779 -0.015662999823689461 0 0 -3.133190000080512</pose>
-      <static>false</static>
+      <pose>12.364999672362263 -4.3986379334746779 0 0 0 -3.133190000080512</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031_3'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>12.423407402381763 -0.99225237871105332 -0.015662999823689461 0 0 -3.133190000080512</pose>
-      <static>false</static>
+      <pose>12.423407402381763 -0.99225237871105332 0 0 0 -3.133190000080512</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031_4'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>12.202528194505582 2.1982245526646178 -0.015662999823689461 0 0 -3.133190000080512</pose>
-      <static>false</static>
+      <pose>12.202528194505582 2.1982245526646178 0 0 0 -3.133190000080512</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringC_01_031_5'>
       <include>
         <uri>model://aws_robomaker_warehouse_ClutteringC_01</uri>
       </include>
-      <pose>12.45734890326427 5.2682792160830143 -0.015662999823689461 0 0 -3.133190000080512</pose>
-      <static>false</static>
+      <pose>12.45734890326427 5.2682792160830143 0 0 0 -3.133190000080512</pose>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_021_1'>
@@ -621,7 +621,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>12.060247427001432 -2.7730194616519297 0 0 0 -1.5631600645387924</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_Bucket_01_021_2'>
@@ -629,7 +629,7 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>14.117013530802677 6.1870016358399251 0 0 0 -1.5631600645387924</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_001_1'>
@@ -637,7 +637,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>21.961605211480936 -7.9227093320490276 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1'>
@@ -645,7 +645,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>21.786323705134631 10.433652608201697 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1'>
@@ -653,7 +653,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>22.063243994080658 28.963175969417648 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1'>
@@ -661,7 +661,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.000320682328166 -15.750564268611814 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1'>
@@ -669,7 +669,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.065548477790713 -14.146427992605618 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_1'>
@@ -677,7 +677,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>31.998600728003662 -12.689919402619914 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_2'>
@@ -685,7 +685,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.034980012468452 -10.713103976239758 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_3'>
@@ -693,7 +693,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.094506370688691 -8.1068361877822745 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_4'>
@@ -701,7 +701,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.004344491875621 -5.9938047972561312 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_5'>
@@ -709,7 +709,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.129312806127452 -3.2070206686994922 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_6'>
@@ -717,7 +717,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.213642714258796 -1.3695886347145165 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_7'>
@@ -725,7 +725,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.270679326617 0.65787061676784209 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_8'>
@@ -733,7 +733,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.181510008555243 3.1148573752505744 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_9'>
@@ -741,7 +741,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.132892693964919 4.8837608148915637 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_10'>
@@ -749,7 +749,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>31.99603373379702 6.3735302822201234 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_11'>
@@ -757,7 +757,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.163557351050045 7.9853775948107302 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_12'>
@@ -765,7 +765,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.165016490056203 9.6550865080367956 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_13'>
@@ -773,7 +773,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.201960995670682 11.425271877143812 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_14'>
@@ -781,7 +781,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.386551756327279 13.195634587525699 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_15'>
@@ -789,7 +789,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
       </include>
       <pose>32.243028938279195 15.10298914185849 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1_1'>
@@ -797,7 +797,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>13.176699625906268 17.288512372629842 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1_1_1'>
@@ -805,7 +805,7 @@
         <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
       </include>
       <pose>12.859131830610693 38.21202471318059 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_GroundB_01_0_1_1'>
@@ -813,7 +813,7 @@
         <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
       </include>
       <pose>27.941567073351585 55.523359617732979 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_2_1'>
@@ -821,7 +821,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>-0.7748813163185182 40.695130464068832 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_2_2'>
@@ -829,7 +829,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>-1.0260425933365016 43.742606939329711 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <model name='aws_robomaker_warehouse_ClutteringA_01_2_3'>
@@ -837,7 +837,7 @@
         <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
       </include>
       <pose>-0.90663568892490298 47.110898114070899 0 0 0 0</pose>
-      <static>false</static>
+      <static>true</static>
       <self_collide>false</self_collide>
     </model>
     <light name='Warehouse_CeilingLight' type='point'>
