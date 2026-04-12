@@ -38,7 +38,7 @@ def generate_launch_description():
     # Include robot_dynamic_warehouse.launch.py
     robot_warehouse_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(robot_gazebo_dir, "launch", "robot_dynamic_warehouse.launch.py")
+            os.path.join(robot_gazebo_dir, "launch", "robot_warehouse.launch.py")
         )
     )
 
