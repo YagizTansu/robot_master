@@ -12,7 +12,7 @@ from typing import List
 # CSV schema
 # ─────────────────────────────────────────────────────────────────────────────
 
-# The 9 columns fed as input features to the Transformer.
+# The 10 columns fed as input features to the Transformer.
 # Order here defines column order in the normalisation stats file.
 FEATURE_COLS: List[str] = [
     "fitness_score",    # NDT match quality        (lower = better)
@@ -24,6 +24,7 @@ FEATURE_COLS: List[str] = [
     "linear_vel",       # wheel-odometry vx         (m/s)
     "angular_vel",      # wheel-odometry wz         (rad/s)
     "jerk",             # |Δvx / Δt|               (slip proxy)
+    "slip_metric",      # |gyro_z - angular_vel|    (encoder-IMU angular mismatch)
 ]
 
 # Primary training target column
@@ -60,8 +61,8 @@ TRUST_EPSILON:              float = 1e-6   # matches TrustWeights::EPSILON in C+
 
 @dataclass
 class ModelConfig:
-    n_features:    int   = len(FEATURE_COLS)   # 11
-    seq_len:       int   = 20     # 2 s @ 10 Hz sync rate
+    n_features:    int   = len(FEATURE_COLS)   # 10
+    seq_len:       int   = 50     # 5 s @ 10 Hz sync rate
     d_model:       int   = 64     # Transformer hidden dimension
     n_heads:       int   = 4      # attention heads  (d_model % n_heads == 0)
     n_layers:      int   = 2      # TransformerEncoder stacked layers
@@ -83,7 +84,7 @@ class TrainConfig:
     nan_fill:          float = 0.0    # value substituted for NaN feature cells
 
     # ── Sequence ────────────────────────────────────────────────────────────
-    seq_len:           int   = 20
+    seq_len:           int   = 50
     step:              int   = 1      # sliding window stride (1 = every row)
 
     # ── Optimisation ────────────────────────────────────────────────────────

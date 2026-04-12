@@ -62,6 +62,7 @@ _FEATURE_COLS = [
     "linear_vel",
     "angular_vel",
     "jerk",
+    "slip_metric",
 ]
 _N_FEATURES = len(_FEATURE_COLS)
 _TRUST_EPSILON = 1e-6
@@ -269,9 +270,12 @@ class TransformerInferenceNode(Node):
                      if not math.isnan(accel_norm) else float("nan"))
         accel_std = _pop_std(accel_buf)
         gyro_std  = _pop_std(gyro_buf)
+        slip      = (abs(gyro_z - ang)
+                     if not (math.isnan(gyro_z) or math.isnan(ang))
+                     else float("nan"))
 
         return [fitness, fit_age, accel_dev, gyro_z, accel_std,
-                gyro_std, lin, ang, jerk]
+                gyro_std, lin, ang, jerk, slip]
 
     # ── Normalise a single row ────────────────────────────────────────────────
 
@@ -306,7 +310,7 @@ class TransformerInferenceNode(Node):
         x = torch.from_numpy(window_arr).unsqueeze(0).to(self._device)  # [1,seq,feat]
 
         with torch.no_grad():
-            trust_t, _ = self._model(x)                          # [1, 4]
+            trust_t, _, _ = self._model(x)                       # [1, 4]; yaw discarded
         trust = trust_t.squeeze(0).cpu().tolist()                # [4]
 
         self._last_trust = trust

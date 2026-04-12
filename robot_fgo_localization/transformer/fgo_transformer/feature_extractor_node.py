@@ -27,6 +27,7 @@ gyro_z_std        — std-dev of gyro_z over last N IMU samples (rotation flutte
 linear_vel        — wheel-odometry linear velocity  vx (m/s)
 angular_vel       — wheel-odometry angular velocity wz (rad/s)
 jerk              — |Δvx / Δt|  sudden-slip proxy (m/s²)
+slip_metric       — |gyro_z - angular_vel|  encoder-IMU angular mismatch (rad/s)
 
 --- Ground truth labels (TRAINING TARGETS) ---
 gt_x, gt_y        — Gazebo ground truth position (m)
@@ -78,6 +79,7 @@ _CSV_COLUMNS = [
     "linear_vel",
     "angular_vel",
     "jerk",
+    "slip_metric",
     # ground truth + fgo poses (labels)
     "gt_x",
     "gt_y",
@@ -332,7 +334,11 @@ class FeatureExtractorNode(Node):
                           else float("nan"))
         accel_norm_std = _pop_std(accel_buf)
         gyro_z_std     = _pop_std(gyro_buf)
-
+        # |gyro_z - angular_vel|: zero when encoder and IMU agree on rotation;
+        # large when mecanum wheels slip or IMU/encoder calibration drifts.
+        slip_metric = (abs(gyro_z - angular_vel)
+                       if not (math.isnan(gyro_z) or math.isnan(angular_vel))
+                       else float("nan"))
         # ── Write CSV row ────────────────────────────────────────────────────
         row = {
             "timestamp_sec":   _fmt(t_sec),
@@ -345,6 +351,7 @@ class FeatureExtractorNode(Node):
             "linear_vel":      _fmt(linear_vel),
             "angular_vel":     _fmt(angular_vel),
             "jerk":            _fmt(jerk),
+            "slip_metric":     _fmt(slip_metric),
             "gt_x":            _fmt(gt_x),
             "gt_y":            _fmt(gt_y),
             "gt_yaw_rad":      _fmt(gt_yaw),

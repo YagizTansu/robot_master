@@ -4,15 +4,16 @@ TrustTransformer — dual-head Transformer model.
 Architecture
 ------------
 Input  : [batch, seq_len, n_features]
-         Normalized feature window (11 features × 20 timesteps)
+         Normalized feature window (10 features × 50 timesteps)
 
 Pipeline:
   1.  Linear input projection   n_features → d_model
   2.  Sinusoidal positional encoding (added, not concatenated)
   3.  TransformerEncoder         n_layers × (self-attention + FFN)
   4.  Mean pooling over sequence dimension   →  [batch, d_model]
-  5a. error_head:  Linear → Softplus   →  pred_pos_err  [batch, 1]  ≥ 0
-  5b. trust_head:  Linear → Sigmoid    →  trust_weights [batch, 4]  ∈ (0, 1]
+  5a. error_head:  Linear → Softplus   →  pred_pos_err  [batch, 1]  ≥ 0  (metres)
+  5b. yaw_head:    Linear → Softplus   →  pred_yaw_err  [batch, 1]  ≥ 0  (radians)
+  5c. trust_head:  Linear → Sigmoid    →  trust_weights [batch, 4]  ∈ (0, 1]
 
 Trust weight index mapping  (matches TrustWeights C++ struct):
   0 = w_encoder   1 = w_imu   2 = w_lidar   3 = w_gps
@@ -117,6 +118,16 @@ class TrustTransformer(nn.Module):
             nn.Sigmoid(),           # raw output ∈ (0, 1)
         )
 
+        # yaw_head: predict yaw_err_rad (non-negative regression, radians)
+        # Separate head avoids the unit mismatch bug where pred_pos_err (metres)
+        # was previously regressed against yaw_err_rad (radians).
+        self.yaw_head = nn.Sequential(
+            nn.Linear(cfg.d_model, cfg.d_model // 2),
+            nn.GELU(),
+            nn.Linear(cfg.d_model // 2, 1),
+            nn.Softplus(),          # guarantees pred_yaw_err ≥ 0
+        )
+
         self._init_weights()
 
     def _init_weights(self) -> None:
@@ -127,7 +138,7 @@ class TrustTransformer(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """
         Parameters
         ----------
@@ -137,6 +148,7 @@ class TrustTransformer(nn.Module):
         -------
         trust_weights : [batch, 4]  — clipped to [EPSILON, 1.0]
         pred_pos_err  : [batch, 1]  — non-negative error prediction (metres)
+        pred_yaw_err  : [batch, 1]  — non-negative yaw error prediction (radians)
         """
         # Project features to d_model
         h = self.input_proj(x)                    # [B, seq, d_model]
@@ -146,20 +158,21 @@ class TrustTransformer(nn.Module):
         # Mean pooling across sequence dimension
         h_pool = h.mean(dim=1)                    # [B, d_model]
 
-        # Dual heads
-        pred_err    = self.error_head(h_pool)     # [B, 1]
-        trust_raw   = self.trust_head(h_pool)     # [B, 4]  ∈ (0, 1)
+        # Triple heads
+        pred_err     = self.error_head(h_pool)    # [B, 1]  metres
+        pred_yaw_err = self.yaw_head(h_pool)      # [B, 1]  radians
+        trust_raw    = self.trust_head(h_pool)    # [B, 4]  ∈ (0, 1)
 
         # Scale sigmoid output to [EPSILON, 1.0]
         # sigmoid(x) ∈ (0,1)  →  EPSILON + sigmoid(x) * (1 - EPSILON) ∈ (EPSILON, 1.0)
         trust_weights = TRUST_EPSILON + trust_raw * (1.0 - TRUST_EPSILON)
 
-        return trust_weights, pred_err
+        return trust_weights, pred_err, pred_yaw_err
 
     # ── Convenience for inference (single-window, no batch dimension) ────────
 
     @torch.no_grad()
-    def predict(self, window: Tensor) -> tuple[Tensor, Tensor]:
+    def predict(self, window: Tensor) -> tuple[Tensor, float]:
         """
         Parameters
         ----------
@@ -168,8 +181,8 @@ class TrustTransformer(nn.Module):
         Returns
         -------
         trust_weights : [4]   — detached CPU tensor
-        pred_pos_err  : scalar float
+        pred_pos_err  : scalar float (metres)
         """
         self.eval()
-        trust, err = self(window.unsqueeze(0))    # add batch dim
+        trust, err, _ = self(window.unsqueeze(0))    # add batch dim; yaw discarded
         return trust.squeeze(0).cpu(), err.item()
