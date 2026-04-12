@@ -18,8 +18,8 @@ transformer_inference:
     publish_rate_hz: 10.0
 
     # ── Sliding window ───────────────────────────────────────────────────────
-    # Must match seq_len used during training (ModelConfig.seq_len = 20).
-    seq_len: 20
+    # Must match seq_len used during training (ModelConfig.seq_len = 50).
+    seq_len: 50
 
     # ── IMU buffer ───────────────────────────────────────────────────────────
     imu_buffer_size: 50

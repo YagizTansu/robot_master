@@ -87,8 +87,9 @@ def _run_epoch(
             yaw_err      = yaw_err.to(device)           # [B]
             pseudo_trust = pseudo_trust.to(device)      # [B, 4]
 
-            trust_pred, err_pred = model(feat)          # [B,4], [B,1]
-            err_pred_sq = err_pred.squeeze(1)           # [B]
+            trust_pred, err_pred, yaw_pred = model(feat)  # [B,4], [B,1], [B,1]
+            err_pred_sq = err_pred.squeeze(1)              # [B]
+            yaw_pred_sq = yaw_pred.squeeze(1)              # [B]
 
             # ── Error prediction loss ────────────────────────────────────────
             l_error = nn.functional.mse_loss(err_pred_sq, pos_err)
@@ -99,8 +100,10 @@ def _run_epoch(
                 trust_pred, pseudo_trust)                     # [B]
             l_trust = (w * per_sample_trust_mse).mean()
 
-            # ── Auxiliary yaw loss (reuse error head output) ─────────────────
-            l_yaw = nn.functional.mse_loss(err_pred_sq, yaw_err)
+            # ── Auxiliary yaw loss (yaw_head vs yaw_err_rad, both in radians) ────
+            # Previously pred_pos_err (metres) was compared to yaw_err_rad (radians)
+            # causing a dimensional mismatch. Now uses the dedicated yaw_head output.
+            l_yaw = nn.functional.mse_loss(yaw_pred_sq, yaw_err)
 
             loss = (cfg.lambda_error * l_error
                     + cfg.lambda_trust * l_trust
