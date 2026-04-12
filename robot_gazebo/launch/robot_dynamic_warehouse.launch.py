@@ -28,7 +28,7 @@ def generate_launch_description():
 
     declare_world_cmd = DeclareLaunchArgument(
         "world",
-        default_value=os.path.join(robot_gazebo_dir, "worlds", "warehouse.sdf"),
+        default_value=os.path.join(robot_gazebo_dir, "worlds", "robot_warehouse.sdf"),
         description="Full path to world model file to load",
     )
 
