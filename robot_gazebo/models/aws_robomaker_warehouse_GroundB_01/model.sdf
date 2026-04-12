@@ -4,6 +4,14 @@
     <link name="link">
       <inertial>
         <mass>1000</mass>
+		<inertia>
+          <ixx>1200083.33</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1600000.00</iyy>
+          <iyz>0</iyz>
+          <izz>2033333.33</izz>
+        </inertia>
       </inertial>
       <collision name="collision">
         <geometry>
@@ -15,8 +23,8 @@
         <surface>
           <friction>
             <ode>
-              <mu>100</mu>
-              <mu2>50</mu2>
+              <mu>0.3</mu>
+              <mu2>0.3</mu2>
               <fdir1>0 0 0</fdir1>
               <slip1>0</slip1>
               <slip2>0</slip2>
