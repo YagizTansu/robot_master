@@ -539,6 +539,14 @@
       <static>false</static>
       <self_collide>false</self_collide>
     </model>
+    <model name='aws_robomaker_warehouse_TrashCanC_01_2'>
+      <include>
+        <uri>model://aws_robomaker_warehouse_TrashCanC_01</uri>
+      </include>
+      <pose>-0.25908900000000001 25.309200000000001 0 0 0 0</pose>
+      <static>false</static>
+      <self_collide>false</self_collide>
+    </model>
     <model name='aws_robomaker_warehouse_PalletJackB_01_1'>
       <include>
         <uri>model://aws_robomaker_warehouse_PalletJackB_01</uri>
@@ -566,7 +574,7 @@
     <include>
       <uri>file:///home/yagiz/ros2_ws/install/robot_gazebo/share/robot_gazebo/models/robot</uri>
       <name>robot</name>
-      <pose>0.018578504491915192 0.016568005585561259 0.033205471515955889 0.00044281507108953128 0.00053844895452747872 0.059509432403591821</pose>
+      <pose>0.017856069974513462 0.015880297933626247 0.033207580641770651 0.00057883831109523988 0.00070355682939919086 0.05955496530426229</pose>
     </include>
     <model name='aws_robomaker_warehouse_GroundB_01_0_1'>
       <include>
@@ -629,214 +637,6 @@
         <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
       </include>
       <pose>14.117013530802677 6.1870016358399251 0 0 0 -1.5631600645387924</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfF_01_001_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
-      </include>
-      <pose>21.961605211480936 -7.9227093320490276 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
-      </include>
-      <pose>21.786323705134631 10.433652608201697 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
-      </include>
-      <pose>22.063243994080658 28.963175969417648 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.000320682328166 -15.750564268611814 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.065548477790713 -14.146427992605618 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>31.998600728003662 -12.689919402619914 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_2'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.034980012468452 -10.713103976239758 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_3'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.094506370688691 -8.1068361877822745 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_4'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.004344491875621 -5.9938047972561312 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_5'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.129312806127452 -3.2070206686994922 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_6'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.213642714258796 -1.3695886347145165 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_7'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.270679326617 0.65787061676784209 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_8'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.181510008555243 3.1148573752505744 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_9'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.132892693964919 4.8837608148915637 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_10'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>31.99603373379702 6.3735302822201234 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_11'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.163557351050045 7.9853775948107302 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_12'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.165016490056203 9.6550865080367956 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_13'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.201960995670682 11.425271877143812 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_14'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.386551756327279 13.195634587525699 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfE_01_003_1_1_15'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfE_01</uri>
-      </include>
-      <pose>32.243028938279195 15.10298914185849 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
-      </include>
-      <pose>13.176699625906268 17.288512372629842 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ShelfF_01_001_1_1_1_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ShelfF_01</uri>
-      </include>
-      <pose>12.859131830610693 38.21202471318059 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_GroundB_01_0_1_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_GroundB_01</uri>
-      </include>
-      <pose>27.941567073351585 55.523359617732979 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ClutteringA_01_2_1'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
-      </include>
-      <pose>-0.7748813163185182 40.695130464068832 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ClutteringA_01_2_2'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
-      </include>
-      <pose>-1.0260425933365016 43.742606939329711 0 0 0 0</pose>
-      <static>false</static>
-      <self_collide>false</self_collide>
-    </model>
-    <model name='aws_robomaker_warehouse_ClutteringA_01_2_3'>
-      <include>
-        <uri>model://aws_robomaker_warehouse_ClutteringA_01</uri>
-      </include>
-      <pose>-0.90663568892490298 47.110898114070899 0 0 0 0</pose>
       <static>false</static>
       <self_collide>false</self_collide>
     </model>
