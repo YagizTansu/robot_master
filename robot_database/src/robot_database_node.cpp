@@ -3,7 +3,7 @@
 #include <robot_interfaces/srv/save_prohibited_zone.hpp>
 #include <robot_interfaces/srv/delete_prohibited_zone.hpp>
 #include <robot_interfaces/srv/load_prohibited_zones.hpp>
-#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/qos.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -33,13 +33,9 @@ public:
         collection_pose_ = db_["robots_pose"];
         collection_prohibited_zones_ = db_["prohibited_zones"];
 
-        // Configure QoS for amcl_pose to match AMCL publisher
-        rclcpp::QoS amcl_qos(10);
-        amcl_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
-        amcl_qos.durability(rclcpp::DurabilityPolicy::TransientLocal);
-        
-        subscription_amcl_pose_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-            "amcl_pose", amcl_qos, std::bind(&RobotDatabaseNode::amcl_pose_callback, this, std::placeholders::_1));
+        subscription_fgo_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/fgo/odometry", rclcpp::QoS(10),
+            std::bind(&RobotDatabaseNode::fgo_odometry_callback, this, std::placeholders::_1));
 
         // Create services for prohibited zones
         service_save_zone_ = this->create_service<robot_interfaces::srv::SaveProhibitedZone>(
@@ -62,9 +58,8 @@ public:
     }
 
 private:
-    // Callback for amcl_pose topic
-    void amcl_pose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
-        // Extract pose information from amcl_pose message
+    // Callback for /fgo/odometry topic
+    void fgo_odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         auto doc = bsoncxx::builder::stream::document{}
             << "robot_name" << robot_name_
             << "header" << bsoncxx::builder::stream::open_document
@@ -251,7 +246,7 @@ private:
     }
 
     // Subscribers
-    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr subscription_amcl_pose_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_fgo_odometry_;
 
     // Services
     rclcpp::Service<robot_interfaces::srv::SaveProhibitedZone>::SharedPtr service_save_zone_;
