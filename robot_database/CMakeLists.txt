@@ -9,14 +9,14 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(robot_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MONGOCXX REQUIRED libmongocxx)
 
 link_directories(/usr/local/lib)
 
 add_executable(robot_database_node src/robot_database_node.cpp)
-ament_target_dependencies(robot_database_node robot_interfaces rclcpp geometry_msgs)
+ament_target_dependencies(robot_database_node robot_interfaces rclcpp nav_msgs)
 target_link_libraries(robot_database_node ${MONGOCXX_LIBRARIES})
 target_include_directories(robot_database_node PUBLIC ${MONGOCXX_INCLUDE_DIRS})
 
