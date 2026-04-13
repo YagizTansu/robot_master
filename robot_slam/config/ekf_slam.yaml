@@ -15,6 +15,11 @@ ekf_filter_node:
     publish_acceleration: false
     print_diagnostics: false
 
+    # IMU ve odom mesajları aynı anda gelmeyebilir; geçmişi tutarak
+    # geç gelen mesajları doğru zaman dilimine yerleştirir
+    smooth_lagged_data: true
+    history_length: 0.3
+
     # /odometry — nav_msgs/Odometry from Gazebo bridge
     odom0: /odometry
     odom0_config: [true,  true,  false,
@@ -25,3 +30,42 @@ ekf_filter_node:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
+    # Ani tekerlek kayması / Gazebo odometry sıçramasını reddet (Mahalanobis mesafesi)
+    odom0_pose_rejection_threshold: 5.0
+    odom0_twist_rejection_threshold: 2.0
+
+    # /imu — sensor_msgs/Imu from Gazebo bridge (imu_link frame)
+    # 2D modda: yaw, yaw_rate ve x/y ivmesi kullanılır
+    imu0: /imu
+    imu0_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, true,
+                  true,  true,  false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+    # Mekanik titreşimden gelen ivme spike'larını reddet
+    imu0_linear_acceleration_rejection_threshold: 3.0
+
+    # Process noise covariance (Q) — 15x15 diagonal
+    # Durum vektörü: x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
+    # 2D modda z/roll/pitch kullanılmaz ama matris tam olmalı
+    process_noise_covariance: [
+      0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.03,  0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.06,  0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025,  0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.025,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.02,  0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.015
+    ]
