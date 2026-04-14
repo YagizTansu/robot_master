@@ -31,6 +31,8 @@ setup(
         "console_scripts": [
             "feature_extractor    = fgo_transformer.feature_extractor_node:main",
             "transformer_inference = fgo_transformer.transformer_inference_node:main",
+            "graph_traversal      = fgo_transformer.graph_traversal_node:main",
+            "scenario_runner      = fgo_transformer.scenario_runner_node:main",
         ],
     },
 )
