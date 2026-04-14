@@ -64,13 +64,13 @@ controller_server:
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5  # Daha toleranslı
-      movement_time_allowance: 20.0  # Daha uzun süre
+      required_movement_radius: 0.5
+      movement_time_allowance: 35.0  # Artırıldı: yön dönüşü için yeterli süre
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.5  # Daha toleranslı
-      yaw_goal_tolerance: 0.5  # Daha toleranslı
+      yaw_goal_tolerance: 3.14  # Daha toleranslı
         # DWB parameters
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
@@ -118,12 +118,12 @@ controller_server:
       path_distance_weight: 250.0   # Path'e mesafe cezası [1/m] — artık m cinsinden, m² değil
       goal_distance_weight: 30.0    # Carrot point'e çekim
       obstacle_weight: 1.0          # Engel cezası
-      velocity_reward_weight: 20.0  # Hız ödülü — path'i geçemeyecek şekilde dengelendi
-      heading_alignment_weight: 60.0 # Yön hizalama cezası [1/rad]
+      velocity_reward_weight: 5.0   # Düşük tutuldu: yerinde dönme trajektörlerini cezalandırmasın
+      heading_alignment_weight: 8.0  # Düşürüldü: hedef arkadayken 180° dönüşe izin ver
       
       # Tolerances
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.5
+      yaw_goal_tolerance: 3.14
       transform_tolerance: 0.5
       
       # Plan Pruning - How far ahead to look on global plan
@@ -297,7 +297,7 @@ behavior_server:
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
     max_rotational_vel: 2.0
-    min_rotational_vel: 0.6
+    min_rotational_vel: 0.3  # Düşürüldü: dar açılarda recovery spin kilitlenmesin
     rotational_acc_lim: 3.2
 
 robot_state_publisher:
