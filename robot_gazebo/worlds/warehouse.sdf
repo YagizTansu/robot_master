@@ -63,33 +63,12 @@
         </model>
 
 
-        <model name="aws_robomaker_warehouse_Bucket_01_020">
-            <include>
-                <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
-            </include>
-            <pose frame="">0.433449 9.631706 0 0 0 -1.563161</pose>
-        </model>
-
         <!-- Euro Pallet -->
         <model name="euro_pallet_01">
             <include>
                 <uri>model://euro_pallet</uri>
             </include>
             <pose frame="">2.0 2.0 0.1 0 0 0</pose>
-        </model>
-
-        <model name="aws_robomaker_warehouse_Bucket_01_021">
-            <include>
-                <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
-            </include>
-            <pose frame="">-1.8321 -6.3752 0 0 0 -1.563161</pose>
-        </model>
-
-        <model name="aws_robomaker_warehouse_Bucket_01_022">
-            <include>
-                <uri>model://aws_robomaker_warehouse_Bucket_01</uri>
-            </include>
-            <pose frame="">0.433449 8.59 0 0 0 -1.563161</pose>
         </model>
 
         <model name='aws_robomaker_warehouse_ClutteringA_01_016'>
