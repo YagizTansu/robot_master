@@ -1,0 +1,14 @@
+cd ~/ros2_ws/src/robot_master/docker
+docker compose build
+docker compose upc
+
+docker exec -it ekf_sim bash
+source /opt/ros/jazzy/setup.bash
+source /opt/ros/jazzy/setup.bash
+ros2 run robot_gazebo localization_benchmark.py --ros-args -p estimated_topic:=/odometry/filtered -p algorithm_name:=AMCL+EKF
+
+
+docker exec -it ekf_sim bash
+source /opt/ros/jazzy/setup.bash
+source /opt/ros/jazzy/setup.bash
+ros2 run robot_gazebo localization_benchmark.py --ros-args -p estimated_topic:=/fgo/odometry -p algorithm_name:=FGO

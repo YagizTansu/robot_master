@@ -62,13 +62,11 @@ echo "======================================================"
 echo " All nodes started.  PIDs:"
 echo "   bringup   : ${BRINGUP_PID}"
 echo "   amcl+ekf  : ${AMCL_EKF_PID}"
-echo "   benchmark : ${BENCH_PID}"
-echo "   rviz      : ${RVIZ_PID}"
 echo " Ctrl-C to stop all."
 echo "======================================================"
 
 # ── Wait for any child process to exit, then kill the rest ───────────────────
 wait -n 2>/dev/null || true
 echo "A process exited — shutting down ekf_sim ..."
-kill ${BRINGUP_PID} ${AMCL_EKF_PID} ${BENCH_PID} ${RVIZ_PID} 2>/dev/null || true
+kill ${BRINGUP_PID} ${AMCL_EKF_PID} 2>/dev/null || true
 wait
