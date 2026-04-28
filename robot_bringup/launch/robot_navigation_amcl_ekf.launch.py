@@ -13,9 +13,12 @@ def generate_launch_description():
     robot_navigation_dir = get_package_share_directory("robot_navigation")
     robot_database_dir = get_package_share_directory("robot_database")
     robot_localization_dir = get_package_share_directory("robot_localization")
+    robot_slam_dir = get_package_share_directory("robot_slam")
 
     # Map
-    map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
+    # map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
+    map_file = os.path.join(robot_slam_dir, "maps", "map_edited.yaml")
+
 
     # Path to the robot map graph JSON file
     graph_json_file = os.path.join(

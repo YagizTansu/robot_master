@@ -43,26 +43,25 @@ until ros2 topic hz /clock --window 5 2>/dev/null | grep -q "average rate"; do
     sleep 3
 done
 echo "      Gazebo ready."
-sleep 8 # Extra pause to ensure all sim nodes are fully up
+sleep 10 # Extra pause to ensure all sim nodes are fully up
 # ── 2. Full navigation stack (FGO + Map Server + Nav2 + RViz + Database) ──────
 echo "[2/3] Launching robot_navigation (FGO + Nav2 + RViz) ..."
 ros2 launch robot_bringup robot_navigation.launch.py \
     enable_vda5050:=false &
 NAV_PID=$!
 
-# Brief pause so FGO and map server can initialise before benchmark starts
-sleep 8
+# # Brief pause so FGO and map server can initialise before benchmark starts
+# sleep 8
 
-
-# ── 3. Benchmark node (ros2 run ile) ──────────────────────────────────────────
-echo "[3/3] Launching FGO benchmark (ros2 run) ..."
-ros2 run robot_gazebo localization_benchmark.py \
-    --ros-args \
-    -p use_sim_time:=true \
-    -p estimated_topic:=/fgo/odometry \
-    -p algorithm_name:=FGO \
-    -p csv_output_dir:="${BENCHMARK_RESULTS_DIR:-/ros2_ws/benchmark_results}" &
-BENCH_PID=$!
+# # ── 3. Benchmark node (ros2 run ile) ──────────────────────────────────────────
+# echo "[3/3] Launching FGO benchmark (ros2 run) ..."
+# ros2 run robot_gazebo localization_benchmark.py \
+#     --ros-args \
+#     -p use_sim_time:=true \
+#     -p estimated_topic:=/fgo/odometry \
+#     -p algorithm_name:=FGO \
+#     -p csv_output_dir:="${BENCHMARK_RESULTS_DIR:-/ros2_ws/benchmark_results}" &
+# BENCH_PID=$!
 
 echo "======================================================"
 echo " All nodes started.  PIDs:"
@@ -75,5 +74,5 @@ echo "======================================================"
 # ── Wait for any child process to exit, then kill the rest ───────────────────
 wait -n 2>/dev/null || true
 echo "A process exited — shutting down fgo_sim ..."
-kill ${BRINGUP_PID} ${NAV_PID} ${BENCH_PID} 2>/dev/null || true
+kill ${BRINGUP_PID} ${NAV_PID} 2> /dev/null || true
 wait
