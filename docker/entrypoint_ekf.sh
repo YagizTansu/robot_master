@@ -40,34 +40,23 @@ BRINGUP_PID=$!
 # Wait for Gazebo to be up (clock topic indicates sim is running)
 echo "      Waiting for /clock ..."
 until ros2 topic hz /clock --window 5 2>/dev/null | grep -q "average rate"; do
-    sleep 2
+    sleep 4
 done
 echo "      Gazebo ready."
-
+sleep 5
 # ── 2. AMCL + EKF localisation ────────────────────────────────────────────────
 echo "[2/4] Launching AMCL + EKF localisation ..."
 ros2 launch robot_bringup robot_navigation_amcl_ekf.launch.py &
 AMCL_EKF_PID=$!
 
 # Brief pause so AMCL can activate before benchmark starts
-sleep 5
+# sleep 5
 
-# ── 3. Benchmark node ─────────────────────────────────────────────────────────
-echo "[3/4] Launching AMCL benchmark ..."
-ros2 launch robot_gazebo localization_benchmark_amcl.launch.py \
-    csv_output_dir:="${BENCHMARK_RESULTS_DIR:-/ros2_ws/benchmark_results}" &
-BENCH_PID=$!
-
-# ── 4. RViz (comparison config) ───────────────────────────────────────────────
-echo "[4/4] Launching RViz ..."
-RVIZ_CONFIG="/ros2_ws/src/robot_master/docker/rviz/comparison.rviz"
-if [ -f "${RVIZ_CONFIG}" ]; then
-    ros2 run rviz2 rviz2 -d "${RVIZ_CONFIG}" \
-        --ros-args -p use_sim_time:=true &
-else
-    ros2 run rviz2 rviz2 --ros-args -p use_sim_time:=true &
-fi
-RVIZ_PID=$!
+# # ── 3. Benchmark node ─────────────────────────────────────────────────────────
+# echo "[3/4] Launching AMCL benchmark ..."
+# ros2 launch robot_gazebo localization_benchmark_amcl.launch.py \
+#     csv_output_dir:="${BENCHMARK_RESULTS_DIR:-/ros2_ws/benchmark_results}" &
+# BENCH_PID=$!
 
 echo "======================================================"
 echo " All nodes started.  PIDs:"

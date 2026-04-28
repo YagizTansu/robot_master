@@ -19,72 +19,35 @@
 services:
 
   # ── EKF container: Gazebo + AMCL + EKF + RViz + benchmark ──────────────────
-  # ekf_sim:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: robot_master:jazzy
-  #   container_name: ekf_sim
-  #   hostname: ekf_sim
-  #   privileged: true
-  #   network_mode: host            # full DDS multicast, no port-mapping needed
-  #   ipc: host
-  #   environment:
-  #     - DISPLAY=${DISPLAY}
-  #     - ROS_DOMAIN_ID=1
-  #     - WORKSPACE=/ros2_ws
-  #     - BENCHMARK_RESULTS_DIR=/ros2_ws/benchmark_results
-  #     # Gazebo resource paths
-  #     - GZ_SIM_RESOURCE_PATH=/ros2_ws/src/robot_master/robot_gazebo/models
-  #     - GZ_SIM_SYSTEM_PLUGIN_PATH=/ros2_ws/install/robot_gazebo/lib
-  #     # NVIDIA
-  #     - NVIDIA_VISIBLE_DEVICES=all
-  #     - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
-  #     - __NV_PRIME_RENDER_OFFLOAD=1
-  #     - __GLX_VENDOR_LIBRARY_NAME=nvidia
-  #   volumes:
-  #     # workspace bind-mount (source + build + install)
-  #     - ${WORKSPACE_PATH}:/ros2_ws
-  #     # benchmark CSV output shared with host
-  #     - ${BENCHMARK_RESULTS_PATH}:/ros2_ws/benchmark_results
-  #     # X11 socket
-  #     - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #   entrypoint: ["/ros2_ws/src/robot_master/docker/entrypoint_ekf.sh"]
-  #   tty: true
-  #   stdin_open: true
-
-  # ── FGO container: Gazebo + FGO + benchmark ─────────────────────────────────
-  fgo_sim:
+  ekf_sim:
     build:
       context: .
       dockerfile: Dockerfile
     image: robot_master:jazzy
-    container_name: fgo_sim
-    hostname: fgo_sim
+    container_name: ekf_sim
+    hostname: ekf_sim
     privileged: true
-    network_mode: host
+    network_mode: host            # full DDS multicast, no port-mapping needed
     ipc: host
     environment:
       - DISPLAY=${DISPLAY}
-      - ROS_DOMAIN_ID=2
+      - ROS_DOMAIN_ID=1
       - WORKSPACE=/ros2_ws
       - BENCHMARK_RESULTS_DIR=/ros2_ws/benchmark_results
+      # Gazebo resource paths
       - GZ_SIM_RESOURCE_PATH=/ros2_ws/src/robot_master/robot_gazebo/models
       - GZ_SIM_SYSTEM_PLUGIN_PATH=/ros2_ws/install/robot_gazebo/lib
+      # NVIDIA
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
       - __NV_PRIME_RENDER_OFFLOAD=1
       - __GLX_VENDOR_LIBRARY_NAME=nvidia
     volumes:
+      # workspace bind-mount (source + build + install)
       - ${WORKSPACE_PATH}:/ros2_ws
+      # benchmark CSV output shared with host
       - ${BENCHMARK_RESULTS_PATH}:/ros2_ws/benchmark_results
+      # X11 socket
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     deploy:
       resources:
@@ -93,8 +56,45 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    entrypoint: ["/ros2_ws/src/robot_master/docker/entrypoint_fgo.sh"]
+    entrypoint: ["/ros2_ws/src/robot_master/docker/entrypoint_ekf.sh"]
     tty: true
     stdin_open: true
+
+  # ── FGO container: Gazebo + FGO + benchmark ─────────────────────────────────
+  # fgo_sim:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: robot_master:jazzy
+  #   container_name: fgo_sim
+  #   hostname: fgo_sim
+  #   privileged: true
+  #   network_mode: host
+  #   ipc: host
+  #   environment:
+  #     - DISPLAY=${DISPLAY}
+  #     - ROS_DOMAIN_ID=2
+  #     - WORKSPACE=/ros2_ws
+  #     - BENCHMARK_RESULTS_DIR=/ros2_ws/benchmark_results
+  #     - GZ_SIM_RESOURCE_PATH=/ros2_ws/src/robot_master/robot_gazebo/models
+  #     - GZ_SIM_SYSTEM_PLUGIN_PATH=/ros2_ws/install/robot_gazebo/lib
+  #     - NVIDIA_VISIBLE_DEVICES=all
+  #     - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
+  #     - __NV_PRIME_RENDER_OFFLOAD=1
+  #     - __GLX_VENDOR_LIBRARY_NAME=nvidia
+  #   volumes:
+  #     - ${WORKSPACE_PATH}:/ros2_ws
+  #     - ${BENCHMARK_RESULTS_PATH}:/ros2_ws/benchmark_results
+  #     - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   entrypoint: ["/ros2_ws/src/robot_master/docker/entrypoint_fgo.sh"]
+  #   tty: true
+  #   stdin_open: true
 
 
