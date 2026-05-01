@@ -10,7 +10,7 @@ def generate_launch_description():
     robot_gazebo_dir = get_package_share_directory('robot_gazebo')
 
     warehouse_world = os.path.join(
-        robot_gazebo_dir, 'worlds', 'robot_warehouse.sdf'
+        robot_gazebo_dir, 'worlds', 'warehouse.sdf'
     )
 
     # Include robot_dynamic_warehouse.launch.py

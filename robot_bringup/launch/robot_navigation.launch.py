@@ -1,4 +1,5 @@
 import launch
+import launch
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -12,11 +13,11 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # Package directories
-    robot_navigation_dir = get_package_share_directory("robot_navigation")
-    robot_slam_dir = get_package_share_directory("robot_slam")
-    robot_database_dir = get_package_share_directory("robot_database")
-    fgo_dir = get_package_share_directory("factor_graph_optimization")
-    vda5050_adapter_dir = get_package_share_directory("robot_vda5050_adapter")
+    robot_navigation_dir    = get_package_share_directory('robot_navigation')
+    robot_slam_dir          = get_package_share_directory('robot_slam')
+    robot_database_dir      = get_package_share_directory('robot_database')
+    robot_ekf_loc_dir       = get_package_share_directory('robot_ekf_localization')
+    vda5050_adapter_dir     = get_package_share_directory('robot_vda5050_adapter')
 
     # Launch argument: enable/disable VDA5050 adapter
     enable_vda5050 = LaunchConfiguration("enable_vda5050", default="true")
@@ -34,15 +35,8 @@ def generate_launch_description():
     graph_json_file = os.path.join(
         robot_navigation_dir, "graphs", "robot_map_graph.json"
     )
-
-    # ── FGO Localization (replaces AMCL + EKF) ────────────────────────────────
-    # Provides:
-    #   map → odom      (iSAM2 optimised result — replaces AMCL)
-    #   odom → base_link (raw odom pass-through    — replaces EKF)
-    # NOTE: tricycle_controller enable_odom_tf=false to avoid TF conflict
-    fgo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(fgo_dir, "launch", "fgo.launch.py"))
-    )
+    
+    #ekf
 
     # ── Nav2 Navigation Stack ─────────────────────────────────────────────────
     nav2_params_file = os.path.join(
@@ -126,7 +120,15 @@ def generate_launch_description():
         condition=launch.conditions.IfCondition(enable_vda5050),
     )
 
-    ld.add_action(fgo_launch)
+    # ── EKF Localization (EKF local + EKF global + AMCL) ─────────────────────
+    localization_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(robot_ekf_loc_dir, 'launch', 'localization.launch.py')
+        ),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+    )
+
+    ld.add_action(localization_launch)
     ld.add_action(custom_navigation_launch)
     ld.add_action(rviz_node)
     ld.add_action(map_server_node)
