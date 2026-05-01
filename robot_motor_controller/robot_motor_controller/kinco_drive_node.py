@@ -53,10 +53,9 @@ def compute_commands(vx: float, wz: float):
         rotate_in_place = False
 
     elif abs(wz) > 1e-3:
-        # Tam yerinde dönüş: ±90° + doğru traction hızı
-        # v_wheel = ω * L / sin(±90°) = ω * L
-        steering_angle  = math.copysign(math.pi / 2, wz)
-        traction_speed  = abs(wz) * WHEEL_BASE   # m/s — cap yok
+        # kinco_bridge.py ile birebir aynı
+        steering_angle  = math.atan2(wz * WHEEL_BASE, 1e-6)   # → ±π/2
+        traction_speed  = max(-0.3, min(0.3, abs(wz) * WHEEL_BASE))
         rotate_in_place = True
 
     else:
@@ -102,6 +101,8 @@ class KincoDriveNode(Node):
         # 50 Hz steering P controller loop
         self.create_timer(1.0 / 50.0, self._steering_control_loop)
 
+        self._loop_count = 0  # debug: her 100 tickte bir (2s) log
+
         self.get_logger().info(
             'kinco_drive_node başlatıldı — '
             f'wheelbase={WHEEL_BASE} m, Kp={STEERING_KP}')
@@ -121,6 +122,11 @@ class KincoDriveNode(Node):
         # motor_rpm → tekerlek açısal hızı (rad/s)
         # Traction artık timer loop'ta yayınlanıyor (rotate_in_place bekleme mantığı orada)
         self._target_wheel_radps = (motor_rpm / TRACTION_GEAR) * (2.0 * math.pi / 60.0)
+
+        self.get_logger().info(
+            f'cmd_vel: vx={msg.linear.x:.3f} wz={msg.angular.z:.3f} '
+            f'→ steer_target={math.degrees(steering_angle):.1f}° '
+            f'rpm={motor_rpm:.1f} rotate={rotate_in_place}')
 
     # Steering ±90°'ye ulaştı mı tolerans kontrolü
     _STEERING_READY_TOL = 0.1  # rad (~6°)
@@ -159,6 +165,17 @@ class KincoDriveNode(Node):
         traction_msg = Float64MultiArray()
         traction_msg.data = [traction_cmd]
         self._traction_pub.publish(traction_msg)
+
+        # Debug: her 100 tickte bir (2s) durum logu
+        self._loop_count += 1
+        if self._loop_count % 100 == 0:
+            at_90_flag = abs(abs(self._current_steering) - math.pi / 2) < self._STEERING_READY_TOL
+            self.get_logger().info(
+                f'STATUS | steer_cur={math.degrees(self._current_steering):.1f}° '
+                f'steer_target={math.degrees(self._target_steering):.1f}° '
+                f'vel_cmd={vel_cmd:.2f} rad/s | '
+                f'traction={traction_cmd:.3f} rad/s | '
+                f'rotate={self._rotate_in_place} at_90={at_90_flag}')
 
 
 def main():
