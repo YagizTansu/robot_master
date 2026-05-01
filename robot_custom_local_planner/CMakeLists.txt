@@ -60,16 +60,9 @@ add_library(custom_local_planner SHARED
 )
 ament_target_dependencies(custom_local_planner ${dependencies})
 
-# Build ackermann_local_planner library (Ackermann / car-like)
-add_library(ackermann_local_planner SHARED
-  src/ackermann_local_planner.cpp
-)
-ament_target_dependencies(ackermann_local_planner ${dependencies})
-
 # Install libraries
 install(TARGETS
   custom_local_planner
-  ackermann_local_planner
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -92,6 +85,5 @@ install(DIRECTORY launch/
 
 # Export plugins
 pluginlib_export_plugin_description_file(nav2_core custom_local_planner_plugin.xml)
-pluginlib_export_plugin_description_file(nav2_core ackermann_local_planner_plugin.xml)
 
 ament_package()
