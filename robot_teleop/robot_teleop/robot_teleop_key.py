@@ -22,23 +22,23 @@ LIN_VEL_STEP_SIZE = 0.1   # her basışta 0.1 m/s hız değişimi
 ANG_VEL_STEP_SIZE = 0.1   # (artık kullanılmıyor, hold-to-steer)
 
 msg = """
-Robot Teleop - Kinco Drive (Hold-to-Steer)
-------------------------------------------
+Robot Teleop - Kinco Drive
+--------------------------
 Moving around:
         w
    a    s    d
         x
 
-w : ileri hız artır (+0.1 m/s, bırakınca sabit kalır)
+w : ileri hız artır (+0.1 m/s)
 x : hız azalt / geri (-0.1 m/s)
-a : SOL TUTAN TUŞ - basılı tutarken sola döner, bırakınca düz gider
-d : SAĞ TUTAN TUŞ - basılı tutarken sağa döner, bırakınca düz gider
+a : sola dön  (-0.2 rad/s, her bastıkta artar)
+d : sağa dön (+0.2 rad/s, her bastıkta artar)
 s / space : tam dur
 q : çıkış
 
-NOT: Dar dönüş için düşük hızda (1-2x w) a/d'ye bas!
+NOT: Dar dönüş için düşük hızda a/d'ye bas!
      steering = atan2(wz * 1.0957, vx)  →  yavaş gidince R küçülür
-------------------------------------------
+--------------------------
 """
 
 e = """
@@ -108,13 +108,15 @@ def main():
                 print_vels(target_linear_velocity, target_angular_velocity)
 
             elif key == 'a':
-                # Hold-to-steer: basılı tut = sola dön, bırak = düz git
-                target_angular_velocity = MAX_ANG_VEL
+                # Her bastıkta angular hızı artır (sola)
+                target_angular_velocity = constrain(
+                    target_angular_velocity + ANG_VEL_STEP_SIZE, -MAX_ANG_VEL, MAX_ANG_VEL)
                 print_vels(target_linear_velocity, target_angular_velocity)
 
             elif key == 'd':
-                # Hold-to-steer: basılı tut = sağa dön, bırak = düz git
-                target_angular_velocity = -MAX_ANG_VEL
+                # Her bastıkta angular hızı azalt (sağa)
+                target_angular_velocity = constrain(
+                    target_angular_velocity - ANG_VEL_STEP_SIZE, -MAX_ANG_VEL, MAX_ANG_VEL)
                 print_vels(target_linear_velocity, target_angular_velocity)
 
             elif key == ' ' or key == 's':
@@ -128,18 +130,23 @@ def main():
                 break
 
             else:
-                # Tuş bırakıldı (0.1s timeout → '' döndü) → direksiyon düzle
-                target_angular_velocity = 0.0
+                # Timeout (önce hold-to-steer vardı, artık hiçbir şey yapma)
+                pass
 
-            # İleri/geri hızı yumuşat, direksiyon anlık
+            # Her iki hızı da yumuşat
             control_linear_velocity = make_simple_profile(
                 control_linear_velocity,
                 target_linear_velocity,
                 LIN_VEL_STEP_SIZE / 2.0)
 
+            control_angular_velocity = make_simple_profile(
+                control_angular_velocity,
+                target_angular_velocity,
+                ANG_VEL_STEP_SIZE / 2.0)
+
             twist = Twist()
             twist.linear.x = control_linear_velocity
-            twist.angular.z = target_angular_velocity  # direksiyon anlık, yumuşatma yok
+            twist.angular.z = control_angular_velocity
             pub.publish(twist)
 
     except Exception as ex:

@@ -264,8 +264,8 @@
   <parent link="base_link"/>
   <child link="direction_motor_1"/>
   <axis xyz="0.0 0.0 1.0"/>
-  <limit lower="-1.5707" upper="1.5707" effort="100.0" velocity="1.0"/>
-  <dynamics damping="10.0" friction="1.0"/>
+  <limit lower="-1.5707" upper="1.5707" effort="500.0" velocity="5.0"/>
+  <dynamics damping="0.5" friction="0.0"/>
 </joint>
 
 <joint name="lift_joint" type="prismatic">
@@ -327,9 +327,9 @@
     <plugin>gz_ros2_control/GazeboSimSystem</plugin>
   </hardware>
   <joint name="direction_motor_joint">
-    <command_interface name="position">
-      <param name="min">-1.5707</param>
-      <param name="max">1.5707</param>
+    <command_interface name="velocity">
+      <param name="min">-5.0</param>
+      <param name="max">5.0</param>
     </command_interface>
     <state_interface name="position">
       <param name="initial_value">0.0</param>
