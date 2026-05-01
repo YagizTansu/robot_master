@@ -133,7 +133,7 @@ local_costmap:
       height: 5
       resolution: 0.06
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
-      plugins: ["static_layer", "voxel_layer", "prohibited_layer", "inflation_layer"]
+      plugins: ["static_layer", "prohibited_layer", "inflation_layer"]
       
       prohibited_layer:
         plugin: "robot_custom_layers/ProhibitedLayer"
@@ -144,36 +144,36 @@ local_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 4.0
         inflation_radius: 1.0
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
-        enabled: true
-        publish_voxel_map: true
-        origin_z: 0.0
-        z_resolution: 0.05
-        z_voxels: 16
-        max_obstacle_height: 2.0
-        mark_threshold: 0
-        observation_sources: scan1 scan2
-        scan1:
-          topic: /lidar_left_1/scan
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
-          raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
-        scan2:
-          topic: /lidar_right_1/scan
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
-          raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
+      # voxel_layer:
+      #   plugin: "nav2_costmap_2d::VoxelLayer"
+      #   enabled: true
+      #   publish_voxel_map: true
+      #   origin_z: 0.0
+      #   z_resolution: 0.05
+      #   z_voxels: 16
+      #   max_obstacle_height: 2.0
+      #   mark_threshold: 0
+      #   observation_sources: scan1 scan2
+      #   scan1:
+      #     topic: /lidar_left_1/scan
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      #     data_type: "LaserScan"
+      #     raytrace_max_range: 8.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 6.0
+      #     obstacle_min_range: 0.0
+      #   scan2:
+      #     topic: /lidar_right_1/scan
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      #     data_type: "LaserScan"
+      #     raytrace_max_range: 8.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 6.0
+      #     obstacle_min_range: 0.0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -192,37 +192,37 @@ global_costmap:
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
       resolution: 0.06
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "prohibited_layer", "inflation_layer"]
+      plugins: ["static_layer", "prohibited_layer", "inflation_layer"]
       
       prohibited_layer:
         plugin: "robot_custom_layers/ProhibitedLayer"
         enabled: True
         cost_value: 254
 
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: scan1 scan2
-        scan1:
-          topic: /lidar_left_1/scan
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
-          raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
-        scan2:
-          topic: /lidar_right_1/scan
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
-          raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
+      # obstacle_layer:
+      #   plugin: "nav2_costmap_2d::ObstacleLayer"
+      #   enabled: true
+      #   observation_sources: scan1 scan2
+      #   scan1:
+      #     topic: /lidar_left_1/scan
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      #     data_type: "LaserScan"
+      #     raytrace_max_range: 8.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 6.0
+      #     obstacle_min_range: 0.0
+      #   scan2:
+      #     topic: /lidar_right_1/scan
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      #     data_type: "LaserScan"
+      #     raytrace_max_range: 8.0
+      #     raytrace_min_range: 0.0
+      #     obstacle_max_range: 6.0
+      #     obstacle_min_range: 0.0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
