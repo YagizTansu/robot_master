@@ -13,7 +13,10 @@ else:
     import tty
 
 MAX_LIN_VEL = 2.0    # m/s  (~3.6 km/h, forklift max)
-MAX_ANG_VEL = 1.0    # rad/s yaw rate (tricycle controller heaplar steering açısını)
+MAX_ANG_VEL = 1.57    # rad/s yaw rate
+# NOT: TricycleController formülü: steering_angle = atan(wheelbase * ang_vel / lin_vel)
+# Dar dönüş için düşük hız gerekir! Wheelbase=1.0957m
+# 0.3 m/s + 1.57 rad/s → ~R=0.21m  |  2.0 m/s + 1.57 rad/s → ~R=1.27m
 
 LIN_VEL_STEP_SIZE = 0.1   # her basışta 0.1 m/s hız değişimi
 ANG_VEL_STEP_SIZE = 0.1   # (artık kullanılmıyor, hold-to-steer)

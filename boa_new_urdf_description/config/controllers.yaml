@@ -34,23 +34,23 @@ tricycle_controller:
     cmd_vel_timeout: 500
     velocity_rolling_window_size: 10
 
-    # Traction (drive wheel) limits  — rad/s at wheel (all values must be positive)
+    # Traction (drive wheel) limits  — rad/s at wheel
     traction:
-      max_velocity: 5.0       # ~1.96 m/s forward
-      min_velocity: 0.0
+      max_velocity: 5.0       # ~0.545 m/s ileri (5.0 rad/s * 0.109 m)
+      min_velocity: -5.0      # geri gidiş için negatif olmalı
       max_acceleration: 2.0
-      min_acceleration: 0.0
+      min_acceleration: -2.0  # negatif ivme = geri yönde ivmelenme
       max_deceleration: 4.0
-      min_deceleration: 0.0
+      min_deceleration: -4.0  # negatif frenleme
 
-    # Steering limits (min_position/min_velocity can be negative for direction)
+    # Steering limits (min_position/min_velocity negatif olmalı — her iki yönde direksiyon)
     steering:
       max_position: 1.5707    # 90 deg
       min_position: -1.5707
-      max_velocity: 1.0       # rad/s
-      min_velocity: 0.0
-      max_acceleration: 2.0
-      min_acceleration: 0.0
+      max_velocity: 1.5       # rad/s — daha hızlı direksiyon tepkisi
+      min_velocity: -1.5      # her iki yönde direksiyon hareketi
+      max_acceleration: 3.0
+      min_acceleration: -3.0
 
 lift_controller:
   ros__parameters:
