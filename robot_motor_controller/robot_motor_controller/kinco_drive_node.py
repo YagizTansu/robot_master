@@ -34,7 +34,11 @@ STEERING_JOINT   = 'direction_motor_joint'
 
 # Slew rate limiter — steering hedefi max bu hızda değişir (rad/s)
 # Sallanmayı önler, geçişleri yumuşatır
-STEERING_SLEW_RATE = 1.5  # rad/s  (0→90° yaklaşık 1 saniye)
+STEERING_SLEW_RATE = 1.5   # rad/s  (0→90° yaklaşık 1 saniye)
+
+# Traction slew rate — tekerlek açısal hızı max bu ivmeyle değişir (rad/s²)
+# Kalkış/duruşta sallanmayı önler; 5 rad/s² → ~1s içinde max hıza ulaşır
+TRACTION_SLEW_RATE = 5.0   # rad/s per second
 
 
 def compute_commands(vx: float, wz: float):
@@ -93,6 +97,7 @@ class KincoDriveNode(Node):
         self._target_steering    = 0.0
         self._slewed_steering    = 0.0   # slew rate limiter çıkışı
         self._target_wheel_radps = 0.0
+        self._current_wheel_radps = 0.0  # traction slew limiter çıkışı
         self._rotate_in_place    = False
 
         self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
@@ -154,16 +159,22 @@ class KincoDriveNode(Node):
         self._steering_pub.publish(steering_msg)
 
         # ── Traction ──────────────────────────────────────────────────────────
-        # Rotate-in-place: steering ±90°'ye yaklaşana kadar traction=0
-        # Normal sürüş: anlık komut
+        # Rotate-in-place: steering ±90°'ye yaklaşana kadar traction hedefi=0
+        # Normal sürüş: anlık hedef
         if self._rotate_in_place:
             at_90 = abs(abs(self._current_steering) - math.pi / 2) < self._STEERING_READY_TOL
-            traction_cmd = self._target_wheel_radps if at_90 else 0.0
+            traction_target = self._target_wheel_radps if at_90 else 0.0
         else:
-            traction_cmd = self._target_wheel_radps
+            traction_target = self._target_wheel_radps
+
+        # Slew rate limiter: ani hız değişimlerini yumuşat
+        max_traction_delta = TRACTION_SLEW_RATE * dt
+        self._current_wheel_radps += max(
+            -max_traction_delta,
+            min(max_traction_delta, traction_target - self._current_wheel_radps))
 
         traction_msg = Float64MultiArray()
-        traction_msg.data = [traction_cmd]
+        traction_msg.data = [self._current_wheel_radps]
         self._traction_pub.publish(traction_msg)
 
         # Debug: her 100 tickte bir (2s) durum logu
@@ -173,8 +184,8 @@ class KincoDriveNode(Node):
             self.get_logger().info(
                 f'STATUS | steer_cur={math.degrees(self._current_steering):.1f}° '
                 f'steer_target={math.degrees(self._target_steering):.1f}° '
-                f'vel_cmd={vel_cmd:.2f} rad/s | '
-                f'traction={traction_cmd:.3f} rad/s | '
+                f'steer_vel={vel_cmd:.2f} rad/s | '
+                f'traction={self._current_wheel_radps:.3f} rad/s | '
                 f'rotate={self._rotate_in_place} at_90={at_90_flag}')
 
 

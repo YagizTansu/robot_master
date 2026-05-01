@@ -257,6 +257,7 @@
   <parent link="direction_motor_1"/>
   <child link="drive_motor_1"/>
   <axis xyz="0.0 1.0 0.0"/>
+  <dynamics damping="0.3" friction="0.0"/>
 </joint>
 
 <joint name="direction_motor_joint" type="revolute">
