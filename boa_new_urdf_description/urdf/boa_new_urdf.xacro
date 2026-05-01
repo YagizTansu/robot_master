@@ -5,6 +5,14 @@
 <xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.trans" />
 <xacro:include filename="$(find boa_new_urdf_description)/urdf/boa_new_urdf.gazebo" />
 
+<link name="base_footprint"/>
+
+<joint name="base_footprint_joint" type="fixed">
+  <origin xyz="0 0 0" rpy="0 0 0"/>
+  <parent link="base_footprint"/>
+  <child link="base_link"/>
+</joint>
+
 <link name="base_link">
   <inertial>
     <origin xyz="0.945398072688781 -0.001011453583043792 1.1145363303175833" rpy="0 0 0"/>

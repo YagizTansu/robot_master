@@ -1,11 +1,10 @@
 import launch
-import launch
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 import os
 
 
@@ -13,11 +12,19 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # Package directories
-    robot_navigation_dir    = get_package_share_directory('robot_navigation')
-    robot_slam_dir          = get_package_share_directory('robot_slam')
-    robot_database_dir      = get_package_share_directory('robot_database')
-    robot_ekf_loc_dir       = get_package_share_directory('robot_ekf_localization')
-    vda5050_adapter_dir     = get_package_share_directory('robot_vda5050_adapter')
+    robot_navigation_dir = get_package_share_directory('robot_navigation')
+    robot_database_dir   = get_package_share_directory('robot_database')
+    robot_ekf_loc_dir    = get_package_share_directory('robot_ekf_localization')
+
+    try:
+        robot_slam_dir = get_package_share_directory('robot_slam')
+    except PackageNotFoundError:
+        robot_slam_dir = None
+
+    try:
+        vda5050_adapter_dir = get_package_share_directory('robot_vda5050_adapter')
+    except PackageNotFoundError:
+        vda5050_adapter_dir = None
 
     # Launch argument: enable/disable VDA5050 adapter
     enable_vda5050 = LaunchConfiguration("enable_vda5050", default="true")
@@ -28,8 +35,10 @@ def generate_launch_description():
     ))
 
     # Map
-    # map_file = os.path.join(robot_navigation_dir, "map", "aws_warehouse.yaml")
-    map_file = os.path.join(robot_slam_dir, "maps", "map_edited.yaml")
+    if robot_slam_dir and os.path.exists(os.path.join(robot_slam_dir, 'maps', 'map_edited.yaml')):
+        map_file = os.path.join(robot_slam_dir, 'maps', 'map_edited.yaml')
+    else:
+        map_file = os.path.join(robot_navigation_dir, 'map', 'aws_warehouse.yaml')
 
     # Path to the robot map graph JSON file
     graph_json_file = os.path.join(
@@ -113,12 +122,15 @@ def generate_launch_description():
     )
 
     # ── VDA5050 Adapter Stack ─────────────────────────────────────────────────
-    vda5050_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(vda5050_adapter_dir, "launch", "connector.launch.py")
-        ),
-        condition=launch.conditions.IfCondition(enable_vda5050),
-    )
+    if vda5050_adapter_dir:
+        vda5050_launch = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(vda5050_adapter_dir, 'launch', 'connector.launch.py')
+            ),
+            condition=launch.conditions.IfCondition(enable_vda5050),
+        )
+    else:
+        vda5050_launch = None
 
     # ── EKF Localization (EKF local + EKF global + AMCL) ─────────────────────
     localization_launch = IncludeLaunchDescription(
@@ -135,6 +147,7 @@ def generate_launch_description():
     ld.add_action(lifecycle_manager_map)
     ld.add_action(graph_visualizer_node)
     ld.add_action(robot_database_launch)
-    ld.add_action(vda5050_launch)
+    if vda5050_launch:
+        ld.add_action(vda5050_launch)
 
     return ld

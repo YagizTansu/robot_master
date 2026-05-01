@@ -54,7 +54,7 @@ amcl:
       yaw: 0.0
 
     # ── Diğer ─────────────────────────────────────────────────────────────
-    transform_tolerance: 1.0
+    transform_tolerance: 3.0
     recovery_alpha_slow: 0.001
     recovery_alpha_fast: 0.1
     save_pose_rate: 0.5

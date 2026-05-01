@@ -18,7 +18,7 @@ def generate_launch_description():
     )
 
     # ── EKF Local ─────────────────────────────────────────────────────────────
-    # /odom_kinco + /imu/data  →  /odometry/filtered  +  TF odom→base_footprint
+    # /odom_kinco + /imu/data  →  /odometry/local  +  TF odom→base_footprint
     ekf_local_node = Node(
         package='robot_localization',
         executable='ekf_node',
@@ -29,7 +29,7 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time},
         ],
         remappings=[
-            ('odometry/filtered', '/odometry/filtered'),
+            ('odometry/filtered', '/odometry/local'),
         ],
     )
 
