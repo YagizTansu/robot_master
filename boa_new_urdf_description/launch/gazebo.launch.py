@@ -73,15 +73,6 @@ def generate_launch_description():
         output='screen'
     )
 
-    # ── cmd_vel relay: Twist → TwistStamped (tricycle_controller) ───────────
-    cmd_vel_relay = Node(
-        package='boa_new_urdf_description',
-        executable='cmd_vel_relay',
-        name='cmd_vel_relay',
-        parameters=[{'use_sim_time': True}],
-        output='screen'
-    )
-
     # ── Controllers (spawned after Gazebo + gz_ros2_control are ready) ───────
     controllers_yaml = os.path.join(share_dir, 'config', 'controllers.yaml')
 
@@ -93,10 +84,18 @@ def generate_launch_description():
         output='screen'
     )
 
-    tricycle_controller_spawner = Node(
+    steering_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['tricycle_controller', '--param-file', controllers_yaml],
+        arguments=['steering_controller', '--param-file', controllers_yaml],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
+    traction_controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['traction_controller', '--param-file', controllers_yaml],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
@@ -105,6 +104,24 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=['lift_controller', '--param-file', controllers_yaml],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
+    # ── Kinco sürüş modu: cmd_vel → steering + traction controller ───────────
+    kinco_drive_node = Node(
+        package='robot_motor_controller',
+        executable='kinco_drive_node',
+        name='kinco_drive_node',
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
+    # ── Simülasyon odometrisi: joint_states → /odom_kinco ────────────────────
+    sim_kinco_bridge = Node(
+        package='robot_motor_controller',
+        executable='sim_kinco_bridge',
+        name='sim_kinco_bridge',
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
@@ -118,10 +135,12 @@ def generate_launch_description():
         gazebo,
         urdf_spawn_node,
         gz_bridge,
-        cmd_vel_relay,
         TimerAction(period=5.0, actions=[joint_state_broadcaster_spawner]),
-        TimerAction(period=6.0, actions=[tricycle_controller_spawner]),
+        TimerAction(period=6.0, actions=[steering_controller_spawner]),
+        TimerAction(period=6.0, actions=[traction_controller_spawner]),
         TimerAction(period=7.0, actions=[lift_controller_spawner]),
+        TimerAction(period=8.0, actions=[kinco_drive_node]),
+        TimerAction(period=8.0, actions=[sim_kinco_bridge]),
     ])
 
 

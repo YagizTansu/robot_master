@@ -6,51 +6,24 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    tricycle_controller:
-      type: tricycle_controller/TricycleController
+    steering_controller:
+      type: position_controllers/JointGroupPositionController
+
+    traction_controller:
+      type: velocity_controllers/JointGroupVelocityController
 
     lift_controller:
       type: position_controllers/JointGroupPositionController
 
-tricycle_controller:
+steering_controller:
   ros__parameters:
-    traction_joint_name: drive_motor_joint
-    steering_joint_name: direction_motor_joint
+    joints:
+      - direction_motor_joint
 
-    # Geometry (measured via circle fitting from STL meshes)
-    wheelbase: 1.0957      # meters — front drive axle to rear caster axle
-    wheel_radius: 0.109    # meters — drive wheel radius
-
-    # Odometry frames
-    odom_frame_id: odom
-    base_frame_id: base_link
-
-    # Odometry covariance
-    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
-    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
-
-    open_loop: false
-    enable_odom_tf: false   # FGO aktifken false: FGO odom→base_link TF'sini yayınlar
-    cmd_vel_timeout: 500
-    velocity_rolling_window_size: 10
-
-    # Traction (drive wheel) limits  — rad/s at wheel
-    traction:
-      max_velocity: 5.0       # ~0.545 m/s ileri (5.0 rad/s * 0.109 m)
-      min_velocity: -5.0      # geri gidiş için negatif olmalı
-      max_acceleration: 2.0
-      min_acceleration: -2.0  # negatif ivme = geri yönde ivmelenme
-      max_deceleration: 4.0
-      min_deceleration: -4.0  # negatif frenleme
-
-    # Steering limits (min_position/min_velocity negatif olmalı — her iki yönde direksiyon)
-    steering:
-      max_position: 1.5707    # 90 deg
-      min_position: -1.5707
-      max_velocity: 1.5       # rad/s — daha hızlı direksiyon tepkisi
-      min_velocity: -1.5      # her iki yönde direksiyon hareketi
-      max_acceleration: 3.0
-      min_acceleration: -3.0
+traction_controller:
+  ros__parameters:
+    joints:
+      - drive_motor_joint
 
 lift_controller:
   ros__parameters:

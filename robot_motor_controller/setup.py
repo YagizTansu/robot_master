@@ -20,7 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'kinco_bridge = robot_motor_controller.kinco_bridge:main',
+            'kinco_bridge     = robot_motor_controller.kinco_bridge:main',
+            'sim_kinco_bridge = robot_motor_controller.sim_kinco_bridge:main',
+            'kinco_drive_node = robot_motor_controller.kinco_drive_node:main',
         ],
     },
 )

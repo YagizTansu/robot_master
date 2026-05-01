@@ -14,16 +14,16 @@ else:
 
 MAX_LIN_VEL = 2.0    # m/s  (~3.6 km/h, forklift max)
 MAX_ANG_VEL = 1.57    # rad/s yaw rate
-# NOT: TricycleController formülü: steering_angle = atan(wheelbase * ang_vel / lin_vel)
+# NOT: kinco_drive_node formülü: steering_angle = atan2(wz * wheelbase, vx)
 # Dar dönüş için düşük hız gerekir! Wheelbase=1.0957m
-# 0.3 m/s + 1.57 rad/s → ~R=0.21m  |  2.0 m/s + 1.57 rad/s → ~R=1.27m
+# 0.3 m/s + 1.57 rad/s → R≈0.21m  |  2.0 m/s + 1.57 rad/s → R≈1.27m
 
 LIN_VEL_STEP_SIZE = 0.1   # her basışta 0.1 m/s hız değişimi
 ANG_VEL_STEP_SIZE = 0.1   # (artık kullanılmıyor, hold-to-steer)
 
 msg = """
-Robot Teleop - Tricycle Drive (Hold-to-Steer)
-----------------------------------------------
+Robot Teleop - Kinco Drive (Hold-to-Steer)
+------------------------------------------
 Moving around:
         w
    a    s    d
@@ -36,8 +36,9 @@ d : SAĞ TUTAN TUŞ - basılı tutarken sağa döner, bırakınca düz gider
 s / space : tam dur
 q : çıkış
 
-NOT: Direksiyon hareketi için önce w ile hız ver!
-----------------------------------------------
+NOT: Dar dönüş için düşük hızda (1-2x w) a/d'ye bas!
+     steering = atan2(wz * 1.0957, vx)  →  yavaş gidince R küçülür
+------------------------------------------
 """
 
 e = """
