@@ -7,7 +7,7 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     steering_controller:
-      type: velocity_controllers/JointGroupVelocityController
+      type: position_controllers/JointGroupPositionController
 
     traction_controller:
       type: velocity_controllers/JointGroupVelocityController
