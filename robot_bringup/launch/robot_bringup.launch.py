@@ -55,4 +55,3 @@ def generate_launch_description():
     )
     ld.add_action(sim_bt_publishers_node)
 
-    return ld
