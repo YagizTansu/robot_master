@@ -35,8 +35,8 @@ def generate_launch_description():
     ))
 
     # Map
-    if robot_slam_dir and os.path.exists(os.path.join(robot_slam_dir, 'maps', 'map_edited.yaml')):
-        map_file = os.path.join(robot_slam_dir, 'maps', 'map_edited.yaml')
+    if robot_slam_dir and os.path.exists(os.path.join(robot_slam_dir, 'maps', 'warehouse_map.yaml')):
+        map_file = os.path.join(robot_slam_dir, 'maps', 'warehouse_map.yaml')
     else:
         map_file = os.path.join(robot_navigation_dir, 'map', 'aws_warehouse.yaml')
 
