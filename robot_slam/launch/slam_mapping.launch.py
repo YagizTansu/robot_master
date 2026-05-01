@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, TimerAction, ExecuteProcess
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -79,16 +79,22 @@ def generate_launch_description():
         ],
     )
 
-    lifecycle_manager = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_slam',
-        output='screen',
-        parameters=[
-            {'use_sim_time': use_sim_time},
-            {'autostart': True},
-            {'node_names': ['slam_toolbox']},
-        ],
+    # lifecycle_manager bond sorununu (use_sim_time ile clock yarışı) önlemek için
+    # doğrudan lifecycle servis çağrısı kullanıyoruz.
+    configure_slam = TimerAction(
+        period=3.0,
+        actions=[ExecuteProcess(
+            cmd=['ros2', 'lifecycle', 'set', '/slam_toolbox', 'configure'],
+            output='screen',
+        )]
+    )
+
+    activate_slam = TimerAction(
+        period=5.0,
+        actions=[ExecuteProcess(
+            cmd=['ros2', 'lifecycle', 'set', '/slam_toolbox', 'activate'],
+            output='screen',
+        )]
     )
 
     rviz_node = Node(
@@ -109,6 +115,7 @@ def generate_launch_description():
         declare_rviz_config_file,
         ekf_node,
         slam_node,
-        lifecycle_manager,
+        configure_slam,
+        activate_slam,
         rviz_node,
     ])
