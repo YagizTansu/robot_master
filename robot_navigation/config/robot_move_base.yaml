@@ -74,60 +74,49 @@ controller_server:
         # DWB parameters
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
-      
-      # Velocity Limits for Tricycle Drive (non-holonomic)
-      # X-axis: Forward/Backward
-      max_linear_vel_x: 0.5
-      min_linear_vel_x: -0.5
-      # Y-axis: Tricycle CANNOT move sideways — lock to 0
-      max_linear_vel_y: 0.0
-      min_linear_vel_y: 0.0
-      # Rotation (yaw rate via steering)
-      max_angular_vel: 1.0
-      min_angular_vel: -1.0
-      
-      # Acceleration Limits (m/s^2 and rad/s^2)
-      linear_acc_limit_x: 2.5    # Forward/backward acceleration
-      linear_acc_limit_y: 2.5    # Lateral acceleration
-      angular_acc_limit: 3.2     # Rotational acceleration
-      
-      # Trajectory Sampling
-      # Note: Total trajectories = linear_samples_x * linear_samples_y * angular_samples
-      # Example: 7 * 7 * 9 = 441 trajectories per cycle
-      linear_samples_x: 7      # Number of forward/backward velocity samples
-      linear_samples_y: 7      # Number of lateral velocity samples
-      angular_samples: 9       # Number of angular velocity samples
-      sim_time: 1.5            # Time to simulate trajectory (seconds)
-      # NOTE: sim_time x max_linear_vel must be < costmap_radius (width/2)
-      # 1.5s x 1.5 m/s = 2.25m < 2.5m (5m costmap radius) ✓
-      sim_granularity: 0.1     # Time step for simulation (seconds)
-      # control_duration controls the DWA velocity window width: +/- (acc * control_duration).
-      # With 0.05s (one control cycle) window was only ±0.125 m/s — robot could never
-      # rapidly accelerate. 0.5s gives ±1.25 m/s window so full speed range is sampled.
-      control_duration: 0.5
-      
-      # Cost Function Weights
-      #
-      # Unit analizi (linear mesafe düzeltmesi sonrası):
-      #   path_score   → ortalama [m]  (yola sapma mesafesi)
-      #   heading_score → [0..π rad]
-      #   velocity_reward → -[m/s]
-      #
-      # 0.1m sapma @ 150: 150×0.1=15  |  speed @ 20: 20×1.5=30 → hız kazanır ama dar marj
-      # 0.3m sapma @ 150: 150×0.3=45  |  speed @ 20: 20×1.5=30 → path kazanır → robot geri döner
-      path_distance_weight: 250.0   # Path'e mesafe cezası [1/m] — artık m cinsinden, m² değil
-      goal_distance_weight: 30.0    # Carrot point'e çekim
-      obstacle_weight: 1.0          # Engel cezası
-      velocity_reward_weight: 5.0   # Düşük tutuldu: yerinde dönme trajektörlerini cezalandırmasın
-      heading_alignment_weight: 8.0  # Düşürüldü: hedef arkadayken 180° dönüşe izin ver
-      
-      # Tolerances
-      xy_goal_tolerance: 0.5
-      yaw_goal_tolerance: 3.14
+
+      # ── Ackermann geometry ──────────────────────────────────────────────────
+      # MUST match robot hardware (kinco_bridge.py constants)
+      wheelbase:          1.0957   # m  — URDF direction_motor_joint origin x
+      max_steering_angle: 1.5708   # rad (~90°) — physical front-wheel limit
+
+      # ── Velocity limits ─────────────────────────────────────────────────────
+      max_linear_vel:  0.5    # m/s — forward max
+      min_linear_vel:  0.05   # m/s — forward minimum (keeps motor alive)
+      max_reverse_vel: 0.0    # m/s — 0 = no reverse; set > 0 to enable
+      max_angular_vel: 0.8    # rad/s — cap for rotate-in-place wz
+
+      # ── Acceleration / rate limits ───────────────────────────────────────────
+      # linear_acc_limit = TRACTION_SLEW_RATE(5.0 rad/s²) × WHEEL_RADIUS(0.109 m)
+      linear_acc_limit:   0.545  # m/s²
+      # steering_slew_rate matches kinco_drive_node.py STEERING_SLEW_RATE
+      steering_slew_rate: 1.5    # rad/s
+
+      # ── Trajectory sampling ──────────────────────────────────────────────────
+      # Normal: linear_samples × steering_samples = 7 × 11 = 77 trajectories
+      # + rotate_samples (when heading error > heading_error_trigger)
+      linear_samples:   7
+      steering_samples: 11    # odd → includes δ=0 (straight ahead)
+      rotate_samples:   5     # rotate-in-place candidates
+      rotate_max_vel:   0.5   # rad/s — max angular vel for in-place rotation
+      heading_error_trigger: 0.5  # rad (~29°) — threshold to add rotate samples
+      sim_time:         2.0   # s   — trajectory simulation horizon
+      sim_granularity:  0.1   # s   — 20 steps per trajectory
+      control_duration: 0.5   # s   — DWA velocity window = acc × control_duration
+
+      # ── Cost function weights ────────────────────────────────────────────────
+      path_distance_weight:     32.0   # Penalise deviation from global path  [1/m]
+      heading_alignment_weight: 16.0   # Align with path tangent direction    [1/rad]
+      goal_distance_weight:     20.0   # Pull toward local carrot point       [1/m]
+      obstacle_weight:           1.0   # Penalise costmap inflation cost
+      velocity_reward_weight:    5.0   # Reward forward speed (negative cost)
+      steering_penalty_weight:   2.0   # Penalise large δ² (prefers straight) [1/rad²]
+
+      # ── Tolerances ───────────────────────────────────────────────────────────
+      xy_goal_tolerance:   0.5
+      yaw_goal_tolerance:  3.14
       transform_tolerance: 0.5
-      
-      # Plan Pruning - How far ahead to look on global plan
-      prune_plan_distance: 4.0      # Increased: robot looks further ahead, anticipates turns earlier
+      prune_plan_distance: 4.0
 
 local_costmap:
   local_costmap:

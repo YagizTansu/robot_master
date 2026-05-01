@@ -6,6 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -22,21 +23,33 @@ namespace robot_custom_local_planner
 {
 
 /**
- * @brief Trajectory structure for holonomic robots (mecanum/omni wheels)
+ * @brief Trajectory for a Tricycle/Ackermann (forklift) robot.
+ *
+ * Motion is fully determined by (linear_vel, steering_angle).
+ * angular_vel is derived:  ω = v·tan(δ) / L
+ * rotate_in_place trajectories use v=0 with a direct angular_vel sample.
  */
 struct Trajectory
 {
-  double linear_vel_x;   // Forward/backward velocity
-  double linear_vel_y;   // Lateral (strafe) velocity
-  double angular_vel;    // Rotational velocity
+  double linear_vel;       // cmd_vel.linear.x   [m/s]
+  double steering_angle;   // front-wheel angle   [rad]  (internal, for simulation)
+  double angular_vel;      // cmd_vel.angular.z   [rad/s]  = v·tan(δ)/L
+  bool   rotate_in_place;  // position fixed, heading changes only
   double cost;
   std::vector<geometry_msgs::msg::PoseStamped> poses;
 };
 
 /**
  * @class CustomLocalPlanner
- * @brief Custom local planner for mecanum/omni-directional robots
- * Supports holonomic motion including lateral (strafe) movement
+ * @brief DWA-based local planner for Ackermann/Tricycle (forklift) robots.
+ *
+ * Samples (v, δ) space respecting:
+ *   - Traction acceleration limit   [m/s²]   → kinco TRACTION_SLEW_RATE × wheel_radius
+ *   - Steering slew-rate limit      [rad/s]  → kinco STEERING_SLEW_RATE
+ *   - Physical steering angle limit [rad]    → ±π/2 for single front wheel
+ *
+ * Tricycle kinematic model:  ω = v·tan(δ)/L  (identical to kinco_bridge.py)
+ * Rotate-in-place via v=0 + direct wz samples when heading error is large.
  */
 class CustomLocalPlanner : public nav2_core::Controller
 {
@@ -44,162 +57,127 @@ public:
   CustomLocalPlanner() = default;
   ~CustomLocalPlanner() override = default;
 
-  /**
-   * @brief Configure controller
-   */
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
     std::string name,
     std::shared_ptr<tf2_ros::Buffer> tf,
     std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) override;
 
-  /**
-   * @brief Cleanup controller
-   */
   void cleanup() override;
-
-  /**
-   * @brief Activate controller
-   */
   void activate() override;
-
-  /**
-   * @brief Deactivate controller
-   */
   void deactivate() override;
 
-  /**
-   * @brief Compute velocity commands
-   */
   geometry_msgs::msg::TwistStamped computeVelocityCommands(
     const geometry_msgs::msg::PoseStamped & pose,
     const geometry_msgs::msg::Twist & velocity,
     nav2_core::GoalChecker * goal_checker) override;
 
-  /**
-   * @brief Set the plan to follow
-   */
   void setPlan(const nav_msgs::msg::Path & path) override;
-
-  /**
-   * @brief Set the speed limit
-   */
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
 protected:
-  /**
-   * @brief Generate trajectories to evaluate
-   */
+  /** Generate (v, δ) samples + optional rotate-in-place samples. */
   std::vector<Trajectory> generateTrajectories(
     const geometry_msgs::msg::PoseStamped & pose,
     const geometry_msgs::msg::Twist & velocity);
 
   /**
-   * @brief Simulate holonomic trajectory forward in time
+   * @brief Simulate tricycle forward kinematics: x, y, θ integration.
+   *
+   * Normal:           ẋ = v·cos(θ),  ẏ = v·sin(θ),  θ̇ = v·tan(δ)/L
+   * Rotate-in-place:  ẋ = 0,         ẏ = 0,          θ̇ = rotate_angular_vel
    */
   Trajectory simulateTrajectory(
     const geometry_msgs::msg::PoseStamped & pose,
-    double linear_vel_x,
-    double linear_vel_y,
-    double angular_vel);
+    double linear_vel,
+    double steering_angle,
+    bool   rotate_in_place    = false,
+    double rotate_angular_vel = 0.0);
 
-  /**
-   * @brief Score a trajectory
-   */
-  double scoreTrajectory(const Trajectory & trajectory);
+  double scoreTrajectory(const Trajectory & traj);
 
-  /**
-   * @brief Calculate path alignment score
-   */
-  double calculatePathAlignmentScore(const Trajectory & trajectory);
+  /** Weighted average perpendicular distance from trajectory to path. */
+  double calculatePathAlignmentScore(const Trajectory & traj);
 
-  /**
-   * @brief Calculate obstacle score
-   */
-  double calculateObstacleScore(const Trajectory & trajectory);
+  /** Costmap lethal/inflation check; returns inf on collision. */
+  double calculateObstacleScore(const Trajectory & traj);
 
-  /**
-   * @brief Calculate goal distance score
-   */
-  double calculateGoalDistanceScore(const Trajectory & trajectory);
+  /** Distance from trajectory end to local carrot point. */
+  double calculateGoalDistanceScore(const Trajectory & traj);
 
-  /**
-   * @brief Calculate heading alignment score (trajectory end vs path direction)
-   */
-  double calculateHeadingAlignmentScore(const Trajectory & trajectory);
+  /** Angular difference between trajectory end heading and path tangent. */
+  double calculateHeadingAlignmentScore(const Trajectory & traj);
 
-  /**
-   * @brief Transform global plan to local frame
-   */
-  nav_msgs::msg::Path transformGlobalPlan(const geometry_msgs::msg::PoseStamped & pose);
+  /** Quadratic penalty on steering angle: δ² — prefers straight-ahead paths. */
+  double calculateSteeringPenalty(const Trajectory & traj);
 
-  /**
-   * @brief Prune global plan to get relevant local section
-   */
+  /** Estimate current steering angle δ from (vx, wz) velocity feedback. */
+  double estimateCurrentSteering(const geometry_msgs::msg::Twist & velocity) const;
+
+  /** Extract forward-looking local window from the global plan. */
   nav_msgs::msg::Path pruneGlobalPlan(
     const geometry_msgs::msg::PoseStamped & pose,
     double prune_distance);
 
-  /**
-   * @brief Publish local plan for visualization
-   */
-  void publishLocalPlan(const Trajectory & trajectory);
+  void publishLocalPlan(const Trajectory & traj);
 
-  /**
-   * @brief Publish all trajectories for visualization
-   */
-  void publishTrajectories(const std::vector<Trajectory> & trajectories);
-
-  // Node interfaces
+  // ── Node interfaces ──────────────────────────────────────────────────────
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
-  nav2_costmap_2d::Costmap2D * costmap_;
+  nav2_costmap_2d::Costmap2D * costmap_{nullptr};
   rclcpp::Logger logger_{rclcpp::get_logger("CustomLocalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
 
-  // Publishers for visualization
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr local_plan_pub_;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr global_plan_transformed_pub_;
-  
-  // Plugin name
+
   std::string plugin_name_;
-
-  // Global plan
   nav_msgs::msg::Path global_plan_;
-  nav_msgs::msg::Path pruned_plan_;  // Pruned section of global plan for tracking
+  nav_msgs::msg::Path pruned_plan_;
+  size_t last_closest_idx_{0};
 
-  // Parameters
-  double max_linear_vel_x_;      // Max forward/backward velocity
-  double min_linear_vel_x_;      // Min forward/backward velocity (negative for reverse)
-  double max_linear_vel_y_;      // Max lateral (strafe) velocity
-  double min_linear_vel_y_;      // Min lateral (strafe) velocity
-  double max_angular_vel_;       // Max rotational velocity
-  double min_angular_vel_;       // Min rotational velocity
-  double linear_acc_limit_x_;    // Forward/backward acceleration limit
-  double linear_acc_limit_y_;    // Lateral acceleration limit
-  double angular_acc_limit_;     // Rotational acceleration limit
-  
-  int linear_samples_x_;         // Number of forward/backward velocity samples
-  int linear_samples_y_;         // Number of lateral velocity samples
-  int angular_samples_;          // Number of rotational velocity samples
-  double sim_time_;              // Trajectory simulation time
-  double sim_granularity_;       // Simulation time step
-  
-  double path_distance_weight_;
-  double goal_distance_weight_;
-  double obstacle_weight_;
-  double velocity_reward_weight_;
-  double heading_alignment_weight_;
-  
-  double transform_tolerance_;
-  double xy_goal_tolerance_;
-  double yaw_goal_tolerance_;
-  double prune_plan_distance_;   // Distance to look ahead on global plan
-  
-  double speed_limit_ratio_;
-  double control_dt_;          // Control cycle duration [s] = 1/controller_frequency
-  size_t last_closest_idx_;    // Last closest index for forward-only plan pruning
+  // ── Ackermann geometry ───────────────────────────────────────────────────
+  double wheelbase_{1.0957};           // [m]   front-to-rear axle distance
+  double max_steering_angle_{1.5708};  // [rad] physical limit ≈ π/2
+
+  // ── Velocity limits ──────────────────────────────────────────────────────
+  double max_linear_vel_{0.5};    // [m/s]  forward maximum
+  double min_linear_vel_{0.05};   // [m/s]  forward minimum (motor alive threshold)
+  double max_reverse_vel_{0.0};   // [m/s]  reverse max (0 = disabled)
+  double max_angular_vel_{0.8};   // [rad/s] cap for rotate-in-place
+
+  // ── Acceleration / rate limits ───────────────────────────────────────────
+  double linear_acc_limit_{0.545};   // [m/s²]  = TRACTION_SLEW_RATE × WHEEL_RADIUS
+  double steering_slew_rate_{1.5};   // [rad/s] = kinco STEERING_SLEW_RATE
+
+  // ── Sampling ─────────────────────────────────────────────────────────────
+  int    linear_samples_{7};
+  int    steering_samples_{11};
+  int    rotate_samples_{5};
+  double rotate_max_vel_{0.5};         // [rad/s] max wz for rotate-in-place
+  double heading_error_trigger_{0.5};  // [rad]   threshold to add rotate samples
+  double sim_time_{2.0};
+  double sim_granularity_{0.1};
+  double control_dt_{0.5};             // DWA velocity window width = acc × control_dt
+
+  // ── Cost weights ─────────────────────────────────────────────────────────
+  double path_distance_weight_{32.0};
+  double heading_alignment_weight_{16.0};
+  double goal_distance_weight_{20.0};
+  double obstacle_weight_{1.0};
+  double velocity_reward_weight_{5.0};
+  double steering_penalty_weight_{2.0};
+
+  // ── Tolerances ───────────────────────────────────────────────────────────
+  double transform_tolerance_{0.5};
+  double xy_goal_tolerance_{0.25};
+  double yaw_goal_tolerance_{0.25};
+  double prune_plan_distance_{4.0};
+
+  // ── Runtime state ────────────────────────────────────────────────────────
+  double speed_limit_ratio_{1.0};
+  double current_steering_angle_{0.0};  // tracked/estimated current δ [rad]
 };
 
 }  // namespace robot_custom_local_planner

@@ -1,8 +1,14 @@
 #include "robot_custom_local_planner/custom_local_planner.hpp"
 #include <pluginlib/class_list_macros.hpp>
+#include <cmath>
+#include <algorithm>
 
 namespace robot_custom_local_planner
 {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// configure
+// ═══════════════════════════════════════════════════════════════════════════
 
 void CustomLocalPlanner::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
@@ -15,58 +21,69 @@ void CustomLocalPlanner::configure(
     throw std::runtime_error("Unable to lock node!");
   }
 
-  node_ = parent;
+  node_        = parent;
   plugin_name_ = name;
-  tf_buffer_ = tf;
+  tf_buffer_   = tf;
   costmap_ros_ = costmap_ros;
-  costmap_ = costmap_ros_->getCostmap();
-  logger_ = node->get_logger();
-  clock_ = node->get_clock();
+  costmap_     = costmap_ros_->getCostmap();
+  logger_      = node->get_logger();
+  clock_       = node->get_clock();
 
-  RCLCPP_INFO(logger_, "Configuring CustomLocalPlanner for Mecanum/Omni wheels: %s", plugin_name_.c_str());
+  // ── Ackermann geometry ───────────────────────────────────────────────────
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".wheelbase", rclcpp::ParameterValue(1.0957));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".max_steering_angle", rclcpp::ParameterValue(1.5708));
 
-  // Declare and get parameters for holonomic robot
+  // ── Velocity limits ──────────────────────────────────────────────────────
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".max_linear_vel_x", rclcpp::ParameterValue(0.5));
+    node, plugin_name_ + ".max_linear_vel", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".min_linear_vel_x", rclcpp::ParameterValue(-0.5));
+    node, plugin_name_ + ".min_linear_vel", rclcpp::ParameterValue(0.05));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".max_linear_vel_y", rclcpp::ParameterValue(0.5));
+    node, plugin_name_ + ".max_reverse_vel", rclcpp::ParameterValue(0.0));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".min_linear_vel_y", rclcpp::ParameterValue(-0.5));
+    node, plugin_name_ + ".max_angular_vel", rclcpp::ParameterValue(0.8));
+
+  // ── Acceleration / rate limits ───────────────────────────────────────────
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".max_angular_vel", rclcpp::ParameterValue(1.0));
+    node, plugin_name_ + ".linear_acc_limit", rclcpp::ParameterValue(0.545));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".min_angular_vel", rclcpp::ParameterValue(-1.0));
+    node, plugin_name_ + ".steering_slew_rate", rclcpp::ParameterValue(1.5));
+
+  // ── Sampling ─────────────────────────────────────────────────────────────
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".linear_acc_limit_x", rclcpp::ParameterValue(2.5));
+    node, plugin_name_ + ".linear_samples", rclcpp::ParameterValue(7));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".linear_acc_limit_y", rclcpp::ParameterValue(2.5));
+    node, plugin_name_ + ".steering_samples", rclcpp::ParameterValue(11));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".angular_acc_limit", rclcpp::ParameterValue(3.2));
-  
+    node, plugin_name_ + ".rotate_samples", rclcpp::ParameterValue(5));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".linear_samples_x", rclcpp::ParameterValue(5));
+    node, plugin_name_ + ".rotate_max_vel", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".linear_samples_y", rclcpp::ParameterValue(5));
+    node, plugin_name_ + ".heading_error_trigger", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".angular_samples", rclcpp::ParameterValue(7));
-  nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".sim_time", rclcpp::ParameterValue(1.5));
+    node, plugin_name_ + ".sim_time", rclcpp::ParameterValue(2.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".sim_granularity", rclcpp::ParameterValue(0.1));
-  
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".control_duration", rclcpp::ParameterValue(0.5));
+
+  // ── Cost weights ─────────────────────────────────────────────────────────
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".path_distance_weight", rclcpp::ParameterValue(32.0));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".goal_distance_weight", rclcpp::ParameterValue(24.0));
+    node, plugin_name_ + ".heading_alignment_weight", rclcpp::ParameterValue(16.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".goal_distance_weight", rclcpp::ParameterValue(20.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_weight", rclcpp::ParameterValue(1.0));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".velocity_reward_weight", rclcpp::ParameterValue(20.0));
+    node, plugin_name_ + ".velocity_reward_weight", rclcpp::ParameterValue(5.0));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".heading_alignment_weight", rclcpp::ParameterValue(25.0));
-  
+    node, plugin_name_ + ".steering_penalty_weight", rclcpp::ParameterValue(2.0));
+
+  // ── Tolerances ───────────────────────────────────────────────────────────
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
@@ -74,78 +91,85 @@ void CustomLocalPlanner::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".yaw_goal_tolerance", rclcpp::ParameterValue(0.25));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".prune_plan_distance", rclcpp::ParameterValue(3.0));
-  nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".control_duration", rclcpp::ParameterValue(0.05));
+    node, plugin_name_ + ".prune_plan_distance", rclcpp::ParameterValue(4.0));
 
-  node->get_parameter(plugin_name_ + ".max_linear_vel_x", max_linear_vel_x_);
-  node->get_parameter(plugin_name_ + ".min_linear_vel_x", min_linear_vel_x_);
-  node->get_parameter(plugin_name_ + ".max_linear_vel_y", max_linear_vel_y_);
-  node->get_parameter(plugin_name_ + ".min_linear_vel_y", min_linear_vel_y_);
-  node->get_parameter(plugin_name_ + ".max_angular_vel", max_angular_vel_);
-  node->get_parameter(plugin_name_ + ".min_angular_vel", min_angular_vel_);
-  node->get_parameter(plugin_name_ + ".linear_acc_limit_x", linear_acc_limit_x_);
-  node->get_parameter(plugin_name_ + ".linear_acc_limit_y", linear_acc_limit_y_);
-  node->get_parameter(plugin_name_ + ".angular_acc_limit", angular_acc_limit_);
-  
-  node->get_parameter(plugin_name_ + ".linear_samples_x", linear_samples_x_);
-  node->get_parameter(plugin_name_ + ".linear_samples_y", linear_samples_y_);
-  node->get_parameter(plugin_name_ + ".angular_samples", angular_samples_);
-  node->get_parameter(plugin_name_ + ".sim_time", sim_time_);
-  node->get_parameter(plugin_name_ + ".sim_granularity", sim_granularity_);
-  
-  node->get_parameter(plugin_name_ + ".path_distance_weight", path_distance_weight_);
-  node->get_parameter(plugin_name_ + ".goal_distance_weight", goal_distance_weight_);
-  node->get_parameter(plugin_name_ + ".obstacle_weight", obstacle_weight_);
-  node->get_parameter(plugin_name_ + ".velocity_reward_weight", velocity_reward_weight_);
+  // ── Read all parameters ──────────────────────────────────────────────────
+  node->get_parameter(plugin_name_ + ".wheelbase",            wheelbase_);
+  node->get_parameter(plugin_name_ + ".max_steering_angle",   max_steering_angle_);
+  node->get_parameter(plugin_name_ + ".max_linear_vel",       max_linear_vel_);
+  node->get_parameter(plugin_name_ + ".min_linear_vel",       min_linear_vel_);
+  node->get_parameter(plugin_name_ + ".max_reverse_vel",      max_reverse_vel_);
+  node->get_parameter(plugin_name_ + ".max_angular_vel",      max_angular_vel_);
+  node->get_parameter(plugin_name_ + ".linear_acc_limit",     linear_acc_limit_);
+  node->get_parameter(plugin_name_ + ".steering_slew_rate",   steering_slew_rate_);
+  node->get_parameter(plugin_name_ + ".linear_samples",       linear_samples_);
+  node->get_parameter(plugin_name_ + ".steering_samples",     steering_samples_);
+  node->get_parameter(plugin_name_ + ".rotate_samples",       rotate_samples_);
+  node->get_parameter(plugin_name_ + ".rotate_max_vel",       rotate_max_vel_);
+  node->get_parameter(plugin_name_ + ".heading_error_trigger", heading_error_trigger_);
+  node->get_parameter(plugin_name_ + ".sim_time",             sim_time_);
+  node->get_parameter(plugin_name_ + ".sim_granularity",      sim_granularity_);
+  node->get_parameter(plugin_name_ + ".control_duration",     control_dt_);
+  node->get_parameter(plugin_name_ + ".path_distance_weight",    path_distance_weight_);
   node->get_parameter(plugin_name_ + ".heading_alignment_weight", heading_alignment_weight_);
-  
-  node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance_);
-  node->get_parameter(plugin_name_ + ".xy_goal_tolerance", xy_goal_tolerance_);
-  node->get_parameter(plugin_name_ + ".yaw_goal_tolerance", yaw_goal_tolerance_);
-  node->get_parameter(plugin_name_ + ".prune_plan_distance", prune_plan_distance_);
-  node->get_parameter(plugin_name_ + ".control_duration", control_dt_);
+  node->get_parameter(plugin_name_ + ".goal_distance_weight",    goal_distance_weight_);
+  node->get_parameter(plugin_name_ + ".obstacle_weight",         obstacle_weight_);
+  node->get_parameter(plugin_name_ + ".velocity_reward_weight",  velocity_reward_weight_);
+  node->get_parameter(plugin_name_ + ".steering_penalty_weight", steering_penalty_weight_);
+  node->get_parameter(plugin_name_ + ".transform_tolerance",  transform_tolerance_);
+  node->get_parameter(plugin_name_ + ".xy_goal_tolerance",    xy_goal_tolerance_);
+  node->get_parameter(plugin_name_ + ".yaw_goal_tolerance",   yaw_goal_tolerance_);
+  node->get_parameter(plugin_name_ + ".prune_plan_distance",  prune_plan_distance_);
 
-  speed_limit_ratio_ = 1.0;
-  last_closest_idx_ = 0;
 
-  // Create publishers for visualization
-  local_plan_pub_ = node->create_publisher<nav_msgs::msg::Path>(
-    "local_plan", 1);
+  speed_limit_ratio_      = 1.0;
+  last_closest_idx_       = 0;
+  current_steering_angle_ = 0.0;
+
+  local_plan_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   global_plan_transformed_pub_ = node->create_publisher<nav_msgs::msg::Path>(
     "transformed_global_plan", 1);
 
-  RCLCPP_INFO(logger_, "CustomLocalPlanner configured for holonomic robot successfully");
-  RCLCPP_INFO(logger_, "  Max velocities - X: %.2f, Y: %.2f, Theta: %.2f", 
-    max_linear_vel_x_, max_linear_vel_y_, max_angular_vel_);
-  RCLCPP_INFO(logger_, "  Plan pruning distance: %.2f m", prune_plan_distance_);
-  RCLCPP_INFO(logger_, "  Publishing local_plan on topic: local_plan");
+  RCLCPP_INFO(logger_,
+    "AckermannLocalPlanner configured — "
+    "wheelbase=%.4f m, max_steer=%.2f rad (%.1f°), "
+    "v=[%.2f..%.2f] m/s, rev=%.2f m/s",
+    wheelbase_, max_steering_angle_, max_steering_angle_ * 180.0 / M_PI,
+    min_linear_vel_, max_linear_vel_, max_reverse_vel_);
+  RCLCPP_INFO(logger_,
+    "  Sampling: %d linear × %d steering + %d rotate-in-place = %d max trajectories",
+    linear_samples_, steering_samples_, rotate_samples_,
+    linear_samples_ * steering_samples_ + rotate_samples_);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Lifecycle
+// ═══════════════════════════════════════════════════════════════════════════
 
 void CustomLocalPlanner::cleanup()
 {
-  RCLCPP_INFO(logger_, "Cleaning up CustomLocalPlanner");
+  RCLCPP_INFO(logger_, "Cleaning up AckermannLocalPlanner");
   global_plan_.poses.clear();
 }
 
 void CustomLocalPlanner::activate()
 {
-  RCLCPP_INFO(logger_, "Activating CustomLocalPlanner");
+  RCLCPP_INFO(logger_, "Activating AckermannLocalPlanner");
   local_plan_pub_->on_activate();
   global_plan_transformed_pub_->on_activate();
 }
 
 void CustomLocalPlanner::deactivate()
 {
-  RCLCPP_INFO(logger_, "Deactivating CustomLocalPlanner");
+  RCLCPP_INFO(logger_, "Deactivating AckermannLocalPlanner");
   local_plan_pub_->on_deactivate();
   global_plan_transformed_pub_->on_deactivate();
 }
 
 void CustomLocalPlanner::setPlan(const nav_msgs::msg::Path & path)
 {
-  global_plan_ = path;
-  last_closest_idx_ = 0;  // Reset for new plan — prevent pruning from old position
+  global_plan_      = path;
+  last_closest_idx_ = 0;
   RCLCPP_INFO(logger_, "Received new global plan with %zu poses", global_plan_.poses.size());
 }
 
@@ -154,12 +178,14 @@ void CustomLocalPlanner::setSpeedLimit(const double & speed_limit, const bool & 
   if (percentage) {
     speed_limit_ratio_ = speed_limit / 100.0;
   } else {
-    // Use max of x and y velocities for ratio calculation
-    double max_vel = std::max(max_linear_vel_x_, max_linear_vel_y_);
-    speed_limit_ratio_ = speed_limit / max_vel;
+    speed_limit_ratio_ = (max_linear_vel_ > 1e-6) ? speed_limit / max_linear_vel_ : 1.0;
   }
-  RCLCPP_INFO(logger_, "Speed limit set to %.2f%%", speed_limit_ratio_ * 100.0);
+  RCLCPP_INFO(logger_, "Speed limit set to %.1f%%", speed_limit_ratio_ * 100.0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// computeVelocityCommands
+// ═══════════════════════════════════════════════════════════════════════════
 
 geometry_msgs::msg::TwistStamped CustomLocalPlanner::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose,
@@ -168,58 +194,83 @@ geometry_msgs::msg::TwistStamped CustomLocalPlanner::computeVelocityCommands(
 {
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header.frame_id = pose.header.frame_id;
-  cmd_vel.header.stamp = clock_->now();
+  cmd_vel.header.stamp    = clock_->now();
 
-  // Check if we have a valid plan
   if (global_plan_.poses.empty()) {
     RCLCPP_WARN(logger_, "No global plan available");
     return cmd_vel;
   }
 
-  // Prune global plan to get relevant section for tracking
+  // Update current steering estimate from velocity feedback
+  current_steering_angle_ = estimateCurrentSteering(velocity);
+
+  // Build local plan window
   pruned_plan_ = pruneGlobalPlan(pose, prune_plan_distance_);
-  
   if (pruned_plan_.poses.empty()) {
     RCLCPP_WARN(logger_, "Pruned plan is empty");
     return cmd_vel;
   }
 
-  RCLCPP_DEBUG(logger_, "Tracking %zu poses from global plan", pruned_plan_.poses.size());
-
-  // Generate and evaluate trajectories
-  auto trajectories = generateTrajectories(pose, velocity);
-  
-  if (trajectories.empty()) {
-    RCLCPP_WARN(logger_, "No valid trajectories generated");
-    return cmd_vel;
-  }
-
-  // Find best trajectory
-  auto best_trajectory = std::min_element(
-    trajectories.begin(), trajectories.end(),
-    [](const Trajectory & a, const Trajectory & b) { return a.cost < b.cost; });
-
-  // Publish local plan for visualization
-  publishLocalPlan(*best_trajectory);
-  
-  // Optionally publish pruned global plan for debugging
+  // Publish pruned plan for debugging
   if (global_plan_transformed_pub_->get_subscription_count() > 0) {
     pruned_plan_.header.stamp = clock_->now();
     global_plan_transformed_pub_->publish(pruned_plan_);
   }
 
-  // Apply speed limit to all velocity components
-  cmd_vel.twist.linear.x = best_trajectory->linear_vel_x * speed_limit_ratio_;
-  cmd_vel.twist.linear.y = best_trajectory->linear_vel_y * speed_limit_ratio_;
-  cmd_vel.twist.angular.z = best_trajectory->angular_vel * speed_limit_ratio_;
+  // Sample & evaluate trajectories
+  auto trajectories = generateTrajectories(pose, velocity);
+  if (trajectories.empty()) {
+    RCLCPP_WARN(logger_, "No valid trajectories generated");
+    return cmd_vel;
+  }
 
-  RCLCPP_DEBUG(
-    logger_, "Best trajectory - Vx: %.2f, Vy: %.2f, W: %.2f, Cost: %.2f",
-    cmd_vel.twist.linear.x, cmd_vel.twist.linear.y, 
-    cmd_vel.twist.angular.z, best_trajectory->cost);
+  // Pick minimum-cost trajectory
+  const auto & best = *std::min_element(
+    trajectories.begin(), trajectories.end(),
+    [](const Trajectory & a, const Trajectory & b) { return a.cost < b.cost; });
+
+  publishLocalPlan(best);
+
+  cmd_vel.twist.linear.x  = best.linear_vel  * speed_limit_ratio_;
+  cmd_vel.twist.angular.z = best.angular_vel  * speed_limit_ratio_;
+
+  RCLCPP_DEBUG(logger_,
+    "Best: v=%.3f m/s  δ=%.1f°  ω=%.3f rad/s  cost=%.2f  rotate=%d",
+    best.linear_vel, best.steering_angle * 180.0 / M_PI,
+    best.angular_vel, best.cost, static_cast<int>(best.rotate_in_place));
 
   return cmd_vel;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// estimateCurrentSteering
+//
+// Reconstruct δ from (vx, wz) using the Ackermann relation:
+//   ω = v·tan(δ)/L  →  δ = atan(ω·L / v)
+// When the robot is nearly stopped, keep the last known value.
+// ═══════════════════════════════════════════════════════════════════════════
+
+double CustomLocalPlanner::estimateCurrentSteering(
+  const geometry_msgs::msg::Twist & velocity) const
+{
+  if (std::abs(velocity.linear.x) > 0.05) {
+    double delta = std::atan2(velocity.angular.z * wheelbase_, velocity.linear.x);
+    return std::max(-max_steering_angle_, std::min(max_steering_angle_, delta));
+  }
+  return current_steering_angle_;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// generateTrajectories
+//
+// Samples the physically reachable (v, δ) space:
+//   v window   : current_v ± linear_acc_limit * control_dt
+//   δ window   : current_δ ± steering_slew_rate * control_dt   (slew constraint)
+//             intersected with ±max_steering_angle               (hardware limit)
+//
+// Additionally, when the heading error to the plan is large, rotate-in-place
+// candidates (v=0, direct wz) are added so the robot can realign before driving.
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   const geometry_msgs::msg::PoseStamped & pose,
@@ -227,55 +278,69 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
 {
   std::vector<Trajectory> trajectories;
 
-  // Calculate velocity limits based on acceleration for holonomic motion.
-  // Use control_dt_ (= 1/controller_frequency) NOT sim_granularity_ here:
-  // sim_granularity_ is the simulation step; control_dt_ is how long the robot
-  // actually has to change its velocity between two controller calls.
-  double max_vel_x = std::min(
-    max_linear_vel_x_,
-    velocity.linear.x + linear_acc_limit_x_ * control_dt_);
-  double min_vel_x = std::max(
-    min_linear_vel_x_,
-    velocity.linear.x - linear_acc_limit_x_ * control_dt_);
-  
-  double max_vel_y = std::min(
-    max_linear_vel_y_,
-    velocity.linear.y + linear_acc_limit_y_ * control_dt_);
-  double min_vel_y = std::max(
-    min_linear_vel_y_,
-    velocity.linear.y - linear_acc_limit_y_ * control_dt_);
-  
-  double max_ang_vel = std::min(
-    max_angular_vel_,
-    velocity.angular.z + angular_acc_limit_ * control_dt_);
-  double min_ang_vel = std::max(
-    min_angular_vel_,
-    velocity.angular.z - angular_acc_limit_ * control_dt_);
+  // ── Reachable velocity window ────────────────────────────────────────────
+  double v_cur       = velocity.linear.x;
+  double v_max_reach = std::min( max_linear_vel_,  v_cur + linear_acc_limit_ * control_dt_);
+  double v_min_reach = std::max(-max_reverse_vel_, v_cur - linear_acc_limit_ * control_dt_);
+  if (max_reverse_vel_ < 1e-6) {
+    // Forward-only: never sample negative speeds
+    v_min_reach = std::max(0.0, v_min_reach);
+  }
 
-  // Sample velocities for holonomic robot (X, Y, Theta)
-  double vel_x_step = (max_vel_x - min_vel_x) / std::max(1, linear_samples_x_ - 1);
-  double vel_y_step = (max_vel_y - min_vel_y) / std::max(1, linear_samples_y_ - 1);
-  double ang_vel_step = (max_ang_vel - min_ang_vel) / std::max(1, angular_samples_ - 1);
+  // ── Reachable steering window (slew-rate constrained) ───────────────────
+  double d_cur       = current_steering_angle_;
+  double d_max_reach = std::min( max_steering_angle_, d_cur + steering_slew_rate_ * control_dt_);
+  double d_min_reach = std::max(-max_steering_angle_, d_cur - steering_slew_rate_ * control_dt_);
 
-  for (int i = 0; i < linear_samples_x_; ++i) {
-    double vel_x = min_vel_x + i * vel_x_step;
-    
-    for (int j = 0; j < linear_samples_y_; ++j) {
-      double vel_y = min_vel_y + j * vel_y_step;
-      
-      for (int k = 0; k < angular_samples_; ++k) {
-        double ang_vel = min_ang_vel + k * ang_vel_step;
-        
-        // Simulate holonomic trajectory
-        auto trajectory = simulateTrajectory(pose, vel_x, vel_y, ang_vel);
-        
-        // Score trajectory
-        trajectory.cost = scoreTrajectory(trajectory);
-        
-        // Add to list if valid (cost is not infinity)
-        if (std::isfinite(trajectory.cost)) {
-          trajectories.push_back(trajectory);
-        }
+  // ── Sample (v, δ) grid ───────────────────────────────────────────────────
+  double v_step = (linear_samples_ > 1)
+    ? (v_max_reach - v_min_reach) / (linear_samples_ - 1) : 0.0;
+  double d_step = (steering_samples_ > 1)
+    ? (d_max_reach - d_min_reach) / (steering_samples_ - 1) : 0.0;
+
+  for (int i = 0; i < linear_samples_; ++i) {
+    double v = v_min_reach + i * v_step;
+
+    for (int j = 0; j < steering_samples_; ++j) {
+      double delta = d_min_reach + j * d_step;
+
+      auto traj  = simulateTrajectory(pose, v, delta);
+      traj.cost  = scoreTrajectory(traj);
+      if (std::isfinite(traj.cost)) {
+        trajectories.push_back(traj);
+      }
+    }
+  }
+
+  // ── Rotate-in-place candidates ───────────────────────────────────────────
+  // Added when heading error to plan tangent exceeds heading_error_trigger_.
+  // Motor controller handles the δ→±90° sequencing internally; the planner
+  // only needs to send v≈0 with the desired wz.
+  double heading_error = 0.0;
+  if (pruned_plan_.poses.size() >= 2) {
+    const auto & p1 = pruned_plan_.poses[0];
+    const auto & p2 = pruned_plan_.poses[1];
+    double path_hdg  = std::atan2(
+      p2.pose.position.y - p1.pose.position.y,
+      p2.pose.position.x - p1.pose.position.x);
+    double robot_hdg = tf2::getYaw(pose.pose.orientation);
+    heading_error = std::fabs(std::atan2(
+      std::sin(path_hdg - robot_hdg),
+      std::cos(path_hdg - robot_hdg)));
+  }
+
+  if (heading_error > heading_error_trigger_) {
+    double rot_step = (rotate_samples_ > 1)
+      ? (2.0 * rotate_max_vel_) / (rotate_samples_ - 1) : 0.0;
+
+    for (int k = 0; k < rotate_samples_; ++k) {
+      double wz = -rotate_max_vel_ + k * rot_step;
+      if (std::abs(wz) < 1e-6) { continue; }
+
+      auto traj  = simulateTrajectory(pose, 0.0, 0.0, true, wz);
+      traj.cost  = scoreTrajectory(traj);
+      if (std::isfinite(traj.cost)) {
+        trajectories.push_back(traj);
       }
     }
   }
@@ -283,321 +348,304 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   return trajectories;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// simulateTrajectory  —  Tricycle (bicycle) kinematic model
+//
+//   Normal:           ω = v·tan(δ)/L
+//                     ẋ = v·cos(θ),  ẏ = v·sin(θ),  θ̇ = ω
+//
+//   Rotate-in-place:  ẋ = 0,  ẏ = 0,  θ̇ = rotate_angular_vel
+//                     (motor controller handles δ→±90° internally)
+// ═══════════════════════════════════════════════════════════════════════════
+
 Trajectory CustomLocalPlanner::simulateTrajectory(
   const geometry_msgs::msg::PoseStamped & pose,
-  double linear_vel_x,
-  double linear_vel_y,
-  double angular_vel)
+  double linear_vel,
+  double steering_angle,
+  bool   rotate_in_place,
+  double rotate_angular_vel)
 {
-  Trajectory trajectory;
-  trajectory.linear_vel_x = linear_vel_x;
-  trajectory.linear_vel_y = linear_vel_y;
-  trajectory.angular_vel = angular_vel;
-  trajectory.cost = std::numeric_limits<double>::infinity();
+  Trajectory traj;
+  traj.linear_vel      = linear_vel;
+  traj.steering_angle  = steering_angle;
+  traj.rotate_in_place = rotate_in_place;
+  traj.cost            = std::numeric_limits<double>::infinity();
 
-  // Start from current pose
-  double x = pose.pose.position.x;
-  double y = pose.pose.position.y;
+  // Derive angular_vel (= cmd_vel.angular.z output)
+  if (rotate_in_place) {
+    traj.angular_vel = rotate_angular_vel;
+  } else {
+    // ω = v·tan(δ)/L  —  identical formula to kinco_bridge.py compute_commands()
+    traj.angular_vel = (std::abs(linear_vel) > 1e-4)
+      ? (linear_vel * std::tan(steering_angle)) / wheelbase_
+      : 0.0;
+  }
+
+  double x     = pose.pose.position.x;
+  double y     = pose.pose.position.y;
   double theta = tf2::getYaw(pose.pose.orientation);
 
-  // Simulate forward in time for holonomic robot
-  int num_steps = static_cast<int>(sim_time_ / sim_granularity_);
+  const int num_steps = static_cast<int>(sim_time_ / sim_granularity_);
+  traj.poses.reserve(num_steps);
+
   for (int i = 0; i < num_steps; ++i) {
-    // Holonomic motion model
-    // Transform velocities from robot frame to global frame
-    double global_vel_x = linear_vel_x * cos(theta) - linear_vel_y * sin(theta);
-    double global_vel_y = linear_vel_x * sin(theta) + linear_vel_y * cos(theta);
-    
-    x += global_vel_x * sim_granularity_;
-    y += global_vel_y * sim_granularity_;
-    theta += angular_vel * sim_granularity_;
-    
-    // Normalize theta to [-pi, pi]
-    theta = atan2(sin(theta), cos(theta));
-
-    // Store pose
-    geometry_msgs::msg::PoseStamped predicted_pose;
-    predicted_pose.header = pose.header;
-    predicted_pose.pose.position.x = x;
-    predicted_pose.pose.position.y = y;
-    predicted_pose.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), theta));
-    trajectory.poses.push_back(predicted_pose);
-  }
-
-  return trajectory;
-}
-
-double CustomLocalPlanner::scoreTrajectory(const Trajectory & trajectory)
-{
-  if (trajectory.poses.empty()) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  double path_score = calculatePathAlignmentScore(trajectory);
-  double obstacle_score = calculateObstacleScore(trajectory);
-  double goal_score = calculateGoalDistanceScore(trajectory);
-  double heading_score = calculateHeadingAlignmentScore(trajectory);
-
-  // Check if trajectory collides
-  if (std::isinf(obstacle_score)) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  // Combine scores (velocity_reward is negative: higher speed = lower cost = preferred)
-  // Use total holonomic speed sqrt(vx²+vy²) so lateral motion is also rewarded
-  double total_speed = std::sqrt(
-    trajectory.linear_vel_x * trajectory.linear_vel_x +
-    trajectory.linear_vel_y * trajectory.linear_vel_y);
-  double velocity_reward = -velocity_reward_weight_ * total_speed;
-
-  double total_cost = 
-    path_distance_weight_ * path_score +
-    obstacle_weight_ * obstacle_score +
-    goal_distance_weight_ * goal_score +
-    heading_alignment_weight_ * heading_score +
-    velocity_reward;
-
-  return total_cost;
-}
-
-double CustomLocalPlanner::calculatePathAlignmentScore(const Trajectory & trajectory)
-{
-  if (pruned_plan_.poses.empty() || trajectory.poses.empty()) {
-    return 1000.0;  // High penalty for invalid trajectory
-  }
-
-  // Improved scoring: weighted distance with emphasis on trajectory end
-  double total_distance = 0.0;
-  double total_weight = 0.0;
-  
-  for (size_t i = 0; i < trajectory.poses.size(); ++i) {
-    const auto & traj_pose = trajectory.poses[i];
-    double min_dist = std::numeric_limits<double>::max();
-    
-    // Find closest point on pruned plan
-    for (const auto & plan_pose : pruned_plan_.poses) {
-      double dx = traj_pose.pose.position.x - plan_pose.pose.position.x;
-      double dy = traj_pose.pose.position.y - plan_pose.pose.position.y;
-      double dist = sqrt(dx * dx + dy * dy);
-      
-      if (dist < min_dist) {
-        min_dist = dist;
-      }
+    if (rotate_in_place) {
+      // Position unchanged; only heading integrates
+      theta += rotate_angular_vel * sim_granularity_;
+    } else {
+      x     += linear_vel       * std::cos(theta) * sim_granularity_;
+      y     += linear_vel       * std::sin(theta) * sim_granularity_;
+      theta += traj.angular_vel                   * sim_granularity_;
     }
-    
-    // Weight increases linearly along trajectory (emphasize end position)
-    // This makes the robot look further ahead on the path
-    double weight = 1.0 + (static_cast<double>(i) / trajectory.poses.size()) * 2.0;
-    total_distance += min_dist * weight;  // Linear distance (not squared) so score is in [m],
-                                          // which is comparable to velocity (m/s) and heading (rad).
-                                          // Squared distance was in m² → path cost was ~10x too small
-                                          // relative to velocity reward → robot ignored the path.
-    total_weight += weight;
+
+    // Normalise θ to [-π, π]
+    theta = std::atan2(std::sin(theta), std::cos(theta));
+
+    geometry_msgs::msg::PoseStamped p;
+    p.header             = pose.header;
+    p.pose.position.x    = x;
+    p.pose.position.y    = y;
+    p.pose.orientation   = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), theta));
+    traj.poses.push_back(p);
   }
 
-  return total_weight > 0.0 ? total_distance / total_weight : 1000.0;
+  return traj;
 }
 
-double CustomLocalPlanner::calculateObstacleScore(const Trajectory & trajectory)
-{
-  double obstacle_cost = 0.0;
-  int scored_steps = 0;
+// ═══════════════════════════════════════════════════════════════════════════
+// scoreTrajectory
+// ═══════════════════════════════════════════════════════════════════════════
 
-  for (const auto & pose : trajectory.poses) {
+double CustomLocalPlanner::scoreTrajectory(const Trajectory & traj)
+{
+  if (traj.poses.empty()) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  // Obstacle check first — fast rejection for colliding trajectories
+  double obs_score = calculateObstacleScore(traj);
+  if (std::isinf(obs_score)) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  double path_score    = calculatePathAlignmentScore(traj);
+  double heading_score = calculateHeadingAlignmentScore(traj);
+  double goal_score    = calculateGoalDistanceScore(traj);
+  double steer_penalty = calculateSteeringPenalty(traj);
+
+  // Velocity reward: higher |v| → lower cost (negative contribution)
+  double vel_reward = -velocity_reward_weight_ * std::abs(traj.linear_vel);
+
+  return path_distance_weight_     * path_score    +
+         heading_alignment_weight_ * heading_score +
+         goal_distance_weight_     * goal_score    +
+         obstacle_weight_          * obs_score     +
+         steering_penalty_weight_  * steer_penalty +
+         vel_reward;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Score components
+// ═══════════════════════════════════════════════════════════════════════════
+
+double CustomLocalPlanner::calculatePathAlignmentScore(const Trajectory & traj)
+{
+  if (pruned_plan_.poses.empty() || traj.poses.empty()) {
+    return 1000.0;
+  }
+
+  // Weighted average distance to nearest path point.
+  // Weight increases linearly along the trajectory — trajectory end matters more
+  // than the start, pushing the robot to look further ahead.
+  double total_dist   = 0.0;
+  double total_weight = 0.0;
+  const size_t N = traj.poses.size();
+
+  for (size_t i = 0; i < N; ++i) {
+    double min_dist = std::numeric_limits<double>::max();
+    const auto & tp = traj.poses[i];
+
+    for (const auto & pp : pruned_plan_.poses) {
+      double dx = tp.pose.position.x - pp.pose.position.x;
+      double dy = tp.pose.position.y - pp.pose.position.y;
+      double d  = std::sqrt(dx * dx + dy * dy);
+      if (d < min_dist) { min_dist = d; }
+    }
+
+    // w ∈ [1, 3]  — 3× more weight on end pose than on start
+    double w = 1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(N);
+    total_dist   += min_dist * w;
+    total_weight += w;
+  }
+
+  return total_weight > 0.0 ? total_dist / total_weight : 1000.0;
+}
+
+double CustomLocalPlanner::calculateObstacleScore(const Trajectory & traj)
+{
+  double total_cost  = 0.0;
+  int    valid_steps = 0;
+
+  for (const auto & p : traj.poses) {
     unsigned int mx, my;
-    if (!costmap_->worldToMap(
-        pose.pose.position.x,
-        pose.pose.position.y,
-        mx, my))
-    {
-      // Trajectory step exits the local costmap window.
-      // Stop scoring here instead of discarding the whole trajectory —
-      // otherwise ANY trajectory faster than (costmap_radius / sim_time)
-      // would always get infinite cost and never be selected.
+    if (!costmap_->worldToMap(p.pose.position.x, p.pose.position.y, mx, my)) {
+      // Left the local costmap window — stop scoring but keep the trajectory.
+      // Discarding would penalise fast trajectories unfairly.
       break;
     }
 
-    unsigned char cost = costmap_->getCost(mx, my);
+    unsigned char c = costmap_->getCost(mx, my);
 
-    // Check for collision
-    if (cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
-        cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
+    if (c == nav2_costmap_2d::LETHAL_OBSTACLE ||
+        c == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
     {
       return std::numeric_limits<double>::infinity();
     }
 
-    obstacle_cost += cost;
-    ++scored_steps;
+    total_cost += c;
+    ++valid_steps;
   }
 
-  // Require at least one step to have been in the costmap
-  if (scored_steps == 0) {
+  if (valid_steps == 0) {
     return std::numeric_limits<double>::infinity();
   }
 
-  return obstacle_cost / scored_steps;
+  return total_cost / valid_steps;
 }
 
-double CustomLocalPlanner::calculateGoalDistanceScore(const Trajectory & trajectory)
+double CustomLocalPlanner::calculateGoalDistanceScore(const Trajectory & traj)
 {
-  if (pruned_plan_.poses.empty() || trajectory.poses.empty()) {
+  if (pruned_plan_.poses.empty() || traj.poses.empty()) {
     return 0.0;
   }
 
-  // Use end of PRUNED plan (local "carrot" point) not the global goal.
-  // The global goal can be 10+ m away, making this term nearly constant across
-  // all trajectories (zero differentiation). The carrot changes every cycle
-  // and actively pulls the robot forward along the plan.
-  const auto & carrot = pruned_plan_.poses.back();
-  const auto & traj_end = trajectory.poses.back();
+  // "Carrot": end of the pruned local plan window.
+  // Using the local carrot instead of the global goal gives meaningful
+  // differentiation between trajectories even when the goal is far away.
+  const auto & carrot   = pruned_plan_.poses.back();
+  const auto & traj_end = traj.poses.back();
 
   double dx = carrot.pose.position.x - traj_end.pose.position.x;
   double dy = carrot.pose.position.y - traj_end.pose.position.y;
-
-  return sqrt(dx * dx + dy * dy);
+  return std::sqrt(dx * dx + dy * dy);
 }
 
-double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & trajectory)
+double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & traj)
 {
-  if (pruned_plan_.poses.size() < 2 || trajectory.poses.empty()) {
+  if (pruned_plan_.poses.size() < 2 || traj.poses.empty()) {
     return 0.0;
   }
 
-  // Get the heading of the trajectory at its end point
-  const auto & traj_end = trajectory.poses.back();
-  double traj_heading = tf2::getYaw(traj_end.pose.orientation);
+  // Robot heading at end of trajectory
+  double traj_heading = tf2::getYaw(traj.poses.back().pose.orientation);
 
-  // Find the closest plan point to the trajectory end
+  // Find the plan pose closest to the trajectory end
   size_t closest_idx = 0;
-  double min_dist = std::numeric_limits<double>::max();
+  double min_dist     = std::numeric_limits<double>::max();
+  const auto & traj_end = traj.poses.back();
+
   for (size_t i = 0; i < pruned_plan_.poses.size(); ++i) {
     double dx = traj_end.pose.position.x - pruned_plan_.poses[i].pose.position.x;
     double dy = traj_end.pose.position.y - pruned_plan_.poses[i].pose.position.y;
-    double dist = std::sqrt(dx * dx + dy * dy);
-    if (dist < min_dist) {
-      min_dist = dist;
-      closest_idx = i;
-    }
+    double d  = std::sqrt(dx * dx + dy * dy);
+    if (d < min_dist) { min_dist = d; closest_idx = i; }
   }
 
-  // Calculate path direction at closest point using forward or backward segment
+  // Path tangent at closest point
   double path_heading;
   if (closest_idx + 1 < pruned_plan_.poses.size()) {
-    const auto & p1 = pruned_plan_.poses[closest_idx];
-    const auto & p2 = pruned_plan_.poses[closest_idx + 1];
+    const auto & a = pruned_plan_.poses[closest_idx];
+    const auto & b = pruned_plan_.poses[closest_idx + 1];
     path_heading = std::atan2(
-      p2.pose.position.y - p1.pose.position.y,
-      p2.pose.position.x - p1.pose.position.x);
+      b.pose.position.y - a.pose.position.y,
+      b.pose.position.x - a.pose.position.x);
   } else {
-    const auto & p1 = pruned_plan_.poses[closest_idx - 1];
-    const auto & p2 = pruned_plan_.poses[closest_idx];
+    const auto & a = pruned_plan_.poses[closest_idx - 1];
+    const auto & b = pruned_plan_.poses[closest_idx];
     path_heading = std::atan2(
-      p2.pose.position.y - p1.pose.position.y,
-      p2.pose.position.x - p1.pose.position.x);
+      b.pose.position.y - a.pose.position.y,
+      b.pose.position.x - a.pose.position.x);
   }
 
-  // Return absolute angular difference in [0, pi]
-  double heading_diff = std::fabs(std::atan2(
+  // Absolute angular difference in [0, π]
+  return std::fabs(std::atan2(
     std::sin(traj_heading - path_heading),
     std::cos(traj_heading - path_heading)));
-
-  return heading_diff;
 }
 
-nav_msgs::msg::Path CustomLocalPlanner::transformGlobalPlan(
-  const geometry_msgs::msg::PoseStamped & pose)
+double CustomLocalPlanner::calculateSteeringPenalty(const Trajectory & traj)
 {
-  nav_msgs::msg::Path transformed_plan;
-  transformed_plan.header.frame_id = pose.header.frame_id;
-  transformed_plan.header.stamp = pose.header.stamp;
-
-  // Transform global plan to local frame
-  // For simplicity, we'll just use the plan as-is
-  // In a full implementation, you'd transform each pose
-  transformed_plan = global_plan_;
-
-  return transformed_plan;
+  if (traj.rotate_in_place) {
+    return 0.0;  // In-place rotation has no steering angle cost
+  }
+  // δ² penalty: discourages unnecessary steering and prefers straight paths.
+  return traj.steering_angle * traj.steering_angle;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// pruneGlobalPlan
+//
+// Forward-only search from last_closest_idx_ to prevent re-visiting
+// already-passed waypoints after a brief detour or overshoot.
+// ═══════════════════════════════════════════════════════════════════════════
 
 nav_msgs::msg::Path CustomLocalPlanner::pruneGlobalPlan(
   const geometry_msgs::msg::PoseStamped & pose,
   double prune_distance)
 {
-  nav_msgs::msg::Path pruned_plan;
-  pruned_plan.header = global_plan_.header;
-  
+  nav_msgs::msg::Path pruned;
+  pruned.header = global_plan_.header;
+
   if (global_plan_.poses.empty()) {
-    return pruned_plan;
+    return pruned;
   }
 
-  // Search forward only from last known position — never go backward.
-  // This prevents the robot re-visiting already-passed waypoints after
-  // a brief detour or overshoot.
+  // Forward-only closest-point search
   size_t closest_idx = last_closest_idx_;
-  double min_dist = std::numeric_limits<double>::max();
-  
+  double min_dist     = std::numeric_limits<double>::max();
+
   for (size_t i = last_closest_idx_; i < global_plan_.poses.size(); ++i) {
     double dx = pose.pose.position.x - global_plan_.poses[i].pose.position.x;
     double dy = pose.pose.position.y - global_plan_.poses[i].pose.position.y;
-    double dist = sqrt(dx * dx + dy * dy);
-    
-    if (dist < min_dist) {
-      min_dist = dist;
-      closest_idx = i;
-    }
+    double d  = std::sqrt(dx * dx + dy * dy);
+    if (d < min_dist) { min_dist = d; closest_idx = i; }
   }
 
-  // Persist progress — index can only advance, never retreat
-  last_closest_idx_ = closest_idx;
+  last_closest_idx_ = closest_idx;  // index never retreats
 
-  RCLCPP_DEBUG(logger_, "Closest point on plan at index %zu/%zu, distance: %.2f m", 
-    closest_idx, global_plan_.poses.size(), min_dist);
+  // Collect window ahead up to prune_distance
+  double acc_dist = 0.0;
+  pruned.poses.push_back(global_plan_.poses[closest_idx]);
 
-  // Add points from closest point onwards, up to prune_distance
-  double accumulated_dist = 0.0;
-  pruned_plan.poses.push_back(global_plan_.poses[closest_idx]);
-  
   for (size_t i = closest_idx + 1; i < global_plan_.poses.size(); ++i) {
-    // Calculate distance from previous point
     const auto & prev = global_plan_.poses[i - 1];
     const auto & curr = global_plan_.poses[i];
-    
     double dx = curr.pose.position.x - prev.pose.position.x;
     double dy = curr.pose.position.y - prev.pose.position.y;
-    double segment_dist = sqrt(dx * dx + dy * dy);
-    
-    accumulated_dist += segment_dist;
-    
-    if (accumulated_dist > prune_distance) {
-      break;
-    }
-    
-    pruned_plan.poses.push_back(curr);
+    acc_dist += std::sqrt(dx * dx + dy * dy);
+    if (acc_dist > prune_distance) { break; }
+    pruned.poses.push_back(curr);
   }
 
-  RCLCPP_DEBUG(logger_, "Pruned plan contains %zu poses covering %.2f m", 
-    pruned_plan.poses.size(), accumulated_dist);
+  RCLCPP_DEBUG(logger_, "Pruned plan: %zu poses, %.2f m window (idx=%zu/%zu)",
+    pruned.poses.size(), acc_dist, closest_idx, global_plan_.poses.size());
 
-  return pruned_plan;
+  return pruned;
 }
 
-void CustomLocalPlanner::publishLocalPlan(const Trajectory & trajectory)
+// ═══════════════════════════════════════════════════════════════════════════
+// publishLocalPlan
+// ═══════════════════════════════════════════════════════════════════════════
+
+void CustomLocalPlanner::publishLocalPlan(const Trajectory & traj)
 {
-  if (local_plan_pub_->get_subscription_count() > 0 && !trajectory.poses.empty()) {
-    nav_msgs::msg::Path local_plan;
-    local_plan.header.frame_id = trajectory.poses[0].header.frame_id;
-    local_plan.header.stamp = clock_->now();
-    local_plan.poses = trajectory.poses;
-    
-    local_plan_pub_->publish(local_plan);
+  if (local_plan_pub_->get_subscription_count() > 0 && !traj.poses.empty()) {
+    nav_msgs::msg::Path plan;
+    plan.header.frame_id = traj.poses[0].header.frame_id;
+    plan.header.stamp    = clock_->now();
+    plan.poses           = traj.poses;
+    local_plan_pub_->publish(plan);
   }
-}
-
-void CustomLocalPlanner::publishTrajectories(const std::vector<Trajectory> & trajectories)
-{
-  // This could be used to publish all sampled trajectories for debugging
-  // Not implemented in this version to reduce computational overhead
-  (void)trajectories;  // Suppress unused parameter warning
 }
 
 }  // namespace robot_custom_local_planner
