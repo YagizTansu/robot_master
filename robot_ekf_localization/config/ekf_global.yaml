@@ -6,7 +6,7 @@
 
 ekf_global_node:
   ros__parameters:
-    frequency: 10.0
+    frequency: 30.0
     sensor_timeout: 0.5
     two_d_mode: true
 

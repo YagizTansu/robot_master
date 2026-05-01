@@ -22,8 +22,6 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import TransformStamped
-import tf2_ros
 
 # ─── Fiziksel sabitler (kinco_bridge.py ile aynı) ────────────────────────────
 WHEEL_RADIUS   = 0.109   # m  — URDF drive_motor_1 cylinder collision radius
@@ -50,8 +48,7 @@ class SimKincoBridge(Node):
         self._steering_angle = 0.0   # rad — direction_motor_joint position
         self._wheel_vel      = 0.0   # rad/s — drive_motor_joint velocity
 
-        self._odom_pub       = self.create_publisher(Odometry, '/odom_kinco', 10)
-        self._tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        self._odom_pub = self.create_publisher(Odometry, '/odom_kinco', 10)
 
         self.create_subscription(JointState, '/joint_states', self._joint_state_cb, 10)
 
@@ -105,19 +102,8 @@ class SimKincoBridge(Node):
 
         stamp = current_time.to_msg()
 
-        # ── TF yayını: odom → base_footprint ─────────────────────────────────
-        t = TransformStamped()
-        t.header.stamp    = stamp
-        t.header.frame_id = 'odom'
-        t.child_frame_id  = 'base_footprint'
-        t.transform.translation.x = self._pos_x
-        t.transform.translation.y = self._pos_y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.z    = qz
-        t.transform.rotation.w    = qw
-        self._tf_broadcaster.sendTransform(t)
-
         # ── Odometry mesajı ───────────────────────────────────────────────────
+        # TF yayını EKF local node'a bırakıldı (çift yayın kayma yapardı)
         odom = Odometry()
         odom.header.stamp    = stamp
         odom.header.frame_id = 'odom'
@@ -128,10 +114,33 @@ class SimKincoBridge(Node):
         odom.pose.pose.orientation.z = qz
         odom.pose.pose.orientation.w = qw
 
+        # Pose covariance (6x6): x, y, z, roll, pitch, yaw
+        # 2D robot: z/roll/pitch kullanılmaz → 1e6 ile devre dışı
+        odom.pose.covariance = [
+            0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+            0.0,  0.01, 0.0,  0.0,  0.0,  0.0,
+            0.0,  0.0,  1e6,  0.0,  0.0,  0.0,
+            0.0,  0.0,  0.0,  1e6,  0.0,  0.0,
+            0.0,  0.0,  0.0,  0.0,  1e6,  0.0,
+            0.0,  0.0,  0.0,  0.0,  0.0,  0.05,
+        ]
+
         odom.twist.twist.linear.x  = linear_velocity
         odom.twist.twist.angular.z = angular_velocity
 
+        # Twist covariance (6x6): vx, vy, vz, vroll, vpitch, vyaw
+        # Ackermann/forklift: yanal hız yok → vy 1e6
+        odom.twist.covariance = [
+            0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+            0.0,  1e6,  0.0,  0.0,  0.0,  0.0,
+            0.0,  0.0,  1e6,  0.0,  0.0,  0.0,
+            0.0,  0.0,  0.0,  1e6,  0.0,  0.0,
+            0.0,  0.0,  0.0,  0.0,  1e6,  0.0,
+            0.0,  0.0,  0.0,  0.0,  0.0,  0.05,
+        ]
+        
         self._odom_pub.publish(odom)
+
 
 
 def main():
