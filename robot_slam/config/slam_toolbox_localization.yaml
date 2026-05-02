@@ -12,7 +12,7 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_footprint
-    scan_topic: /scan
+    scan_topic: /lidar_top/scan
     use_map_saver: false
     mode: localization
 
@@ -37,8 +37,8 @@ slam_toolbox:
     # General Parameters
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.5
-    minimum_travel_heading: 0.5
+    minimum_travel_distance: 0.1   # dönüş sırasında az öteleme → sık güncelle
+    minimum_travel_heading: 0.05   # ~3° → AMCL'deki 18° sorununu önler
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1

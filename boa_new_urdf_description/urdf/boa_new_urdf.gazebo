@@ -21,16 +21,14 @@
   <material>${body_color}</material>
   <mu1>0.01</mu1>
   <mu2>0.01</mu2>
-  <maxContacts>1</maxContacts>
-  <self_collide>false</self_collide>
+  <self_collide>true</self_collide>
 </gazebo>
 
 <gazebo reference="left_caster_1">
   <material>${body_color}</material>
   <mu1>0.01</mu1>
   <mu2>0.01</mu2>
-  <maxContacts>1</maxContacts>
-  <self_collide>false</self_collide>
+  <self_collide>true</self_collide>
 </gazebo>
 
 <gazebo reference="drive_motor_1">

@@ -27,6 +27,9 @@ WHEEL_DIAMETER  = 0.218    # m  (2 * 0.109)
 WHEEL_BASE      = 1.0957   # m
 TRACTION_GEAR   = 16.4     # motor devri / tekerlek devri
 
+# Steering P controller — pozisyon hatası → velocity komutu (rad/s)
+STEERING_KP      = 8.0    # rad/s per rad error
+STEERING_MAX_VEL = 3.0    # rad/s — max steering velocity
 STEERING_JOINT   = 'direction_motor_joint'
 
 # Slew rate limiter — steering hedefi max bu hızda değişir (rad/s)
@@ -89,13 +92,13 @@ class KincoDriveNode(Node):
         self._traction_pub = self.create_publisher(
             Float64MultiArray, '/traction_controller/commands', 10)
 
-        # Mevcut steering açısını oku (at_90 kontrolü için)
-        self._current_steering    = 0.0
-        self._target_steering     = 0.0
-        self._slewed_steering     = 0.0   # slew rate limiter çıkışı
-        self._target_wheel_radps  = 0.0
-        self._current_wheel_radps = 0.0   # traction slew limiter çıkışı
-        self._rotate_in_place     = False
+        # Mevcut steering açısını oku
+        self._current_steering   = 0.0
+        self._target_steering    = 0.0
+        self._slewed_steering    = 0.0   # slew rate limiter çıkışı
+        self._target_wheel_radps = 0.0
+        self._current_wheel_radps = 0.0  # traction slew limiter çıkışı
+        self._rotate_in_place    = False
 
         self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
         self.create_subscription(JointState, '/joint_states', self._joint_state_cb, 10)
@@ -107,7 +110,7 @@ class KincoDriveNode(Node):
 
         self.get_logger().info(
             'kinco_drive_node başlatıldı — '
-            f'wheelbase={WHEEL_BASE} m (position steering controller)')
+            f'wheelbase={WHEEL_BASE} m, Kp={STEERING_KP}')
 
     def _joint_state_cb(self, msg: JointState):
         for i, name in enumerate(msg.name):
@@ -146,9 +149,13 @@ class KincoDriveNode(Node):
             error_to_target = self._target_steering - self._slewed_steering
             self._slewed_steering += max(-max_delta, min(max_delta, error_to_target))
 
-        # Position komutu — doğrudan hedef pozisyon gönder (P-controller yok)
+        # P controller: slewed hedef ile mevcut arasındaki hatadan velocity üret
+        error = self._slewed_steering - self._current_steering
+        vel_cmd = STEERING_KP * error
+        vel_cmd = max(-STEERING_MAX_VEL, min(STEERING_MAX_VEL, vel_cmd))
+
         steering_msg = Float64MultiArray()
-        steering_msg.data = [self._slewed_steering]
+        steering_msg.data = [vel_cmd]
         self._steering_pub.publish(steering_msg)
 
         # ── Traction ──────────────────────────────────────────────────────────
@@ -176,8 +183,8 @@ class KincoDriveNode(Node):
             at_90_flag = abs(abs(self._current_steering) - math.pi / 2) < self._STEERING_READY_TOL
             self.get_logger().info(
                 f'STATUS | steer_cur={math.degrees(self._current_steering):.1f}° '
-                f'steer_cmd={math.degrees(self._slewed_steering):.1f}° '
-                f'steer_target={math.degrees(self._target_steering):.1f}° | '
+                f'steer_target={math.degrees(self._target_steering):.1f}° '
+                f'steer_vel={vel_cmd:.2f} rad/s | '
                 f'traction={self._current_wheel_radps:.3f} rad/s | '
                 f'rotate={self._rotate_in_place} at_90={at_90_flag}')
 
