@@ -130,6 +130,52 @@ void CustomLocalPlanner::configure(
   global_plan_transformed_pub_ = node->create_publisher<nav_msgs::msg::Path>(
     "transformed_global_plan", 1);
 
+  // ── Dynamic reconfigure callback ─────────────────────────────────────────
+  // Allows live tuning via rqt (Plugins → Configuration → Parameter Reconfigure)
+  // or:  ros2 param set /controller_server FollowPath.path_distance_weight 120.0
+  param_callback_handle_ = node->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & params)
+    -> rcl_interfaces::msg::SetParametersResult
+    {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = true;
+
+      for (const auto & p : params) {
+        const std::string & n = p.get_name();
+        // Only handle parameters belonging to this plugin instance
+        if (n.rfind(plugin_name_ + ".", 0) != 0) { continue; }
+        const std::string key = n.substr(plugin_name_.size() + 1);
+
+        try {
+          if      (key == "path_distance_weight")     path_distance_weight_     = p.as_double();
+          else if (key == "heading_alignment_weight") heading_alignment_weight_ = p.as_double();
+          else if (key == "goal_distance_weight")     goal_distance_weight_     = p.as_double();
+          else if (key == "obstacle_weight")          obstacle_weight_          = p.as_double();
+          else if (key == "velocity_reward_weight")   velocity_reward_weight_   = p.as_double();
+          else if (key == "steering_penalty_weight")  steering_penalty_weight_  = p.as_double();
+          else if (key == "max_linear_vel")           max_linear_vel_           = p.as_double();
+          else if (key == "min_linear_vel")           min_linear_vel_           = p.as_double();
+          else if (key == "max_angular_vel")          max_angular_vel_          = p.as_double();
+          else if (key == "rotate_max_vel")           rotate_max_vel_           = p.as_double();
+          else if (key == "heading_error_trigger")    heading_error_trigger_    = p.as_double();
+          else if (key == "prune_plan_distance")      prune_plan_distance_      = p.as_double();
+          else if (key == "sim_time")                 sim_time_                 = p.as_double();
+          else if (key == "linear_acc_limit")         linear_acc_limit_         = p.as_double();
+          else if (key == "steering_slew_rate")       steering_slew_rate_       = p.as_double();
+          else if (key == "linear_samples")           linear_samples_           = p.as_int();
+          else if (key == "steering_samples")         steering_samples_         = p.as_int();
+          else if (key == "rotate_samples")           rotate_samples_           = p.as_int();
+          else { continue; }  // unknown key — ignore silently
+
+          RCLCPP_INFO(logger_, "[DynParam] %s = %s", n.c_str(), p.value_to_string().c_str());
+        } catch (const std::exception & e) {
+          result.successful = false;
+          result.reason = e.what();
+        }
+      }
+      return result;
+    });
+
   RCLCPP_INFO(logger_,
     "AckermannLocalPlanner configured — "
     "wheelbase=%.4f m, max_steer=%.2f rad (%.1f°), "
@@ -232,7 +278,9 @@ geometry_msgs::msg::TwistStamped CustomLocalPlanner::computeVelocityCommands(
   publishLocalPlan(best);
 
   cmd_vel.twist.linear.x  = best.linear_vel  * speed_limit_ratio_;
-  cmd_vel.twist.angular.z = best.angular_vel  * speed_limit_ratio_;
+  // Clamp angular velocity to max_angular_vel_ (applies to both Ackermann and rotate-in-place)
+  double raw_wz = best.angular_vel * speed_limit_ratio_;
+  cmd_vel.twist.angular.z = std::max(-max_angular_vel_, std::min(max_angular_vel_, raw_wz));
 
   RCLCPP_DEBUG(logger_,
     "Best: v=%.3f m/s  δ=%.1f°  ω=%.3f rad/s  cost=%.2f  rotate=%d",

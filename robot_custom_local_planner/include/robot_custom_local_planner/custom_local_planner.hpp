@@ -178,6 +178,9 @@ protected:
   // ── Runtime state ────────────────────────────────────────────────────────
   double speed_limit_ratio_{1.0};
   double current_steering_angle_{0.0};  // tracked/estimated current δ [rad]
+
+  // ── Dynamic reconfigure ──────────────────────────────────────────────────
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 };
 
 }  // namespace robot_custom_local_planner
