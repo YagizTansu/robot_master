@@ -35,19 +35,19 @@ def generate_launch_description():
 
     # ── EKF Global ────────────────────────────────────────────────────────────
     # /odometry/filtered + /amcl_pose  →  /odometry/global  +  TF map→odom
-    ekf_global_node = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_global_node',
-        output='screen',
-        parameters=[
-            os.path.join(pkg_dir, 'config', 'ekf_global.yaml'),
-            {'use_sim_time': use_sim_time},
-        ],
-        remappings=[
-            ('odometry/filtered', '/odometry/global'),
-        ],
-    )
+    # ekf_global_node = Node(
+    #     package='robot_localization',
+    #     executable='ekf_node',
+    #     name='ekf_global_node',
+    #     output='screen',
+    #     parameters=[
+    #         os.path.join(pkg_dir, 'config', 'ekf_global.yaml'),
+    #         {'use_sim_time': use_sim_time},
+    #     ],
+    #     remappings=[
+    #         ('odometry/filtered', '/odometry/global'),
+    #     ],
+    # )
 
     # ── AMCL ──────────────────────────────────────────────────────────────────
     # /lidar_top/scan + /map  →  /amcl_pose  (tf_broadcast=false)
@@ -79,7 +79,6 @@ def generate_launch_description():
     return LaunchDescription([
         declare_use_sim_time,
         ekf_local_node,
-        ekf_global_node,
         amcl_node,
         lifecycle_manager_localization,
     ])

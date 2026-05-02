@@ -4,7 +4,7 @@ bt_navigator:
     enable_stamped_cmd_vel: false
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /tricycle_controller/odom
+    odom_topic: /odometry/local
     bt_loop_duration: 10
     default_server_timeout: 20
     wait_for_service_timeout: 1000
@@ -52,7 +52,7 @@ controller_server:
     # Default is 'odom', but this robot publishes to '/odometry'.
     # Without this, controller always sees velocity=0, DWA window is stuck at
     # [0, acc*control_dt] = [0, 0.125 m/s] and robot never exceeds ~0.1 m/s.
-    odom_topic: "/odometry"
+    odom_topic: "/odometry/local"
     transform_tolerance: 0.5
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
@@ -308,7 +308,7 @@ velocity_smoother:
     min_velocity: [-0.5, 0.0, -1.0]
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
-    odom_topic: "/tricycle_controller/odom"
+    odom_topic: "/odometry/local"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
