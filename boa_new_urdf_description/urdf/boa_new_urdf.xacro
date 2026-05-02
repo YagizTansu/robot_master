@@ -15,9 +15,9 @@
 
 <link name="base_link">
   <inertial>
-    <origin xyz="0.945398072688781 -0.001011453583043792 1.1145363303175833" rpy="0 0 0"/>
-    <mass value="781.2318135532329"/>
-    <inertia ixx="196.374943" iyy="188.293374" izz="40.387878" ixy="0.085427" iyz="-0.535549" ixz="-13.126993"/>
+    <origin xyz="0.945398072688781 -0.001011453583043792 0.1" rpy="0 0 0"/>
+    <mass value="60.0"/>
+    <inertia ixx="15.121" iyy="14.499" izz="3.110" ixy="0.007" iyz="-0.041" ixz="-1.011"/>
   </inertial>
   <visual>
     <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -275,7 +275,7 @@
   <parent link="base_link"/>
   <child link="direction_motor_1"/>
   <axis xyz="0.0 0.0 1.0"/>
-  <limit lower="-1.5708" upper="1.5708" effort="500.0" velocity="5.0"/>
+  <limit lower="-1.5708" upper="1.5708" effort="300.0" velocity="0.8"/>
   <dynamics damping="5.0" friction="0.5"/>
 </joint>
 
