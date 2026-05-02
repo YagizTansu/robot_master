@@ -287,6 +287,14 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
     v_min_reach = std::max(0.0, v_min_reach);
   }
 
+  // v=0 in the (v,δ) grid gives ω = v·tan(δ)/L = 0 for EVERY delta → cmd_vel=(0,0).
+  // That zero-motion trajectory scores best at corners (path_distance≈0 while
+  // forward samples diverge from the turning path), causing the robot to freeze.
+  // Floor v_min to min_linear_vel_ so the forward grid always produces motion.
+  if (v_min_reach < min_linear_vel_ && v_max_reach >= min_linear_vel_) {
+    v_min_reach = min_linear_vel_;
+  }
+
   // ── Reachable steering window (slew-rate constrained) ───────────────────
   double d_cur       = current_steering_angle_;
   double d_max_reach = std::min( max_steering_angle_, d_cur + steering_slew_rate_ * control_dt_);
@@ -313,23 +321,53 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   }
 
   // ── Rotate-in-place candidates ───────────────────────────────────────────
-  // Added when heading error to plan tangent exceeds heading_error_trigger_.
-  // Motor controller handles the δ→±90° sequencing internally; the planner
-  // only needs to send v≈0 with the desired wz.
+  // Triggered when:
+  //   (a) heading error to the carrot (end of pruned window) exceeds the
+  //       threshold — uses carrot direction instead of the near-tangent so
+  //       upcoming corners are anticipated before the robot arrives at them.
+  //   (b) ALL forward trajectories are blocked (obstacle inf-cost) — fallback
+  //       that prevents the robot from freezing with cmd_vel=0,0.
+  //
+  // When v=0, Ackermann gives ω = v·tan(δ)/L = 0 for every delta sample, so
+  // rotation is impossible through the normal (v,δ) grid.  Rotate-in-place
+  // samples are the only way to produce wz≠0 from a standstill.
   double heading_error = 0.0;
-  if (pruned_plan_.poses.size() >= 2) {
-    const auto & p1 = pruned_plan_.poses[0];
-    const auto & p2 = pruned_plan_.poses[1];
-    double path_hdg  = std::atan2(
-      p2.pose.position.y - p1.pose.position.y,
-      p2.pose.position.x - p1.pose.position.x);
-    double robot_hdg = tf2::getYaw(pose.pose.orientation);
-    heading_error = std::fabs(std::atan2(
-      std::sin(path_hdg - robot_hdg),
-      std::cos(path_hdg - robot_hdg)));
+  if (!pruned_plan_.poses.empty()) {
+    const auto & carrot = pruned_plan_.poses.back();
+    double cdx = carrot.pose.position.x - pose.pose.position.x;
+    double cdy = carrot.pose.position.y - pose.pose.position.y;
+    double dist = std::sqrt(cdx * cdx + cdy * cdy);
+    if (dist > 0.3) {  // meaningful direction only when carrot is not on top of robot
+      double carrot_hdg = std::atan2(cdy, cdx);
+      double robot_hdg  = tf2::getYaw(pose.pose.orientation);
+      heading_error = std::fabs(std::atan2(
+        std::sin(carrot_hdg - robot_hdg),
+        std::cos(carrot_hdg - robot_hdg)));
+    } else {
+      // Carrot is on top of robot (end of pruned window == robot position).
+      // Scan the global plan ahead for the first point ≥1m away to get a
+      // meaningful look-ahead heading — critical at tight corners where the
+      // pruned window shrinks to a single near-by pose.
+      double robot_hdg = tf2::getYaw(pose.pose.orientation);
+      for (size_t i = last_closest_idx_; i < global_plan_.poses.size(); ++i) {
+        double fdx = global_plan_.poses[i].pose.position.x - pose.pose.position.x;
+        double fdy = global_plan_.poses[i].pose.position.y - pose.pose.position.y;
+        if (std::sqrt(fdx * fdx + fdy * fdy) >= 1.0) {
+          double ahead_hdg = std::atan2(fdy, fdx);
+          heading_error = std::fabs(std::atan2(
+            std::sin(ahead_hdg - robot_hdg),
+            std::cos(ahead_hdg - robot_hdg)));
+          break;
+        }
+      }
+    }
   }
 
-  if (heading_error > heading_error_trigger_) {
+  bool all_forward_blocked = trajectories.empty();
+  if (heading_error > heading_error_trigger_ || all_forward_blocked) {
+    if (all_forward_blocked) {
+      RCLCPP_WARN(logger_, "All forward trajectories blocked — forcing rotate-in-place");
+    }
     double rot_step = (rotate_samples_ > 1)
       ? (2.0 * rotate_max_vel_) / (rotate_samples_ - 1) : 0.0;
 
@@ -552,6 +590,8 @@ double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & tra
   }
 
   // Path tangent at closest point
+  // SAFETY: closest_idx is size_t — never subtract without checking > 0,
+  //         otherwise 0 - 1 wraps to SIZE_MAX and causes undefined behaviour.
   double path_heading;
   if (closest_idx + 1 < pruned_plan_.poses.size()) {
     const auto & a = pruned_plan_.poses[closest_idx];
@@ -559,12 +599,15 @@ double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & tra
     path_heading = std::atan2(
       b.pose.position.y - a.pose.position.y,
       b.pose.position.x - a.pose.position.x);
-  } else {
+  } else if (closest_idx > 0) {
     const auto & a = pruned_plan_.poses[closest_idx - 1];
     const auto & b = pruned_plan_.poses[closest_idx];
     path_heading = std::atan2(
       b.pose.position.y - a.pose.position.y,
       b.pose.position.x - a.pose.position.x);
+  } else {
+    // Single-pose pruned plan — no tangent available; return neutral score.
+    return 0.0;
   }
 
   // Absolute angular difference in [0, π]
