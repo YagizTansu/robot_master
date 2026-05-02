@@ -275,8 +275,8 @@
   <parent link="base_link"/>
   <child link="direction_motor_1"/>
   <axis xyz="0.0 0.0 1.0"/>
-  <limit lower="-1.5708" upper="1.5708" effort="300.0" velocity="0.8"/>
-  <dynamics damping="5.0" friction="0.5"/>
+  <limit lower="-1.5708" upper="1.5708" effort="300.0" velocity="1.2"/>
+  <dynamics damping="3.0" friction="0.5"/>
 </joint>
 
 <joint name="lift_joint" type="prismatic">
