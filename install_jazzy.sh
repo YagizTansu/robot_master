@@ -27,7 +27,8 @@ error()   { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 SKIP_ROS=false
 SKIP_BUILD=false
 WS_DIR="$HOME/ros2_ws"
-REPO_URL=""   # git klonu için: --repo-url https://github.com/...
+REPO_URL="https://github.com/YagizTansu/robot_master"
+BRANCH="pallet_truck_model"
 SRC_PATH=""   # yerel kopya için: --src-path /media/usb/robot_master
 
 while [[ $# -gt 0 ]]; do
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
         --skip-build) SKIP_BUILD=true ;;
         --ws-dir)     WS_DIR="$2"; shift ;;
         --repo-url)   REPO_URL="$2"; shift ;;
+        --branch)     BRANCH="$2"; shift ;;
         --src-path)   SRC_PATH="$2"; shift ;;
         *) warn "Bilinmeyen argüman: $1" ;;
     esac
@@ -309,14 +311,16 @@ success "$WS_DIR/src dizini hazır."
 
 if [[ -n "$REPO_URL" ]]; then
     # ── Git'ten klonla ────────────────────────────────────────────────────────
-    info "Repo klonlanıyor: $REPO_URL"
-    if [[ -d "$SRC_DIR/robot_master" ]]; then
-        warn "robot_master zaten mevcut, git pull yapılıyor..."
-        git -C "$SRC_DIR/robot_master" pull
+    info "Repo klonlanıyor: $REPO_URL (branch: $BRANCH)"
+    if [[ -d "$SRC_DIR/robot_master/.git" ]]; then
+        warn "robot_master zaten mevcut, günceleniyor..."
+        git -C "$SRC_DIR/robot_master" fetch origin
+        git -C "$SRC_DIR/robot_master" checkout "$BRANCH"
+        git -C "$SRC_DIR/robot_master" pull origin "$BRANCH"
     else
-        git clone "$REPO_URL" "$SRC_DIR/robot_master"
+        git clone --branch "$BRANCH" "$REPO_URL" "$SRC_DIR/robot_master"
     fi
-    success "Repo klonlandı: $SRC_DIR/robot_master"
+    success "Repo klonlandı: $SRC_DIR/robot_master (branch: $BRANCH)"
 
 elif [[ -n "$SRC_PATH" ]]; then
     # ── Yerel dizinden kopyala (USB, ağ paylaşımı, vb.) ──────────────────────
