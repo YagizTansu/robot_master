@@ -146,7 +146,7 @@ def generate_launch_description():
     ld.add_action(map_server_node)
     ld.add_action(lifecycle_manager_map)
     ld.add_action(graph_visualizer_node)
-    ld.add_action(robot_database_launch)
+    # ld.add_action(robot_database_launch)
     if vda5050_launch:
         ld.add_action(vda5050_launch)
 

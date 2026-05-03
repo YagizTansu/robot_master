@@ -42,8 +42,8 @@ amcl:
     # ── Scan topic ─────────────────────────────────────────────────────────
     scan_topic: /lidar_top/scan
 
-    # ── TF: KAPATILDI — map→odom TF'ini EKF global yayınlar ───────────────
-    tf_broadcast: false
+    # ── TF: AÇILDI — map→odom TF'ini doğrudan AMCL yayınlar ──────────────
+    tf_broadcast: true
 
     # ── Başlangıç pozu ─────────────────────────────────────────────────────
     set_initial_pose: true

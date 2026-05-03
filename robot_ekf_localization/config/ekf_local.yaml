@@ -42,20 +42,20 @@ ekf_local_node:
     odom0_pose_rejection_threshold: 5.0
     odom0_twist_rejection_threshold: 2.0
 
-    imu0: /imu/data
-    # orientation_covariance = tüm sıfır (Gazebo) → yaw fuse edilmez, güvensiz
-    # angular_velocity.z (vyaw) geçerli kovaryansa sahip → true
-    # linear_acceleration geçerli kovaryansa sahip → ax, ay true
-    imu0_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, true,
-                  true,  true,  false]
-    imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true
-    imu0_linear_acceleration_rejection_threshold: 3.0
+    # imu0: /imu/data
+    # # orientation_covariance = tüm sıfır (Gazebo) → yaw fuse edilmez, güvensiz
+    # # angular_velocity.z (vyaw) geçerli kovaryansa sahip → true
+    # # linear_acceleration geçerli kovaryansa sahip → ax, ay true
+    # imu0_config: [false, false, false,
+    #               false, false, false,
+    #               false, false, false,
+    #               false, false, true,
+    #               false, false, false]  # ax,ay kapatıldı: rotation'da pozisyon drift'i önler
+    # imu0_differential: false
+    # imu0_relative: false
+    # imu0_queue_size: 10
+    # imu0_remove_gravitational_acceleration: true
+    # imu0_linear_acceleration_rejection_threshold: 3.0
 
     # Process noise covariance (Q) — 15x15 diagonal
     # Durum vektörü: x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
