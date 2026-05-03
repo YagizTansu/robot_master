@@ -891,12 +891,12 @@ private:
             geometry_msgs::msg::Pose nearest_pallet_pose = pallet_poses.poses[0];
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
-                robot_pose, nearest_pallet_pose, -0.70);
+                robot_pose, nearest_pallet_pose, -0.80);
             this->PublishDockingPathProcess(path);
             this->WaitRobotFinishedToDockingProcess();
 
-            RCLCPP_INFO(this->get_logger(), "Path following done, waiting 10 seconds...");
-            rclcpp::sleep_for(std::chrono::seconds(10));
+            RCLCPP_INFO(this->get_logger(), "Path following done, waiting 5 seconds...");
+            rclcpp::sleep_for(std::chrono::seconds(5));
 
             bool exit_pallet_operations = robotMoveBackward(0.16, 0.95);
             if (!exit_pallet_operations)
