@@ -4,11 +4,13 @@
 #include <action_msgs/msg/goal_status.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <nav_msgs/msg/path.hpp>
-#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <cmath>
 #include <algorithm>
@@ -26,14 +28,18 @@ public:
         cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
         status_pub_  = this->create_publisher<action_msgs::msg::GoalStatusArray>("path_follower/status", 10);
 
+        // TF2 buffer & listener for map -> base_footprint
+        tf_buffer_   = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
         // Subscribers
         path_sub_   = this->create_subscription<nav_msgs::msg::Path>(
             "pallet_docking_path", 10,
             std::bind(&PathFollower::pathCallback, this, std::placeholders::_1));
 
-        pose_sub_   = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-            "/pose", 10,
-            std::bind(&PathFollower::poseCallback, this, std::placeholders::_1));
+        pose_sub_   = this->create_subscription<std_msgs::msg::Bool>(  // unused slot kept for ABI
+            "path_follower/pose_unused", 1,
+            [](const std_msgs::msg::Bool::SharedPtr){});  // TF2 kullanıyoruz
 
         pause_sub_  = this->create_subscription<std_msgs::msg::Bool>(
             "path_follower/pause", 10,
@@ -74,9 +80,13 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
     rclcpp::Publisher<action_msgs::msg::GoalStatusArray>::SharedPtr status_pub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr pose_sub_;  // dummy — TF2 kullanıyoruz
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr pause_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr cancel_sub_;
+
+    // TF2
+    std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     rclcpp::TimerBase::SharedPtr loop_timer_;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
@@ -135,20 +145,6 @@ private:
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
         return result;
-    }
-
-    /**
-     * @brief Callback function for pose messages.
-     */
-    void poseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
-    {
-        if (!msg)
-        {
-            RCLCPP_WARN(this->get_logger(), "Received null pose message!");
-            return;
-        }
-        current_pose_  = msg->pose.pose;
-        pose_received_ = true;
     }
 
     /**
@@ -233,10 +229,29 @@ private:
     }
 
     /**
-     * @brief Main control loop callback at 150 Hz (replaces spin() while loop).
+     * @brief Main control loop callback at 150 Hz.
+     *        Her tick'te TF2'den anlık map->base_footprint transform'u alır.
      */
     void loopCallback()
     {
+        // ── TF2'den pose güncelle ───────────────────────────────────────────
+        try
+        {
+            auto tf = tf_buffer_->lookupTransform(
+                "map", "base_footprint", tf2::TimePointZero);
+            current_pose_.position.x    = tf.transform.translation.x;
+            current_pose_.position.y    = tf.transform.translation.y;
+            current_pose_.position.z    = tf.transform.translation.z;
+            current_pose_.orientation   = tf.transform.rotation;
+            pose_received_ = true;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "TF2 map->base_footprint bekleniyor: %s", ex.what());
+            pose_received_ = false;
+        }
+
         action_msgs::msg::GoalStatusArray status_array;
         action_msgs::msg::GoalStatus status;
 

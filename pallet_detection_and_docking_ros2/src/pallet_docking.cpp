@@ -212,8 +212,6 @@ private:
 
         while (rclcpp::ok() && moving && !cancel_)
         {
-            rclcpp::spin_some(this->shared_from_this());
-
             pose_mutex_.lock();
             distance_traveled = Utilities::calculateDistance(initial_pose, current_pose_);
             pose_mutex_.unlock();
@@ -261,8 +259,6 @@ private:
 
         while (rclcpp::ok() && moving && !cancel_)
         {
-            rclcpp::spin_some(this->shared_from_this());
-
             pose_mutex_.lock();
             distance_traveled = Utilities::calculateDistance(initial_pose, current_pose_);
             pose_mutex_.unlock();
@@ -359,7 +355,6 @@ private:
         rclcpp::Rate loop_rate(100);
         while (path_status_ != PathStatus::ARRIVED && rclcpp::ok())
         {
-            rclcpp::spin_some(this->shared_from_this());
             loop_rate.sleep();
         }
         ResetDockingPathProcess();
@@ -521,7 +516,6 @@ private:
                     return current_pose_;
                 }
             }
-            rclcpp::spin_some(this->shared_from_this());
             rate.sleep();
         }
         std::lock_guard<std::mutex> lock(pose_mutex_);
@@ -552,7 +546,6 @@ private:
             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
                 "Pallet poses data unavailable. Searching for pallets... timeout remaining: %.1f s",
                 timeout_ - (this->now() - start).seconds());
-            rclcpp::spin_some(this->shared_from_this());
             rate.sleep();
         }
 
@@ -581,14 +574,15 @@ private:
         request->parameters.push_back(param);
 
         auto future = client->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(this->shared_from_this(), future) ==
-            rclcpp::FutureReturnCode::SUCCESS)
+        // Node is already managed by MultiThreadedExecutor — use wait_for instead of
+        // spin_until_future_complete to avoid "already added to an executor" error.
+        if (future.wait_for(std::chrono::seconds(5)) == std::future_status::ready)
         {
             RCLCPP_INFO(this->get_logger(), "Successfully set %s to %f", param_name.c_str(), value);
         }
         else
         {
-            RCLCPP_ERROR(this->get_logger(), "Failed to set parameter %s", param_name.c_str());
+            RCLCPP_ERROR(this->get_logger(), "Failed to set parameter %s (timeout)", param_name.c_str());
         }
     }
 
@@ -614,14 +608,13 @@ private:
         request->parameters.push_back(param);
 
         auto future = client->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(this->shared_from_this(), future) ==
-            rclcpp::FutureReturnCode::SUCCESS)
+        if (future.wait_for(std::chrono::seconds(5)) == std::future_status::ready)
         {
             RCLCPP_INFO(this->get_logger(), "Successfully set %s to %f", param_name.c_str(), value);
         }
         else
         {
-            RCLCPP_ERROR(this->get_logger(), "Failed to set parameter %s", param_name.c_str());
+            RCLCPP_ERROR(this->get_logger(), "Failed to set parameter %s (timeout)", param_name.c_str());
         }
     }
 
@@ -681,8 +674,6 @@ private:
 
         while (rclcpp::ok() && rotating && !cancel_)
         {
-            rclcpp::spin_some(this->shared_from_this());
-
             double current_yaw = getAverageCurrentYaw();
             RCLCPP_INFO(this->get_logger(), "Rotating Robot orientation to pallet orientation Start");
 
@@ -829,7 +820,6 @@ private:
             rclcpp::Rate rate(10);
             while (rclcpp::ok() && (this->now() - start).seconds() < 1.0)
             {
-                rclcpp::spin_some(this->shared_from_this());
                 std::lock_guard<std::mutex> lock(pose_mutex_);
                 if (current_pose_.orientation.w != 0.0)
                 {
