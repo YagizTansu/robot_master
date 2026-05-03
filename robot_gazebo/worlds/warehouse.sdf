@@ -68,7 +68,7 @@
             <include>
                 <uri>model://euro_pallet</uri>
             </include>
-            <pose frame="">2.0 2.0 0.1 0 0 0</pose>
+            <pose frame="">-2.0 0.0 0.1 0 0 1.5708</pose>
         </model>
 
         <model name='aws_robomaker_warehouse_ClutteringA_01_016'>

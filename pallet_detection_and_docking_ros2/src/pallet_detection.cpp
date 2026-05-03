@@ -45,7 +45,7 @@ public:
     PalletDetection()
     : Node("pallet_detection"),
       cluster_tolerance(0.25),
-      min_pallet_cluster_size(400),
+      min_pallet_cluster_size(10),
       max_pallet_cluster_size(2000)
     {
         // TF buffer and listener
@@ -68,7 +68,7 @@ public:
 
         // Declare parameters (replaces dynamic_reconfigure)
         this->declare_parameter("cluster_tolerance", 0.25);
-        this->declare_parameter("min_pallet_cluster_size", 400);
+        this->declare_parameter("min_pallet_cluster_size", 10);
         this->declare_parameter("max_pallet_cluster_size", 2000);
 
         param_callback_handle_ = this->add_on_set_parameters_callback(
@@ -76,10 +76,10 @@ public:
 
         // Define static polygon points in the map frame
         pallet_station_area = {
-            createPoint(6.5, 0.5, 0.0),
-            createPoint(6.5, 1.5, 0.0),
-            createPoint(5.0, 1.5, 0.0),
-            createPoint(5.0, 0.5, 0.0)};
+            createPoint(-1.25, -0.8, 0.0),
+            createPoint(-1.25,  0.8, 0.0),
+            createPoint(-2.75,  0.8, 0.0),
+            createPoint(-2.75, -0.8, 0.0)};
 
         RCLCPP_INFO(this->get_logger(), "Pallet Detection Node Started...");
     }
@@ -630,7 +630,7 @@ private:
     {
         visualization_msgs::msg::Marker arrow_marker;
         arrow_marker.header.frame_id = "lidar_fork_1";
-        arrow_marker.header.stamp = this->now();
+        arrow_marker.header.stamp = rclcpp::Time(0);
         arrow_marker.ns = "arrow_marker";
         arrow_marker.id = id * 10;
         arrow_marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -681,7 +681,7 @@ private:
     {
         visualization_msgs::msg::Marker rect_marker;
         rect_marker.header.frame_id = "lidar_fork_1";
-        rect_marker.header.stamp = this->now();
+        rect_marker.header.stamp = rclcpp::Time(0);
         rect_marker.ns = "min_rotated_rectangle";
         rect_marker.id = id;
         rect_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
