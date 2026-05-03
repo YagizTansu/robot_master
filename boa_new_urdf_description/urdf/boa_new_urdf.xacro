@@ -263,7 +263,7 @@
 </joint>
 
 <joint name="drive_motor_joint" type="continuous">
-  <origin xyz="0.0057 0.0 -0.2255" rpy="0 0 -1.5707963"/>
+  <origin xyz="0.0 0.0 -0.2255" rpy="0 0 -1.5707963"/>
   <parent link="direction_motor_1"/>
   <child link="drive_motor_1"/>
   <axis xyz="0.0 1.0 0.0"/>

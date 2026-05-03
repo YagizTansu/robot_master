@@ -751,7 +751,7 @@ def main():
             rate.sleep()
             continue
 
-        # ── Ackermann odometry kinematics ──────────────────────────────────
+        # ── Ackermann odometry kinematics (kingpin offset düzeltmeli) ─────────────
         actual_steering_deg = (motor_deg - POSITION_ZERO) / STEERING_GEAR
         steering_angle      = math.radians(actual_steering_deg)
 

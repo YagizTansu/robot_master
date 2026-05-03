@@ -82,11 +82,9 @@ class SimKincoBridge(Node):
         if dt <= 0.0 or dt > 0.5:
             return
 
-        # ── Ackermann kinematiği (kinco_bridge.py ile birebir aynı formüller) ─
-        #
-        #   v_robot = wheel_vel [rad/s] * wheel_radius [m]  * cos(delta)
+        # ── Ackermann kinematiği ─────────────────────────────────────────────────────
+        #   v_robot = wheel_vel [rad/s] * wheel_radius [m] * cos(delta)
         #   omega   = v_robot * tan(delta) / wheelbase
-        #
         wheel_speed      = wheel_vel * WHEEL_RADIUS
         linear_velocity  = wheel_speed * math.cos(steering_angle)
         angular_velocity = math.tan(steering_angle) * linear_velocity / WHEEL_BASE
