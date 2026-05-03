@@ -17,6 +17,9 @@
 #include <mutex>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2/exceptions.h>
 #include <angles/angles.h>
 #include <visualization_msgs/msg/marker.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -39,6 +42,14 @@ public:
     {
         // All callbacks must be reentrant to allow spin_some() inside blocking loops
         cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
+        tf_buffer_   = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        pose_update_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(100),
+            std::bind(&PalletDocking::updatePoseFromTF2, this),
+            cb_group_);
 
         initializeSubscribersAndPublishers();
         ResetDockingPathProcess();
@@ -64,8 +75,12 @@ private:
     rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr path_status_subscriber_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr pause_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr cancel_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr pose_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr pallet_poses_sub_;
+
+    // TF2 pose
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::TimerBase::SharedPtr pose_update_timer_;
 
     geometry_msgs::msg::Pose current_pose_;
     geometry_msgs::msg::PoseArray::SharedPtr latest_pallet_poses_;
@@ -124,10 +139,6 @@ private:
             "pallet_docking/cancel", 10,
             std::bind(&PalletDocking::cancelCallback, this, std::placeholders::_1), sub_opts);
 
-        pose_sub_ = this->create_subscription<geometry_msgs::msg::Pose>(
-            "/tf_pose", 10,
-            std::bind(&PalletDocking::poseCallback, this, std::placeholders::_1), sub_opts);
-
         pallet_poses_sub_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
             "/pallet_poses", 10,
             std::bind(&PalletDocking::palletPosesCallback, this, std::placeholders::_1), sub_opts);
@@ -185,12 +196,24 @@ private:
     }
 
     /**
-     * @brief Callback function for pose messages.
+     * @brief Updates current_pose_ from TF2 map->base_footprint (10 Hz timer).
      */
-    void poseCallback(const geometry_msgs::msg::Pose::SharedPtr msg)
+    void updatePoseFromTF2()
     {
-        std::lock_guard<std::mutex> lock(pose_mutex_);
-        current_pose_ = *msg;
+        try
+        {
+            auto tf = tf_buffer_->lookupTransform("map", "base_footprint", tf2::TimePointZero);
+            std::lock_guard<std::mutex> lock(pose_mutex_);
+            current_pose_.position.x  = tf.transform.translation.x;
+            current_pose_.position.y  = tf.transform.translation.y;
+            current_pose_.position.z  = tf.transform.translation.z;
+            current_pose_.orientation = tf.transform.rotation;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "TF2 map->base_footprint bekleniyor: %s", ex.what());
+        }
     }
 
     /**
@@ -868,7 +891,7 @@ private:
             geometry_msgs::msg::Pose nearest_pallet_pose = pallet_poses.poses[0];
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
-                robot_pose, nearest_pallet_pose, 0.90);
+                robot_pose, nearest_pallet_pose, -0.70);
             this->PublishDockingPathProcess(path);
             this->WaitRobotFinishedToDockingProcess();
 
