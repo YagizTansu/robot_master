@@ -107,7 +107,7 @@ private:
 
     // Control parameters
     double linear_speed_       = 0.10;
-    double angular_speed_      = 0.15;
+    double angular_speed_      = 0.10;
     double yaw_tolerance_      = 0.00873;  // 0.5 deg
     double distance_tolerance_ = 0.04;     // 4 cm
     double k_stanley_          = 1.5;      // Stanley cross-track gain
