@@ -1,0 +1,2 @@
+string station_type
+geometry_msgs/PoseStamped station_coor

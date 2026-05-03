@@ -8,15 +8,20 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotInfo.msg"
+  "msg/PalletStation.msg"
+  "msg/Service.msg"
+  "msg/DockingStatus.msg"
   "srv/AddProhibitedZone.srv"
   "srv/RemoveProhibitedZone.srv"
   "srv/ListProhibitedZones.srv"
   "srv/SaveProhibitedZone.srv"
   "srv/DeleteProhibitedZone.srv"
   "srv/LoadProhibitedZones.srv"
+  DEPENDENCIES geometry_msgs
  )
 
 ament_export_dependencies(rosidl_default_runtime)
