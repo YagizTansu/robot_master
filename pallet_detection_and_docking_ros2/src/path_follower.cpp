@@ -8,6 +8,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <cmath>
 #include <algorithm>
@@ -30,8 +31,8 @@ public:
             "pallet_docking_path", 10,
             std::bind(&PathFollower::pathCallback, this, std::placeholders::_1));
 
-        pose_sub_   = this->create_subscription<geometry_msgs::msg::Pose>(
-            "/tf_pose", 10,
+        pose_sub_   = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/pose", 10,
             std::bind(&PathFollower::poseCallback, this, std::placeholders::_1));
 
         pause_sub_  = this->create_subscription<std_msgs::msg::Bool>(
@@ -43,15 +44,21 @@ public:
             std::bind(&PathFollower::cancelCallback, this, std::placeholders::_1));
 
         // Parameters (replaces dynamic_reconfigure DockingConfig)
-        this->declare_parameter("linear_speed",       0.2);
+        this->declare_parameter("linear_speed",       0.10);
         this->declare_parameter("angular_speed",      0.5);
-        this->declare_parameter("yaw_tolerance",      0.05);
-        this->declare_parameter("distance_tolerance", 0.05);
+        this->declare_parameter("yaw_tolerance",      0.00873);   // 0.5 deg
+        this->declare_parameter("distance_tolerance", 0.02);      // 2 cm
+        this->declare_parameter("k_stanley",          1.5);
+        this->declare_parameter("orient_threshold",   0.0873);    // 5 deg
+        this->declare_parameter("wheel_base",         1.08);
 
         linear_speed_       = this->get_parameter("linear_speed").as_double();
         angular_speed_      = this->get_parameter("angular_speed").as_double();
         yaw_tolerance_      = this->get_parameter("yaw_tolerance").as_double();
         distance_tolerance_ = this->get_parameter("distance_tolerance").as_double();
+        k_stanley_          = this->get_parameter("k_stanley").as_double();
+        orient_threshold_   = this->get_parameter("orient_threshold").as_double();
+        wheel_base_         = this->get_parameter("wheel_base").as_double();
 
         param_callback_handle_ = this->add_on_set_parameters_callback(
             std::bind(&PathFollower::parametersCallback, this, std::placeholders::_1));
@@ -67,7 +74,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
     rclcpp::Publisher<action_msgs::msg::GoalStatusArray>::SharedPtr status_pub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr pose_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr pause_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr cancel_sub_;
 
@@ -89,10 +96,18 @@ private:
     bool cancel_ = false;
 
     // Control parameters
-    double linear_speed_       = 0.2;
-    double angular_speed_      = 0.5;
-    double yaw_tolerance_      = 0.05;
-    double distance_tolerance_ = 0.05;
+    double linear_speed_       = 0.10;
+    double angular_speed_      = 0.15;
+    double yaw_tolerance_      = 0.00873;  // 0.5 deg
+    double distance_tolerance_ = 0.04;     // 4 cm
+    double k_stanley_          = 1.5;      // Stanley cross-track gain
+    double orient_threshold_   = 0.0873;   // 5 deg — orient-in-place threshold
+    double wheel_base_         = 1.08;     // m — Ackermann wheel base
+
+    // Phase tracking
+    enum class Phase { ORIENT, STANLEY, FINAL_YAW };
+    Phase  current_phase_ = Phase::ORIENT;
+    size_t nearest_idx_   = 0;
 
     /**
      * @brief Parameter update callback (replaces dynamic_reconfigure).
@@ -106,11 +121,16 @@ private:
             else if (param.get_name() == "angular_speed")      angular_speed_      = param.as_double();
             else if (param.get_name() == "yaw_tolerance")      yaw_tolerance_      = param.as_double();
             else if (param.get_name() == "distance_tolerance") distance_tolerance_ = param.as_double();
+            else if (param.get_name() == "k_stanley")          k_stanley_          = param.as_double();
+            else if (param.get_name() == "orient_threshold")   orient_threshold_   = param.as_double();
+            else if (param.get_name() == "wheel_base")         wheel_base_         = param.as_double();
         }
 
         RCLCPP_INFO(this->get_logger(),
-            "Reconfigured params: linear_speed=%.2f, angular_speed=%.2f, yaw_tolerance=%.2f, distance_tolerance=%.2f",
-            linear_speed_, angular_speed_, yaw_tolerance_, distance_tolerance_);
+            "Reconfigured params: linear_speed=%.2f, angular_speed=%.2f, yaw_tolerance=%.4f, "
+            "distance_tolerance=%.3f, k_stanley=%.2f, orient_threshold=%.4f",
+            linear_speed_, angular_speed_, yaw_tolerance_,
+            distance_tolerance_, k_stanley_, orient_threshold_);
 
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
@@ -120,14 +140,14 @@ private:
     /**
      * @brief Callback function for pose messages.
      */
-    void poseCallback(const geometry_msgs::msg::Pose::SharedPtr msg)
+    void poseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
     {
         if (!msg)
         {
             RCLCPP_WARN(this->get_logger(), "Received null pose message!");
             return;
         }
-        current_pose_  = *msg;
+        current_pose_  = msg->pose.pose;
         pose_received_ = true;
     }
 
@@ -164,6 +184,8 @@ private:
         target_pose_   = msg->poses.back().pose;
         path_received_ = true;
         final_yaw_mode_ = false;
+        nearest_idx_    = 0;
+        current_phase_  = Phase::ORIENT;
 
         RCLCPP_INFO(this->get_logger(),
             "New path received with %zu poses, target: (%.2f, %.2f, %.2f)",
@@ -251,7 +273,153 @@ private:
 
     void followPath()
     {
+        // ── Current robot state ──────────────────────────────────────────────
+        const double robot_yaw   = Utilities::calculateYaw(current_pose_);
+        const double target_yaw  = Utilities::calculateYaw(target_pose_);
+        const double dist_to_goal = Utilities::calculateDistance(current_pose_, target_pose_);
 
+        // ── Status publish helper ────────────────────────────────────────────
+        auto publishStatus = [this](uint8_t s)
+        {
+            action_msgs::msg::GoalStatusArray arr;
+            action_msgs::msg::GoalStatus st;
+            st.status = s;
+            arr.status_list.push_back(st);
+            status_pub_->publish(arr);
+        };
+
+        // ════════════════════════════════════════════════════════════════════
+        // FAZ 3 — FINAL YAW
+        // Robot hedefe yeterince yakın: dur, sadece yaw hizala
+        // ════════════════════════════════════════════════════════════════════
+        if (dist_to_goal < distance_tolerance_)
+        {
+            current_phase_ = Phase::FINAL_YAW;
+            const double yaw_err = Utilities::calculateAngleDifference(robot_yaw, target_yaw);
+
+            if (std::abs(yaw_err) < yaw_tolerance_)
+            {
+                RCLCPP_INFO(this->get_logger(),
+                    "[FINAL_YAW] Goal reached. dist=%.4f m  yaw_err=%.5f rad (%.3f deg)",
+                    dist_to_goal, yaw_err, yaw_err * 180.0 / M_PI);
+                stop();
+                path_received_ = false;
+                goal_reached_  = true;
+                publishStatus(action_msgs::msg::GoalStatus::STATUS_SUCCEEDED);
+                return;
+            }
+
+            // Yerinde yaw düzelt — orantılı hız, minimum threshold ile
+            const double yaw_speed = std::clamp(
+                1.5 * yaw_err,
+                -angular_speed_,
+                angular_speed_);
+
+            geometry_msgs::msg::Twist cmd;
+            cmd.linear.x  = 0.0;
+            cmd.angular.z = yaw_speed;
+            cmd_vel_pub_->publish(cmd);
+
+            RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 100,
+                "[FINAL_YAW] yaw_err=%.5f rad (%.3f deg)  angular=%.4f",
+                yaw_err, yaw_err * 180.0 / M_PI, yaw_speed);
+
+            publishStatus(action_msgs::msg::GoalStatus::STATUS_EXECUTING);
+            return;
+        }
+
+        // ── En yakın path noktasını bul (geri dönmeden ilerle) ───────────────
+        {
+            double best_dist = std::numeric_limits<double>::max();
+            for (size_t i = nearest_idx_; i < path_.poses.size(); ++i)
+            {
+                double d = Utilities::calculateDistance(current_pose_, path_.poses[i].pose);
+                if (d < best_dist)
+                {
+                    best_dist    = d;
+                    nearest_idx_ = i;
+                }
+                else if (d > best_dist + 0.05)
+                {
+                    // Mesafe artmaya başladı — daha öteye bakma
+                    break;
+                }
+            }
+        }
+
+        const double path_yaw = Utilities::calculateYaw(path_.poses[nearest_idx_].pose);
+        const double px       = path_.poses[nearest_idx_].pose.position.x;
+        const double py       = path_.poses[nearest_idx_].pose.position.y;
+        const double rx       = current_pose_.position.x;
+        const double ry       = current_pose_.position.y;
+
+        // Heading error: pozitif → robot sola (CCW) dönmeli
+        const double heading_err = Utilities::calculateAngleDifference(robot_yaw, path_yaw);
+
+        // CTE: pozitif → robot path'in sağında
+        // Formül: dot(robot_to_path_point, path_right_normal)
+        // path_right_normal = (sin(yaw), -cos(yaw))
+        const double cte = std::sin(path_yaw) * (rx - px) - std::cos(path_yaw) * (ry - py);
+
+        // ════════════════════════════════════════════════════════════════════
+        // FAZ 1 — ORIENT
+        // Heading hatası çok büyük: yerinde dön, hizalan
+        // ════════════════════════════════════════════════════════════════════
+        if (std::abs(heading_err) > orient_threshold_)
+        {
+            current_phase_ = Phase::ORIENT;
+
+            // Orantılı angular, angular_speed_ ile sınırlandırılmış
+            const double angular = std::clamp(
+                2.0 * heading_err,
+                -angular_speed_,
+                angular_speed_);
+
+            geometry_msgs::msg::Twist cmd;
+            cmd.linear.x  = 0.0;
+            cmd.angular.z = angular;
+            cmd_vel_pub_->publish(cmd);
+
+            RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 100,
+                "[ORIENT] heading_err=%.4f rad (%.2f deg)  angular=%.3f",
+                heading_err, heading_err * 180.0 / M_PI, angular);
+
+            publishStatus(action_msgs::msg::GoalStatus::STATUS_EXECUTING);
+            return;
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // FAZ 2 — STANLEY TRACKING (reverse — çatal yönünde gidiş)
+        //
+        // Reverse Stanley formülü:
+        //   δ = heading_err - arctan(k * cte / v)
+        //   (CTE terimi ters — geri gidişte düzeltme yönü tersine döner)
+        //
+        // cmd_vel.linear.x < 0  → kinco_bridge geri götürür
+        // cmd_vel.angular.z     → işaret korunur (kinco_bridge handle eder)
+        // ════════════════════════════════════════════════════════════════════
+        current_phase_ = Phase::STANLEY;
+
+        const double min_speed   = 0.05;  // sıfıra bölünmeyi önle
+        const double stanley_cmd = heading_err
+                                   - std::atan2(k_stanley_ * cte,
+                                                std::max(linear_speed_, min_speed));
+
+        const double max_angular = M_PI / 2.0;
+
+        geometry_msgs::msg::Twist cmd;
+        cmd.linear.x  = -linear_speed_;  // geri
+        cmd.angular.z = std::clamp(stanley_cmd, -max_angular, max_angular);
+        cmd_vel_pub_->publish(cmd);
+
+        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 100,
+            "[STANLEY] idx=%zu/%zu  dist_goal=%.3f m  cte=%.4f m  "
+            "heading_err=%.4f rad (%.2f deg)  angular=%.4f",
+            nearest_idx_, path_.poses.size() - 1,
+            dist_to_goal, cte, heading_err,
+            heading_err * 180.0 / M_PI, cmd.angular.z);
+
+        publishStatus(action_msgs::msg::GoalStatus::STATUS_EXECUTING);
     }
 };
 
