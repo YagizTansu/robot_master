@@ -54,7 +54,7 @@ public:
 
         // Subscribers
         lidar_scan_sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
-            "/scan_fork", 1,
+            "/lidar_fork_1/scan", 1,
             std::bind(&PalletDetection::scanCallback, this, std::placeholders::_1));  // Forklift LIDAR topic
 
         pallet_station_subscriber = this->create_subscription<robot_interfaces::msg::PalletStation>(
@@ -218,8 +218,8 @@ private:
         publishPalletStationArea(pallet_station_area[0], pallet_station_area[1], pallet_station_area[2], pallet_station_area[3]);
         try
         {
-            // Get the transform from lidar_fork to map
-            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform("map", "lidar_fork", tf2::TimePointZero);
+            // Get the transform from lidar_fork_1 to map
+            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform("map", "lidar_fork_1", tf2::TimePointZero);
 
             // Prepare a new LaserScan message for filtered data
             auto filtered_scan = std::make_shared<sensor_msgs::msg::LaserScan>(*scan_msg);
@@ -238,9 +238,9 @@ private:
                     continue;
                 }
 
-                // Calculate point in lidar_fork frame
+                // Calculate point in lidar_fork_1 frame
                 geometry_msgs::msg::PointStamped point_in_lidar;
-                point_in_lidar.header.frame_id = "lidar_fork";
+                point_in_lidar.header.frame_id = "lidar_fork_1";
                 point_in_lidar.point.x = range * cos(angle);
                 point_in_lidar.point.y = range * sin(angle);
                 point_in_lidar.point.z = 0.0;
@@ -592,7 +592,7 @@ private:
 
     /**
      * @brief Transforms pose to map frame and publishes as PoseArray
-     * @param pose Pallet pose in lidar_fork frame
+     * @param pose Pallet pose in lidar_fork_1 frame
      */
     void publishPalletPoseArray(geometry_msgs::msg::Pose pose)
     {
@@ -600,7 +600,7 @@ private:
         {
             // Transform pose to map frame
             geometry_msgs::msg::PoseStamped input_pose_stamped;
-            input_pose_stamped.header.frame_id = "lidar_fork";
+            input_pose_stamped.header.frame_id = "lidar_fork_1";
             input_pose_stamped.header.stamp = rclcpp::Time(0);
             input_pose_stamped.pose = pose;
 
@@ -622,14 +622,14 @@ private:
     }
 
     /**
-     * @brief Publishes the pallet front point as an arrow marker in the lidar_fork frame
+     * @brief Publishes the pallet front point as an arrow marker in the lidar_fork_1 frame
      * @param start_pose Start pose of the arrow
      * @param id Marker ID
      */
     void publishPalletFront(geometry_msgs::msg::Pose start_pose, int id)
     {
         visualization_msgs::msg::Marker arrow_marker;
-        arrow_marker.header.frame_id = "lidar_fork";
+        arrow_marker.header.frame_id = "lidar_fork_1";
         arrow_marker.header.stamp = this->now();
         arrow_marker.ns = "arrow_marker";
         arrow_marker.id = id * 10;
@@ -673,14 +673,14 @@ private:
     }
 
     /**
-     * @brief Publishes the minimum area rectangle as a line strip marker in the lidar_fork frame
+     * @brief Publishes the minimum area rectangle as a line strip marker in the lidar_fork_1 frame
      * @param rect_points Array of rectangle corner points
      * @param id Marker ID
      */
     void publishRotatedRectangle(const cv::Point2f *rect_points, int id)
     {
         visualization_msgs::msg::Marker rect_marker;
-        rect_marker.header.frame_id = "lidar_fork";
+        rect_marker.header.frame_id = "lidar_fork_1";
         rect_marker.header.stamp = this->now();
         rect_marker.ns = "min_rotated_rectangle";
         rect_marker.id = id;

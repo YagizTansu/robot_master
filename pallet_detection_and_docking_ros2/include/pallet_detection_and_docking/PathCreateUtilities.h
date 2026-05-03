@@ -207,7 +207,7 @@ public:
         const std::vector<double> &x,
         const std::vector<double> &y)
     {
-        int n = x.size();
+        int n = static_cast<int>(x.size());
         std::vector<Eigen::Vector4d> coefficients(n - 1);
 
         Eigen::MatrixXd A(n - 2, n);
@@ -241,7 +241,7 @@ public:
     }
 
     // Function to evaluate spline at a given point
-    static double evaluateSpline(const std::vector<Eigen::Vector4d> &coefficients, double t, double x)
+    static double evaluateSpline(const std::vector<Eigen::Vector4d> &coefficients, double x)
     {
         int segment = 0;
         while (segment < static_cast<int>(coefficients.size()) - 1 &&

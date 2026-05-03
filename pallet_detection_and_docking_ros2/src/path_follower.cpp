@@ -249,19 +249,6 @@ private:
         }
     }
 
-    /**
-     * @brief Follow the path using Stanley controller.
-     *
-     * Akış:
-     *   1. distance_to_target <= distance_tolerance_ → final_yaw_mode_ aktif
-     *   2. final_yaw_mode_ → sadece yaw düzelt, linear.x = 0
-     *   3. Aksi halde → Stanley ile hareket
-     *
-     * Neden final_yaw_mode_ bayrağı var:
-     *   distance_to_target <= tolerance koşulu her iterasyonda
-     *   sağlanmayabilir (noise, creep vs). Bir kez girilince
-     *   artık hep final yaw modunda kalıyoruz — Stanley'e geri dönmüyoruz.
-     */
     void followPath()
     {
 

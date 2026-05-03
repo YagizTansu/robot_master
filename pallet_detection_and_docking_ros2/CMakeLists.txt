@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(pallet_detection_and_docking)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -101,6 +101,10 @@ install(DIRECTORY include/
 
 install(DIRECTORY params/
   DESTINATION share/${PROJECT_NAME}/params/
+)
+
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch/
 )
 
 ament_package()
