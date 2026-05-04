@@ -2,7 +2,6 @@
  
 
 from __future__ import print_function
-from pynput.keyboard import Key, Listener
 import rclpy
 import threading
 import sys, select, os
@@ -51,10 +50,38 @@ class Teleop:
         self.target_angular_vel  = 0.0
         self.key = ""
 
-        listener = Listener(
-        on_press=self.on_press,
-        on_release=self.on_release)
-        listener.start()
+        self._thread = threading.Thread(target=self._read_keys, daemon=True)
+        self._thread.start()
+
+    def _read_keys(self):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while True:
+                ch = sys.stdin.read(1)
+                if not ch:
+                    continue
+
+                if ch == '\x1b':
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[':
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == 'A':   self.key = 'w'                        # up arrow
+                        elif ch3 == 'B': self.key = 'x'                        # down arrow
+                        elif ch3 == 'C': self.key = 'd'                        # right arrow
+                        elif ch3 == 'D': self.key = 'a'                        # left arrow
+                        elif ch3 == '3': sys.stdin.read(1); self.key = 'e'    # delete → e
+                        elif ch3 == '5': sys.stdin.read(1); self.key = 'p'    # page up → p
+                        elif ch3 == '6': sys.stdin.read(1); self.key = 'o'    # page down → o
+                    else:
+                        self.key = '\x1b'
+                elif ch == '\r' or ch == '\n':
+                    self.key = ' '   # enter → stop
+                else:
+                    self.key = ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     def vels(self, target_linear_vel, target_angular_vel):
         return "currently:\tlinear vel %s\t angular vel %s " % (target_linear_vel,target_angular_vel)
@@ -66,61 +93,12 @@ class Teleop:
             input = high
         else:
             input = input
-
         return input
 
-    def on_press(self, key):
-        # to remove input buffer
-        if os.name == 'nt':
-            msvcrt.getch() 
-        else:
-            tty.setraw(sys.stdin.fileno())
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-
-        if not hasattr(key, 'char'):
-            if(key.name == "space" or key.name == "enter" or key.name == "s" or key.name == "media_play_pause"):
-                self.key = " "
-            if(key.name == "w" or key.name == "up"    or key.name == "media_volume_up"):
-                self.key = "w"
-            if(key.name == "x" or key.name == "down"  or key.name == "media_volume_down"):
-                self.key = "x"
-            if(key.name == "a" or key.name == "left"  or key.name == "media_previous"):
-                self.key = "a"
-            if(key.name == "d" or key.name == "right" or key.name == "media_next"):
-                self.key = "d"
-            if(key.name == "p" or key.name == "page_up"):
-                self.key = "p"
-            if(key.name == "e" or key.name == "delete"):
-                self.key = "e"
-            if(key.name == "n"):
-                self.key = "n"
-            if(key.name == "m"):
-                self.key = "m"
-            if(key.name == "l"):
-                self.key = "l"
-            if(key.name == "k"):
-                self.key = "k"
-            if(key.name == "page_down"):
-                self.key = "o"
-            if(key.name == "u"):
-                self.key = "u"
-            if(key.name == "1"):
-                self.key = "1"
-            if(key.name == "2"):
-                self.key = "2"
-            if(key.name == "3"):
-                self.key = "3"
-            if(key.name == "4"):
-                self.key = "4"
-            if(key.name == "5"):
-                self.key = "5"
-                    
-        else: 
-            self.key = key.char
-        return self.key
-
     def get_key(self):
-        return self.key
+        k = self.key
+        self.key = ""
+        return k
 
     def on_release(self, key):
         self.key = ""
