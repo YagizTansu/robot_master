@@ -19,10 +19,10 @@ def generate_launch_description():
         description='Slamware mapper IP address',
     ))
 
-    homing = LaunchConfiguration('homing', default='true')
+    homing = LaunchConfiguration('homing', default='false')
     ld.add_action(DeclareLaunchArgument(
         'homing',
-        default_value='true',
+        default_value='false',
         description='Run steering homing procedure on startup',
     ))
 
