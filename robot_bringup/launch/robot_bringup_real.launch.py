@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import PythonLaunchDescriptionSource, AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
@@ -92,32 +92,17 @@ def generate_launch_description():
         }],
     )
 
-    # ── Slamware ROS SDK ──────────────────────────────────────────────────────
-    # Publishes:
-    #   /scan              → sensor_msgs/LaserScan  (remap → /lidar_top/scan)
-    #   /map               → nav_msgs/OccupancyGrid
-    #   /slamware_ros_sdk_server_node/robot_pose → geometry_msgs/PoseStamped
-    slamware_node = Node(
-        package='slamware_ros_sdk',
-        executable='slamware_ros_sdk_server_node',
-        name='slamware_ros_sdk_server_node',
-        output='screen',
-        parameters=[{
-            'use_sim_time': False,
+
+    # ── Slamware Aurora SDK ─────────────────────────────────────────────────
+    slamware_ros_sdk_dir = get_package_share_directory('slamware_ros_sdk')
+
+    slamware_launch = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(
+            os.path.join(slamware_ros_sdk_dir, 'launch', 'slamware_ros_sdk_server_node.xml')
+        ),
+        launch_arguments={
             'ip_address': slamware_ip,
-            # Slamware'in yayınladığı frame → URDF'deki lidar frame ile eşleşmeli
-            'robot_frame': 'base_footprint',
-            'laser_frame': 'lidar_top',
-            'map_frame': 'map',
-            'odom_frame': 'odom',
-            # Slamware kendi haritasını TF olarak da yayınlıyor;
-            # AMCL kullandığımız için Slamware'in map→odom TF'ini kapatıyoruz
-            'publish_tf': False,
-        }],
-        remappings=[
-            # AMCL ve nav2 /lidar_top/scan topic'ini bekliyor
-            ('/scan', '/lidar_top/scan'),
-        ],
+        }.items(),
     )
 
     # ── RPLidar S2E ───────────────────────────────────────────────────────────
@@ -139,7 +124,7 @@ def generate_launch_description():
 
     ld.add_action(robot_state_publisher_node)
     ld.add_action(kinco_bridge_node)
-    ld.add_action(slamware_node)
+    ld.add_action(slamware_launch)
     ld.add_action(rplidar_s2e_launch)
 
     return ld
