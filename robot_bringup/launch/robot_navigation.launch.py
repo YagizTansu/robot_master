@@ -27,10 +27,10 @@ def generate_launch_description():
         vda5050_adapter_dir = None
 
     # Launch argument: simulation vs real robot
-    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
+    use_sim_time = LaunchConfiguration("use_sim_time", default="false")
     ld.add_action(DeclareLaunchArgument(
         "use_sim_time",
-        default_value="true",
+        default_value="false",
         description="Use simulation clock (true for Gazebo, false for real robot)",
     ))
 
