@@ -26,6 +26,41 @@ def generate_launch_description():
         description='Run steering homing procedure on startup',
     ))
 
+    lidar_udp_ip = LaunchConfiguration('lidar_udp_ip', default='192.168.11.2')
+    ld.add_action(DeclareLaunchArgument(
+        'lidar_udp_ip',
+        default_value='192.168.11.2',
+        description='RPLidar S2E UDP IP address',
+    ))
+
+    lidar_udp_port = LaunchConfiguration('lidar_udp_port', default='8089')
+    ld.add_action(DeclareLaunchArgument(
+        'lidar_udp_port',
+        default_value='8089',
+        description='RPLidar S2E UDP port',
+    ))
+
+    lidar_frame_id = LaunchConfiguration('lidar_frame_id', default='laser')
+    ld.add_action(DeclareLaunchArgument(
+        'lidar_frame_id',
+        default_value='laser',
+        description='RPLidar S2E frame_id',
+    ))
+
+    lidar_scan_mode = LaunchConfiguration('lidar_scan_mode', default='Sensitivity')
+    ld.add_action(DeclareLaunchArgument(
+        'lidar_scan_mode',
+        default_value='Sensitivity',
+        description='RPLidar S2E scan mode',
+    ))
+
+    lidar_scan_frequency = LaunchConfiguration('lidar_scan_frequency', default='10')
+    ld.add_action(DeclareLaunchArgument(
+        'lidar_scan_frequency',
+        default_value='10',
+        description='RPLidar S2E scan frequency (Hz)',
+    ))
+
     # ── Robot State Publisher (URDF static TFs) ──────────────────────────────
     # base_footprint → base_link, base_link → lidar_top, vb.
     boa_dir = get_package_share_directory('boa_new_urdf_description')
@@ -85,21 +120,26 @@ def generate_launch_description():
         ],
     )
 
-    # ── Navigation Stack ──────────────────────────────────────────────────────
-    robot_bringup_dir = get_package_share_directory('robot_bringup')
+    # ── RPLidar S2E ───────────────────────────────────────────────────────────
+    rplidar_ros_dir = get_package_share_directory('rplidar_ros')
 
-    navigation_launch = IncludeLaunchDescription(
+    rplidar_s2e_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(robot_bringup_dir, 'launch', 'robot_navigation.launch.py')
+            os.path.join(rplidar_ros_dir, 'launch', 'rplidar_s2e_launch.py')
         ),
         launch_arguments={
-            'use_sim_time': 'false',
+            'udp_ip': lidar_udp_ip,
+            'udp_port': lidar_udp_port,
+            'frame_id': lidar_frame_id,
+            'scan_mode': lidar_scan_mode,
+            'scan_frequency': lidar_scan_frequency,
         }.items(),
     )
+
 
     ld.add_action(robot_state_publisher_node)
     ld.add_action(kinco_bridge_node)
     ld.add_action(slamware_node)
-    ld.add_action(navigation_launch)
+    ld.add_action(rplidar_s2e_launch)
 
     return ld
