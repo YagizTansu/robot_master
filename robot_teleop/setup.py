@@ -19,7 +19,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'robot_teleop_key = robot_teleop.robot_teleop_key:main'
+            'robot_teleop_key = robot_teleop.robot_teleop_key:main',
+            'robot_teleop_key_ros2 = robot_teleop.robot_teleop_key_ros2:main',
         ],
     },
 )
