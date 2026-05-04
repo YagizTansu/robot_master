@@ -9,11 +9,11 @@ import os
 def generate_launch_description():
     pkg_dir = get_package_share_directory('robot_ekf_localization')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
+        default_value='false',
         description='Use simulation (Gazebo) clock'
     )
 

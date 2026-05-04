@@ -26,6 +26,14 @@ def generate_launch_description():
     except PackageNotFoundError:
         vda5050_adapter_dir = None
 
+    # Launch argument: simulation vs real robot
+    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
+    ld.add_action(DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="true",
+        description="Use simulation clock (true for Gazebo, false for real robot)",
+    ))
+
     # Launch argument: enable/disable VDA5050 adapter
     enable_vda5050 = LaunchConfiguration("enable_vda5050", default="true")
     ld.add_action(DeclareLaunchArgument(
@@ -57,7 +65,7 @@ def generate_launch_description():
             os.path.join(robot_navigation_dir, "launch", "custom_navigation_launch.py")
         ),
         launch_arguments={
-            "use_sim_time": "true",
+            "use_sim_time": use_sim_time,
             "params_file": nav2_params_file,  # GraphBasedPlanner + CustomLocalPlanner
         }.items(),
     )
@@ -71,7 +79,7 @@ def generate_launch_description():
         executable="rviz2",
         name="rviz2",
         arguments=["-d", rviz_config_file],
-        parameters=[{"use_sim_time": True}],
+        parameters=[{"use_sim_time": use_sim_time}],
         output="screen",
     )
 
@@ -85,7 +93,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "use_sim_time": True,  # Hardcoded to true for now since launch configs are generally used for sim
+                "use_sim_time": use_sim_time,
                 "yaml_filename": map_file,
                 "topic_name": "map",
                 "frame_id": "map",
@@ -99,7 +107,7 @@ def generate_launch_description():
         name="lifecycle_manager_map",
         output="screen",
         parameters=[
-            {"use_sim_time": True},
+            {"use_sim_time": use_sim_time},
             {"autostart": True},
             {"node_names": ["map_server"]},
         ],
@@ -137,7 +145,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(robot_ekf_loc_dir, 'launch', 'localization.launch.py')
         ),
-        launch_arguments={'use_sim_time': 'true'}.items(),
+        launch_arguments={'use_sim_time': use_sim_time}.items(),
     )
 
     ld.add_action(localization_launch)
