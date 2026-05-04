@@ -105,6 +105,14 @@ def generate_launch_description():
         }.items(),
     )
 
+    # ── Scan Relay (slamware scan → /lidar_top/scan) ─────────────────────────
+    scan_relay_node = Node(
+        package='slamware_ros_sdk',
+        executable='scan_relay_node',
+        name='scan_relay',
+        output='screen',
+    )
+
     # ── RPLidar S2E ───────────────────────────────────────────────────────────
     rplidar_ros_dir = get_package_share_directory('rplidar_ros')
 
@@ -125,6 +133,7 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_node)
     ld.add_action(kinco_bridge_node)
     ld.add_action(slamware_launch)
+    ld.add_action(scan_relay_node)
     ld.add_action(rplidar_s2e_launch)
 
     return ld

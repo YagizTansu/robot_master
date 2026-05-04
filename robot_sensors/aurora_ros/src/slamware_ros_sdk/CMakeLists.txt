@@ -128,6 +128,11 @@ target_link_libraries(slamware_ros_sdk_server_node
   rt
 )
 
+add_executable(scan_relay_node
+  src/server/scan_relay_node.cpp
+)
+ament_target_dependencies(scan_relay_node rclcpp sensor_msgs)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -139,7 +144,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-install(TARGETS ${PROJECT_NAME}_server_node 
+install(TARGETS ${PROJECT_NAME}_server_node scan_relay_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
