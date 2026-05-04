@@ -1,6 +1,6 @@
 amcl:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
 
     # ── Particle filter ────────────────────────────────────────────────────
     min_particles: 3000
@@ -29,8 +29,8 @@ amcl:
     # ── Hareket modeli ─────────────────────────────────────────────────────
     # Forklift tricycle → DifferentialMotionModel davranışına en yakın
     robot_model_type: nav2_amcl::DifferentialMotionModel
-    alpha1: 0.05   # dönüşten kaynaklanan dönüş gürültüsü
-    alpha2: 0.05   # öteleme hareketinden kaynaklanan dönüş gürültüsü
+    alpha1: 0.15   # dönüşten kaynaklanan dönüş gürültüsü (tricycle dönüş belirsizliği)
+    alpha2: 0.10   # öteleme hareketinden kaynaklanan dönüş gürültüsü
     alpha3: 0.05   # öteleme hareketinden kaynaklanan öteleme gürültüsü
     alpha4: 0.05   # dönüş hareketinden kaynaklanan öteleme gürültüsü
 

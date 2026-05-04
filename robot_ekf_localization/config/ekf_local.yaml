@@ -27,11 +27,12 @@ ekf_local_node:
 
     odom0: /odom_kinco
     # pose:  x, y  → integre pozisyon  (true)
-    #        yaw   → integre başlık    (true)
+    #        yaw   → KAPALI: integre pose yaw EKF'e hatayı kilitleyor
+    #                Yaw kaynağı sadece twist vyaw'dan geliyor (daha sağlıklı)
     # twist: vx    → anlık ileri hız   (true)
-    #        vyaw  → açısal hız        (true, IMU ile birlikte fuse)
+    #        vyaw  → açısal hız        (true)
     odom0_config: [true,  true,  false,
-                   false, false, true,
+                   false, false, false,
                    true,  false, false,
                    false, false, true,
                    false, false, false]
