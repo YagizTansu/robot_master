@@ -143,6 +143,11 @@ install(TARGETS ${PROJECT_NAME}_server_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(FILES
+  ${AURORA_LIB_PATH}/libslamtec_aurora_remote_sdk.so
+  DESTINATION lib
+)
+
 install(DIRECTORY include/${PROJECT_NAME}/
 	DESTINATION include/${PROJECT_NAME}
   FILES_MATCHING PATTERN "*.h"
