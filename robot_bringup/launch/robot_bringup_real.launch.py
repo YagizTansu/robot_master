@@ -19,10 +19,10 @@ def generate_launch_description():
         description='Slamware mapper IP address',
     ))
 
-    homing = LaunchConfiguration('homing', default='false')
+    homing = LaunchConfiguration('homing', default='true')
     ld.add_action(DeclareLaunchArgument(
         'homing',
-        default_value='false',
+        default_value='true',
         description='Run steering homing procedure on startup',
     ))
 
@@ -40,10 +40,10 @@ def generate_launch_description():
         description='RPLidar S2E UDP port',
     ))
 
-    lidar_frame_id = LaunchConfiguration('lidar_frame_id', default='laser')
+    lidar_frame_id = LaunchConfiguration('lidar_frame_id', default='lidar_fork_1')
     ld.add_action(DeclareLaunchArgument(
         'lidar_frame_id',
-        default_value='laser',
+        default_value='lidar_fork_1',
         description='RPLidar S2E frame_id',
     ))
 
