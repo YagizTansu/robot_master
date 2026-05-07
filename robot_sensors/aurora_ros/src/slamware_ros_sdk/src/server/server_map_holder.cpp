@@ -7,7 +7,7 @@
 
 namespace slamware_ros_sdk {
 
-    const float ServerMapHolder::C_DEFAULT_RESOLUTION = 0.01f;
+    const float ServerMapHolder::C_DEFAULT_RESOLUTION = 0.02f;
     const std::uint32_t ServerMapHolder::C_MAP_DATA_SIZE_ALIGNMENT = 16u;
     const int ServerMapHolder::C_DEFAULT_MORE_CELL_CNT_TO_EXTEND = 32;
 

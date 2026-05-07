@@ -442,7 +442,7 @@ namespace slamware_ros_sdk {
         , const std::chrono::milliseconds& triggerInterval
         )
         : ServerWorkerBase(pRosSdkServer, wkName, triggerInterval)
-        , compensatedAngleCnt_(1800u)
+        , compensatedAngleCnt_(360u)
         , absAngleIncrement_(C_FLT_2PI / compensatedAngleCnt_)
         , latestLidarStartTimestamp_(0)
     {

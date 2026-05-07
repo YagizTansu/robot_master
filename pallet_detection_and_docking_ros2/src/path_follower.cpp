@@ -51,11 +51,11 @@ public:
 
         // Parameters (replaces dynamic_reconfigure DockingConfig)
         this->declare_parameter("linear_speed",       0.10);
-        this->declare_parameter("angular_speed",      0.5);
-        this->declare_parameter("yaw_tolerance",      0.00873);   // 0.5 deg
-        this->declare_parameter("distance_tolerance", 0.02);      // 2 cm
+        this->declare_parameter("angular_speed",      0.1);
+        this->declare_parameter("yaw_tolerance",      0.2);   // 0.5 deg
+        this->declare_parameter("distance_tolerance", 0.2);      // 2 cm
         this->declare_parameter("k_stanley",          1.5);
-        this->declare_parameter("orient_threshold",   0.0873);    // 5 deg
+        this->declare_parameter("orient_threshold",   0.2);    // 5 deg
         this->declare_parameter("wheel_base",         1.08);
 
         linear_speed_       = this->get_parameter("linear_speed").as_double();
@@ -108,10 +108,10 @@ private:
     // Control parameters
     double linear_speed_       = 0.10;
     double angular_speed_      = 0.10;
-    double yaw_tolerance_      = 0.00873;  // 0.5 deg
-    double distance_tolerance_ = 0.04;     // 4 cm
+    double yaw_tolerance_      = 0.2;  // 0.5 deg
+    double distance_tolerance_ = 0.2;     // 4 cm
     double k_stanley_          = 1.5;      // Stanley cross-track gain
-    double orient_threshold_   = 0.0873;   // 5 deg — orient-in-place threshold
+    double orient_threshold_   = 0.2;   // 5 deg — orient-in-place threshold
     double wheel_base_         = 1.08;     // m — Ackermann wheel base
 
     // Phase tracking

@@ -289,7 +289,7 @@
 </joint>
 
 <joint name="lidar_fork_joint" type="fixed">
-  <origin xyz="-0.45 -0.235 0.05" rpy="0 0 3.14159265"/>
+  <origin xyz="-0.45 -0.235 0.05" rpy="0 0 0"/>
   <parent link="base_link"/>
   <child link="lidar_fork_1"/>
 </joint>

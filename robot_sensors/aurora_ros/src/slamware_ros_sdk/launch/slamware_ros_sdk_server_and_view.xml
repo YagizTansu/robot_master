@@ -1,6 +1,11 @@
 <launch>
+  <arg name="slamware_new_map" default="false" />
+
   <group>
-    <include file="$(find-pkg-share slamware_ros_sdk)/launch/slamware_ros_sdk_server_node.xml" />
+    <include file="$(find-pkg-share slamware_ros_sdk)/launch/slamware_ros_sdk_server_node.xml">
+      <arg name="slamware_new_map" value = "$(var slamware_new_map)" />
+    </include> 
+
   </group>
 
   <node name="rviz2" pkg="rviz2" exec="rviz2" args="-d $(find-pkg-share slamware_ros_sdk)/rviz/slamware_ros_sdk_server_node.rviz" />

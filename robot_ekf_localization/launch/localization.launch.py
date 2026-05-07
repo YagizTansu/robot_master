@@ -25,7 +25,7 @@ def generate_launch_description():
         name='ekf_local_node',
         output='screen',
         parameters=[
-            os.path.join(pkg_dir, 'config', 'ekf_local.yaml'),
+            os.path.join(pkg_dir, 'config', 'ekf_slamware.yaml'),
             {'use_sim_time': use_sim_time},
         ],
         remappings=[
@@ -63,6 +63,6 @@ def generate_launch_description():
     return LaunchDescription([
         declare_use_sim_time,
         ekf_local_node,
-        amcl_node,
-        amcl_lifecycle_manager,
+        # amcl_node,
+        # amcl_lifecycle_manager,
     ])

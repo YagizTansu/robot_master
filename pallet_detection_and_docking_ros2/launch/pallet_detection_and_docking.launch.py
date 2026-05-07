@@ -51,5 +51,8 @@ def generate_launch_description():
                 'yaw_tolerance':      0.05,
                 'distance_tolerance': 0.05,
             }],
+            remappings=[
+                ('/cmd_vel', '/cmd_vel_raw'),
+            ],
         ),
     ])

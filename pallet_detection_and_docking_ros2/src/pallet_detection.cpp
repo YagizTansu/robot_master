@@ -76,10 +76,10 @@ public:
 
         // Define static polygon points in the map frame
         pallet_station_area = {
-            createPoint(-1.25, -0.8, 0.0),
-            createPoint(-1.25,  0.8, 0.0),
-            createPoint(-2.75,  0.8, 0.0),
-            createPoint(-2.75, -0.8, 0.0)};
+            createPoint( 0.05, 7.8, 0.0),
+            createPoint( 0.05, 9.4, 0.0),
+            createPoint(-1.45, 9.4, 0.0),
+            createPoint(-1.45, 7.8, 0.0)};
 
         RCLCPP_INFO(this->get_logger(), "Pallet Detection Node Started...");
     }
