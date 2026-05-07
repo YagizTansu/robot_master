@@ -1,0 +1,8 @@
+# Cluster parameters (replaces ROS1 dynamic_reconfigure ClusterConfig.cfg)
+# Runtime update: ros2 param set /pallet_detection <param_name> <value>
+
+pallet_detection:
+  ros__parameters:
+    cluster_tolerance: 0.25
+    min_pallet_cluster_size: 10
+    max_pallet_cluster_size: 2000
