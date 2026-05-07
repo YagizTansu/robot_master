@@ -26,12 +26,16 @@ ekf_local_node:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
 
     odom0: /odom_kinco
-    # pose:  x, y  → integre pozisyon  (true)
-    #        yaw   → KAPALI: integre pose yaw EKF'e hatayı kilitleyor
-    #                Yaw kaynağı sadece twist vyaw'dan geliyor (daha sağlıklı)
+    # SADECE hız (twist) fuse edilir — pose (x,y) DEVRE DIŞI
+    # Sebep: robot_localization belgesi "aynı sensörden pose VE velocity ikisi birden
+    # fuse edilmemeli; bağımsızlık varsayımını ihlal eder, kovaryansı aşırı sıkılaştırır"
+    # der. Pose fusion aktifken EKF tekerlek odometrisinin absolute pozuna kilitlenir;
+    # AMCL'nin map→odom düzeltmesi kayarak uygulanır — görünür kayma tam bu sebepten.
+    # Sadece twist fuse edince EKF pozisyonu hız integralinden gelir, process noise
+    # çalışır ve AMCL düzeltmeleri daha temiz yansır.
     # twist: vx    → anlık ileri hız   (true)
     #        vyaw  → açısal hız        (true)
-    odom0_config: [true,  true,  false,
+    odom0_config: [false, false, false,
                    false, false, false,
                    true,  false, false,
                    false, false, true,
@@ -39,16 +43,12 @@ ekf_local_node:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
-    # Ani tekerlek kayması / Gazebo odometry sıçramasını reddet (Mahalanobis mesafesi)
-    odom0_pose_rejection_threshold: 5.0
+    # Pose fusion kapalı olduğundan pose_rejection_threshold geçersiz
     odom0_twist_rejection_threshold: 2.0
 
+    # imu0: /imu/data — DEVRE DIŞI (topic mevcut değil)
+    # Aktif etmek için aşağıdaki satırları uncomment edin:
     # imu0: /imu/data
-    # # Sadece angular_velocity.z (gyroscope) fuse edilir.
-    # # Orientation fuse edilmez → Gazebo orientation_covariance = 0 (güvenilmez).
-    # # Linear_acceleration fuse edilmez → dönüşte centripetal ivme pozisyon drift'i yapar.
-    # # IMU robot gövdesinin GERÇEK açısal hızını ölçer — tekerlek kinematikten bağımsız.
-    # # Bu sayede steering geçiş sırasında (gövde dönmüyorsa IMU=0) EKF sahte yaw entegre etmez.
     # imu0_config: [false, false, false,
     #               false, false, false,
     #               false, false, false,

@@ -1,28 +1,28 @@
 amcl:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
 
     # ── Particle filter ────────────────────────────────────────────────────
-    min_particles: 3000
-    max_particles: 10000
-    kld_err: 0.01
-    kld_z: 0.999
+    min_particles: 500         # İyi lokalize olunca filtre küçülür → hızlı yakınsama
+    max_particles: 5000        # Kaybolunca yeterince partikül açılır
+    kld_err: 0.05              # Gevşetildi: daha az partikül → daha hızlı yakınsama
+    kld_z: 0.99
     update_min_d: 0.02        # (m) bu kadar hareket etince güncelle
     update_min_a: 0.02        # (rad) bu kadar dönünce güncelle
-    resample_interval: 1
-    pf_err: 0.01
-    pf_z: 0.999
+    resample_interval: 2       # Her 2 güncellemede bir resample → partikül tükenmesi önlenir
+    pf_err: 0.05
+    pf_z: 0.99
 
     # ── Lazer modeli ───────────────────────────────────────────────────────
     laser_model_type: likelihood_field_prob
     laser_max_range: 20.0
     laser_min_range: 0.1
     max_beams: 720
-    z_hit: 0.90
+    z_hit: 0.75          # Düşürüldü: scan tam uyuşmasa da partiküller ölmesin
     z_short: 0.05
     z_max: 0.05
-    z_rand: 0.05
-    sigma_hit: 0.05
+    z_rand: 0.15         # Artırıldı: bilinmeyen engellerden gelen gürültüye tolerans
+    sigma_hit: 0.15      # Artırıldı: daha geniş Gauss → yanlış konumda da hayatta kalsın
     lambda_short: 0.1
     likelihood_field_dsmax: 2.0
 
@@ -52,9 +52,18 @@ amcl:
       y: 0.0
       z: 0.0
       yaw: 0.0
+    # Başlangıç kovaryansı: partiküller bu varyans kadar yayılarak başlar
+    # Çok sıkı → gerçek konum bu alandan dışarıdaysa hiç partikül olmaz
+    # Çok geniş → yakınsama yavaşlar; ±0.7m XY, ±28° yaw dengeli bir seçim
+    initial_cov_xx: 0.5        # x varyansı (m²) → ±0.7 m
+    initial_cov_yy: 0.5        # y varyansı (m²) → ±0.7 m
+    initial_cov_aa: 0.25       # yaw varyansı (rad²) → ±28°
 
     # ── Diğer ─────────────────────────────────────────────────────────────
     transform_tolerance: 0.5
-    recovery_alpha_slow: 0.0
-    recovery_alpha_fast: 0.0
+    # recovery_alpha: Robot kaybolduğunda rastgele partikül enjekte eder
+    # slow → uzun vadeli scan kalitesini izler, fast → ani bozulmayı yakalar
+    # fast > slow koşulunda random partikül enjeksiyonu tetiklenir
+    recovery_alpha_slow: 0.001
+    recovery_alpha_fast: 0.1
     save_pose_rate: 0.5
