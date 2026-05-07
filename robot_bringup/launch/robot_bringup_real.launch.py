@@ -19,14 +19,7 @@ def generate_launch_description():
         description='Slamware mapper IP address',
     ))
 
-    slamware_new_map = LaunchConfiguration('slamware_new_map', default='false')
-    ld.add_action(DeclareLaunchArgument(
-        'slamware_new_map',
-        default_value='false',
-        description='Whether upload map or not',
-    ))
-
-    homing = LaunchConfiguration('homing')
+    homing = LaunchConfiguration('homing', default='false')
     ld.add_action(DeclareLaunchArgument(
         'homing',
         default_value='false',
@@ -54,11 +47,11 @@ def generate_launch_description():
         description='RPLidar S2E frame_id',
     ))
 
-    lidar_scan_mode = LaunchConfiguration('lidar_scan_mode', default='DenseBoost')
+    lidar_scan_mode = LaunchConfiguration('lidar_scan_mode', default='Sensitivity')
     ld.add_action(DeclareLaunchArgument(
         'lidar_scan_mode',
-        default_value='DenseBoost',
-        description='RPLidar S2E scan mode'
+        default_value='Sensitivity',
+        description='RPLidar S2E scan mode',
     ))
 
     lidar_scan_frequency = LaunchConfiguration('lidar_scan_frequency', default='10')
@@ -105,11 +98,10 @@ def generate_launch_description():
 
     slamware_launch = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
-            os.path.join(slamware_ros_sdk_dir, 'launch', 'slamware_ros_sdk_server_and_view.xml')
+            os.path.join(slamware_ros_sdk_dir, 'launch', 'slamware_ros_sdk_server_node.xml')
         ),
         launch_arguments={
             'ip_address': slamware_ip,
-            'slamware_new_map': slamware_new_map
         }.items(),
     )
 

@@ -177,14 +177,4 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
-install(
-  DIRECTORY maps/
-  DESTINATION share/${PROJECT_NAME}/maps
-)
-
-install(PROGRAMS
-  scripts/slamware_bridge.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 ament_package()

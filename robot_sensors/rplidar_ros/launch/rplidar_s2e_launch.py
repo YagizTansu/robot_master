@@ -13,9 +13,9 @@ from launch_ros.actions import Node
 def generate_launch_description():
     channel_type = LaunchConfiguration('channel_type', default='udp')
     udp_ip = LaunchConfiguration('udp_ip', default='192.168.11.2')
-    udp_port = LaunchConfiguration('udp_port', default='8089')
+    udp_port = LaunchConfiguration('udp_port', default='8089') 
     frame_id = LaunchConfiguration('frame_id', default='laser')
-    inverted = LaunchConfiguration('inverted', default='true')
+    inverted = LaunchConfiguration('inverted', default='false')
     angle_compensate = LaunchConfiguration('angle_compensate', default='true')
     scan_mode = LaunchConfiguration('scan_mode', default='Standard')
     scan_frequency = LaunchConfiguration('scan_frequency', default='10')
@@ -68,7 +68,7 @@ def generate_launch_description():
                          'inverted': inverted,
                          'angle_compensate': angle_compensate,
                          'scan_mode': scan_mode}],
-            remappings=[('/scan', '/lidar_fork_1/scan')],
+            remappings=[('/scan', '/lidar/scan')],
             output='screen'),
     ])
 

@@ -9,11 +9,11 @@ import os
 def generate_launch_description():
     pkg_dir = get_package_share_directory('robot_ekf_localization')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
 
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='false',
+        default_value='true',
         description='Use simulation (Gazebo) clock'
     )
 
@@ -25,7 +25,7 @@ def generate_launch_description():
         name='ekf_local_node',
         output='screen',
         parameters=[
-            os.path.join(pkg_dir, 'config', 'ekf_slamware.yaml'),
+            os.path.join(pkg_dir, 'config', 'ekf_local.yaml'),
             {'use_sim_time': use_sim_time},
         ],
         remappings=[
@@ -63,6 +63,6 @@ def generate_launch_description():
     return LaunchDescription([
         declare_use_sim_time,
         ekf_local_node,
-        # amcl_node,
-        # amcl_lifecycle_manager,
+        amcl_node,
+        amcl_lifecycle_manager,
     ])

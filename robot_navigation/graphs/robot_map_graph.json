@@ -2,42 +2,717 @@
   "graph": {
     "nodes": [
       {
-        "id": "node_1",
-        "x": -0.6,
-        "y": -3.76,
+        "id": "node_n5_0",
+        "x": -4.61,
+        "y": 12.18,
         "z": 0,
         "type": "waypoint",
-        "description": "Node 1"
+        "description": "Nokta -5,0"
       },
       {
-        "id": "node_2",
-        "x": 0.583,
-        "y": -0.534,
+        "id": "node_n1_0",
+        "x": 1.29,
+        "y": 12.03,
         "z": 0,
         "type": "waypoint",
-        "description": "Node 2"
+        "description": "Nokta -1,0"
       },
       {
-        "id": "node_3",
-        "x": 1.16,
-        "y": 8,
+        "id": "node_0_0",
+        "x": 8.35,
+        "y": 11.84,
         "z": 0,
         "type": "waypoint",
-        "description": "Node 3"
+        "description": "Merkez"
+      },
+      {
+        "id": "node_4_0",
+        "x": 21.11,
+        "y": 11.68,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Nokta 4,0"
+      },
+      {
+        "id": "node_n5_n5",
+        "x": -4.73,
+        "y": 6.31,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Nokta -5,-5"
+      },
+      {
+        "id": "node_0_5",
+        "x": 14.69,
+        "y": 11.82,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Nokta 0,5"
+      },
+      {
+        "id": "node_1761960948668",
+        "x": -4.49,
+        "y": 20.59,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 16"
+      },
+      {
+        "id": "node_1761960952109",
+        "x": -4.34,
+        "y": 23.62,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 17"
+      },
+      {
+        "id": "node_1761961052436",
+        "x": -4.61,
+        "y": 16.76,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 17"
+      },
+      {
+        "id": "node_1776089105971",
+        "x": -4.75,
+        "y": 3.77,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 11"
+      },
+      {
+        "id": "node_1776089109572",
+        "x": -4.94,
+        "y": -0.34,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 12"
+      },
+      {
+        "id": "node_1776089112298",
+        "x": -5.02,
+        "y": -4.43,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 13"
+      },
+      {
+        "id": "node_1776089115868",
+        "x": -5.17,
+        "y": -8.3,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 14"
+      },
+      {
+        "id": "node_1776089118453",
+        "x": -5.37,
+        "y": -12.18,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 15"
+      },
+      {
+        "id": "node_1776089121848",
+        "x": -14.33,
+        "y": -0.07,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 16"
+      },
+      {
+        "id": "node_1776089124165",
+        "x": -23.06,
+        "y": -0.07,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 17"
+      },
+      {
+        "id": "node_1776089127308",
+        "x": -14.56,
+        "y": -4.3,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 18"
+      },
+      {
+        "id": "node_1776089129680",
+        "x": -23.09,
+        "y": -4.34,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 19"
+      },
+      {
+        "id": "node_1776089132909",
+        "x": -14.68,
+        "y": -12.45,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 20"
+      },
+      {
+        "id": "node_1776089140151",
+        "x": -14.52,
+        "y": -8.3,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 22"
+      },
+      {
+        "id": "node_1776089143062",
+        "x": -23.06,
+        "y": -8.14,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 23"
+      },
+      {
+        "id": "node_1776089147611",
+        "x": -5.58,
+        "y": -16.06,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 24"
+      },
+      {
+        "id": "node_1776089149951",
+        "x": -14.89,
+        "y": -16.09,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 25"
+      },
+      {
+        "id": "node_1776089152639",
+        "x": -22.96,
+        "y": -16.25,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 26"
+      },
+      {
+        "id": "node_1776089154897",
+        "x": -5.54,
+        "y": -20.41,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 27"
+      },
+      {
+        "id": "node_1776089157319",
+        "x": -15.04,
+        "y": -20.26,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 28"
+      },
+      {
+        "id": "node_1776089160059",
+        "x": -23.07,
+        "y": -20.09,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 29"
+      },
+      {
+        "id": "node_1776089174593",
+        "x": 0.63,
+        "y": -22.53,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 30"
+      },
+      {
+        "id": "node_1776089178517",
+        "x": 6.8,
+        "y": -20.59,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 31"
+      },
+      {
+        "id": "node_1776089180824",
+        "x": 6.83,
+        "y": -16.21,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 32"
+      },
+      {
+        "id": "node_1776089183276",
+        "x": 6.68,
+        "y": -12.38,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 33"
+      },
+      {
+        "id": "node_1776089185118",
+        "x": 6.99,
+        "y": -8.22,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 34"
+      },
+      {
+        "id": "node_1776089187526",
+        "x": 6.87,
+        "y": -4.34,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 35"
+      },
+      {
+        "id": "node_1776089189403",
+        "x": 6.83,
+        "y": -0.27,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 36"
+      },
+      {
+        "id": "node_1776089191201",
+        "x": 14.75,
+        "y": -0.31,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 37"
+      },
+      {
+        "id": "node_1776089192937",
+        "x": 21.92,
+        "y": -0.31,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 38"
+      },
+      {
+        "id": "node_1776089200279",
+        "x": 14.98,
+        "y": -20.71,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 39"
+      },
+      {
+        "id": "node_1776089203805",
+        "x": 22.12,
+        "y": -20.48,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 40"
+      },
+      {
+        "id": "node_1776089206440",
+        "x": 14.59,
+        "y": -8.3,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 41"
+      },
+      {
+        "id": "node_1776089208409",
+        "x": 21.92,
+        "y": -8.41,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 42"
+      },
+      {
+        "id": "node_1776089210417",
+        "x": 14.59,
+        "y": -12.84,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 43"
+      },
+      {
+        "id": "node_1776089212571",
+        "x": 21.71,
+        "y": -12.41,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 44"
+      },
+      {
+        "id": "node_1776089224246",
+        "x": -10.56,
+        "y": 20.02,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 45"
+      },
+      {
+        "id": "node_1776089226535",
+        "x": -17.74,
+        "y": 20.18,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 46"
+      },
+      {
+        "id": "node_1776089231658",
+        "x": 1.38,
+        "y": 19.44,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 47"
+      },
+      {
+        "id": "node_1776089233920",
+        "x": 8.56,
+        "y": 20.14,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 48"
+      },
+      {
+        "id": "node_1776089236081",
+        "x": 14.26,
+        "y": 19.98,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 49"
+      },
+      {
+        "id": "node_1776089250075",
+        "x": 20.9,
+        "y": 19.66,
+        "z": 0,
+        "type": "waypoint",
+        "description": "Node 49"
       }
     ],
     "edges": [
       {
-        "from": "node_1",
-        "to": "node_2",
+        "from": "node_n5_n5",
+        "to": "node_n5_0",
+        "cost": 5,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_n1_0",
+        "to": "node_0_0",
         "cost": 1,
         "bidirectional": true,
         "max_speed": 0.5
       },
       {
-        "from": "node_2",
-        "to": "node_3",
-        "cost": 1,
+        "from": "node_0_0",
+        "to": "node_0_5",
+        "cost": 5,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1761960952109",
+        "to": "node_1761960948668",
+        "cost": 2.27,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_n1_0",
+        "to": "node_n5_0",
+        "cost": 2.02,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_0_5",
+        "to": "node_4_0",
+        "cost": 2.87,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1761961052436",
+        "to": "node_1761960948668",
+        "cost": 3.1,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_n5_0",
+        "to": "node_1761961052436",
+        "cost": 3.94,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089192937",
+        "to": "node_1776089191201",
+        "cost": 7.17,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089191201",
+        "to": "node_1776089189403",
+        "cost": 7.92,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089189403",
+        "to": "node_1776089187526",
+        "cost": 4.07,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089208409",
+        "to": "node_1776089206440",
+        "cost": 7.33,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089206440",
+        "to": "node_1776089185118",
+        "cost": 7.6,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089187526",
+        "to": "node_1776089185118",
+        "cost": 3.88,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089185118",
+        "to": "node_1776089183276",
+        "cost": 4.16,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089210417",
+        "to": "node_1776089183276",
+        "cost": 7.92,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089212571",
+        "to": "node_1776089210417",
+        "cost": 7.13,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089180824",
+        "to": "node_1776089183276",
+        "cost": 3.84,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089180824",
+        "to": "node_1776089178517",
+        "cost": 4.38,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089200279",
+        "to": "node_1776089178517",
+        "cost": 8.18,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089203805",
+        "to": "node_1776089200279",
+        "cost": 7.14,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089174593",
+        "to": "node_1776089178517",
+        "cost": 6.47,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089174593",
+        "to": "node_1776089154897",
+        "cost": 6.53,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089154897",
+        "to": "node_1776089147611",
+        "cost": 4.34,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089147611",
+        "to": "node_1776089118453",
+        "cost": 3.89,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089115868",
+        "to": "node_1776089118453",
+        "cost": 3.89,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089112298",
+        "to": "node_1776089115868",
+        "cost": 3.88,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089109572",
+        "to": "node_1776089112298",
+        "cost": 4.08,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089105971",
+        "to": "node_1776089109572",
+        "cost": 4.11,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_n5_n5",
+        "to": "node_1776089105971",
+        "cost": 2.54,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089250075",
+        "to": "node_1776089236081",
+        "cost": 6.65,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089236081",
+        "to": "node_1776089233920",
+        "cost": 5.7,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089233920",
+        "to": "node_1776089231658",
+        "cost": 7.21,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089231658",
+        "to": "node_1761960948668",
+        "cost": 5.98,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1761960948668",
+        "to": "node_1776089224246",
+        "cost": 6.1,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089226535",
+        "to": "node_1776089224246",
+        "cost": 7.18,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089124165",
+        "to": "node_1776089121848",
+        "cost": 8.73,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089109572",
+        "to": "node_1776089121848",
+        "cost": 9.39,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089129680",
+        "to": "node_1776089127308",
+        "cost": 8.53,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089112298",
+        "to": "node_1776089127308",
+        "cost": 9.54,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089115868",
+        "to": "node_1776089140151",
+        "cost": 9.35,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089140151",
+        "to": "node_1776089143062",
+        "cost": 8.54,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089132909",
+        "to": "node_1776089118453",
+        "cost": 9.31,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089149951",
+        "to": "node_1776089147611",
+        "cost": 9.31,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089152639",
+        "to": "node_1776089149951",
+        "cost": 8.07,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089160059",
+        "to": "node_1776089157319",
+        "cost": 8.03,
+        "bidirectional": true,
+        "max_speed": 0.5
+      },
+      {
+        "from": "node_1776089157319",
+        "to": "node_1776089154897",
+        "cost": 9.5,
         "bidirectional": true,
         "max_speed": 0.5
       }

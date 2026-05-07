@@ -27,10 +27,10 @@ def generate_launch_description():
         vda5050_adapter_dir = None
 
     # Launch argument: simulation vs real robot
-    use_sim_time = LaunchConfiguration("use_sim_time", default="false")
+    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     ld.add_action(DeclareLaunchArgument(
         "use_sim_time",
-        default_value="false",
+        default_value="true",
         description="Use simulation clock (true for Gazebo, false for real robot)",
     ))
 
@@ -44,7 +44,7 @@ def generate_launch_description():
 
     # Map
     if robot_slam_dir and os.path.exists(os.path.join(robot_slam_dir, 'maps', 'warehouse_map.yaml')):
-        map_file = os.path.join(robot_slam_dir, 'maps', 'lab_last.yaml')
+        map_file = os.path.join(robot_slam_dir, 'maps', 'warehouse_map.yaml')
     else:
         map_file = os.path.join(robot_navigation_dir, 'map', 'aws_warehouse.yaml')
 
@@ -155,7 +155,7 @@ def generate_launch_description():
     ld.add_action(lifecycle_manager_map)
     ld.add_action(graph_visualizer_node)
     # ld.add_action(robot_database_launch)
-    # if vda5050_launch:
-    #     ld.add_action(vda5050_launch)
+    if vda5050_launch:
+        ld.add_action(vda5050_launch)
 
     return ld
