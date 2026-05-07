@@ -1,6 +1,6 @@
 amcl:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
 
     # ── Particle filter ────────────────────────────────────────────────────
     min_particles: 500         # İyi lokalize olunca filtre küçülür → hızlı yakınsama
@@ -17,7 +17,7 @@ amcl:
     laser_model_type: likelihood_field_prob
     laser_max_range: 20.0
     laser_min_range: 0.1
-    max_beams: 720
+    max_beams: 360        # 720→360: Her scan'de yarı beam → AMCL gecikme yarıya iner
     z_hit: 0.75          # Düşürüldü: scan tam uyuşmasa da partiküller ölmesin
     z_short: 0.05
     z_max: 0.05
@@ -60,7 +60,7 @@ amcl:
     initial_cov_aa: 0.25       # yaw varyansı (rad²) → ±28°
 
     # ── Diğer ─────────────────────────────────────────────────────────────
-    transform_tolerance: 0.5
+    transform_tolerance: 0.2   # 0.5→0.2: max_beams azaldı, AMCL artık daha hızlı; stale TF toleransını düş
     # recovery_alpha: Robot kaybolduğunda rastgele partikül enjekte eder
     # slow → uzun vadeli scan kalitesini izler, fast → ani bozulmayı yakalar
     # fast > slow koşulunda random partikül enjeksiyonu tetiklenir

@@ -99,7 +99,7 @@ controller_server:
       steering_samples: 11    # odd → includes δ=0 (straight ahead)
       rotate_samples:   7     # rotate-in-place candidates (↑ more options at corners)
       rotate_max_vel:   0.7   # rad/s — max angular vel for in-place rotation (↑ faster corner recovery)
-      heading_error_trigger: 0.25  # rad (~14°) — threshold to add rotate samples (earlier corner detection)
+      heading_error_trigger: 0.05  # rad (~3°) — switch to rotation-only mode above this; must be nearly aligned before forward motion
       sim_time:         2.0   # s   — trajectory simulation horizon
       sim_granularity:  0.1   # s   — 20 steps per trajectory
       control_duration: 0.5   # s   — DWA velocity window = acc × control_duration
@@ -108,8 +108,8 @@ controller_server:
       # path_distance == heading_alignment: at corners both pull equally.
       # On straights path_distance dominates (heading error ≈ 0 → heading term ≈ 0).
       # At corners heading_alignment rises → equal competition → robot turns early.
-      path_distance_weight:    100.0   # Penalise deviation from global path  [1/m]  (↑↑ tight lateral on straights)
-      heading_alignment_weight: 60.0   # Align with path tangent direction    [1/rad]  (= path weight → corners turn properly)
+      path_distance_weight:     300.0   # Penalise deviation from global path  [1/m]  (↑↑ tight lateral on straights)
+      heading_alignment_weight: 250.0   # Align with path tangent direction    [1/rad]  (= path weight → corners turn properly)
       goal_distance_weight:     24.0   # Pull toward local carrot point       [1/m]
       obstacle_weight:           1.0   # Penalise costmap inflation cost
       velocity_reward_weight:    1.0   # Reward forward speed  (↓↓ can no longer buy lateral deviation)

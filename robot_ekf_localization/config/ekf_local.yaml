@@ -17,8 +17,6 @@ ekf_local_node:
     publish_acceleration: false
     print_diagnostics: false
 
-    # IMU ve odom mesajları aynı anda gelmeyebilir; geçmişi tutarak
-    # geç gelen mesajları doğru zaman dilimine yerleştirir
     smooth_lagged_data: true
     history_length: 0.3
 
@@ -26,15 +24,7 @@ ekf_local_node:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
 
     odom0: /odom_kinco
-    # SADECE hız (twist) fuse edilir — pose (x,y) DEVRE DIŞI
-    # Sebep: robot_localization belgesi "aynı sensörden pose VE velocity ikisi birden
-    # fuse edilmemeli; bağımsızlık varsayımını ihlal eder, kovaryansı aşırı sıkılaştırır"
-    # der. Pose fusion aktifken EKF tekerlek odometrisinin absolute pozuna kilitlenir;
-    # AMCL'nin map→odom düzeltmesi kayarak uygulanır — görünür kayma tam bu sebepten.
-    # Sadece twist fuse edince EKF pozisyonu hız integralinden gelir, process noise
-    # çalışır ve AMCL düzeltmeleri daha temiz yansır.
-    # twist: vx    → anlık ileri hız   (true)
-    #        vyaw  → açısal hız        (true)
+
     odom0_config: [false, false, false,
                    false, false, false,
                    true,  false, false,
@@ -43,8 +33,7 @@ ekf_local_node:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
-    # Pose fusion kapalı olduğundan pose_rejection_threshold geçersiz
-    odom0_twist_rejection_threshold: 2.0
+    odom0_twist_rejection_threshold: 3.0
 
     # imu0: /imu/data — DEVRE DIŞI (topic mevcut değil)
     # Aktif etmek için aşağıdaki satırları uncomment edin:
@@ -75,7 +64,7 @@ ekf_local_node:
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,
-      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.05,  0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.08,  0.0,   0.0,   0.0,  # vyaw: 0.05→0.08, IMU yok → yaw sadece odom'dan, AMCL düzeltmelerine daha açık olsun
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    0.0,    0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.015
