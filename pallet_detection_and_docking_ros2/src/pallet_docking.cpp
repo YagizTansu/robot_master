@@ -891,7 +891,7 @@ private:
             geometry_msgs::msg::Pose nearest_pallet_pose = pallet_poses.poses[0];
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
-                robot_pose, nearest_pallet_pose, -0.80);
+                robot_pose, nearest_pallet_pose, 0.80);
             this->PublishDockingPathProcess(path);
             this->WaitRobotFinishedToDockingProcess();
 
