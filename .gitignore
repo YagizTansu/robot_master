@@ -1,1 +1,3 @@
-.vscoderobot_sensors/aurora_ros/src/slamware_ros_sdk/maps/*.stcm
+.vscode
+robot_sensors/aurora_ros/src/slamware_ros_sdk/maps/*.stcm
+robot_slam/maps/*.posegraph
