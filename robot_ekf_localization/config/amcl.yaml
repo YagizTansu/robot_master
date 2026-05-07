@@ -1,6 +1,6 @@
 amcl:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
 
     # ── Particle filter ────────────────────────────────────────────────────
     min_particles: 3000

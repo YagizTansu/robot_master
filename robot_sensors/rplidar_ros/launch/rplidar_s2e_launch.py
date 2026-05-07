@@ -15,9 +15,9 @@ def generate_launch_description():
     udp_ip = LaunchConfiguration('udp_ip', default='192.168.11.2')
     udp_port = LaunchConfiguration('udp_port', default='8089') 
     frame_id = LaunchConfiguration('frame_id', default='laser')
-    inverted = LaunchConfiguration('inverted', default='false')
+    inverted = LaunchConfiguration('inverted', default='true')
     angle_compensate = LaunchConfiguration('angle_compensate', default='true')
-    scan_mode = LaunchConfiguration('scan_mode', default='Standard')
+    scan_mode = LaunchConfiguration('scan_mode', default='DenseBoost')
     scan_frequency = LaunchConfiguration('scan_frequency', default='10')
 
     return LaunchDescription([
