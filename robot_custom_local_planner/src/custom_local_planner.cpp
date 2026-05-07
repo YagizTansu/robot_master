@@ -266,7 +266,14 @@ geometry_msgs::msg::TwistStamped CustomLocalPlanner::computeVelocityCommands(
   // Sample & evaluate trajectories
   auto trajectories = generateTrajectories(pose, velocity);
   if (trajectories.empty()) {
-    RCLCPP_WARN(logger_, "No valid trajectories generated");
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
+      "No valid trajectories generated — "
+      "robot pose: (%.2f, %.2f), pruned plan size: %zu, "
+      "costmap frame: %s, plan frame: %s",
+      pose.pose.position.x, pose.pose.position.y,
+      pruned_plan_.poses.size(),
+      costmap_ros_->getGlobalFrameID().c_str(),
+      global_plan_.header.frame_id.c_str());
     return cmd_vel;
   }
 
@@ -585,6 +592,9 @@ double CustomLocalPlanner::calculateObstacleScore(const Trajectory & traj)
     if (c == nav2_costmap_2d::LETHAL_OBSTACLE ||
         c == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
     {
+      RCLCPP_DEBUG(logger_,
+        "Trajectory blocked at (%.2f, %.2f) cost=%d",
+        p.pose.position.x, p.pose.position.y, static_cast<int>(c));
       return std::numeric_limits<double>::infinity();
     }
 
@@ -593,7 +603,12 @@ double CustomLocalPlanner::calculateObstacleScore(const Trajectory & traj)
   }
 
   if (valid_steps == 0) {
-    return std::numeric_limits<double>::infinity();
+    // All poses were outside the local costmap window — cannot confirm collision,
+    // so return a neutral score (0) consistent with the "don't penalise outside
+    // costmap" intent above.  Returning inf here would wrongly discard every
+    // trajectory whenever the costmap doesn't cover the robot's starting cell
+    // (e.g. localisation drift on the real robot).
+    return 0.0;
   }
 
   return total_cost / valid_steps;

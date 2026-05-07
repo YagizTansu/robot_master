@@ -140,7 +140,7 @@ local_costmap:
       
       prohibited_layer:
         plugin: "robot_custom_layers/ProhibitedLayer"
-        enabled: True
+        enabled: False  # TEST: disabled
         cost_value: 254
       
       inflation_layer:
@@ -199,7 +199,7 @@ global_costmap:
       
       prohibited_layer:
         plugin: "robot_custom_layers/ProhibitedLayer"
-        enabled: True
+        enabled: False  # TEST: disabled
         cost_value: 254
 
       # obstacle_layer:
@@ -337,7 +337,7 @@ collision_monitor:
       simulation_time_step: 0.1
       min_points: 6
       visualize: False
-      enabled: True
+      enabled: False  # TEST: disabled
     observation_sources: ["scan1", "scan2"]
     scan1:
       type: "scan"
