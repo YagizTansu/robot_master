@@ -132,8 +132,8 @@ local_costmap:
       robot_base_frame: base_link
       use_sim_time: false
       rolling_window: true
-      width: 5
-      height: 5
+      width: 10
+      height: 10
       resolution: 0.06
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
       plugins: ["static_layer", "prohibited_layer", "inflation_layer"]
@@ -323,7 +323,7 @@ collision_monitor:
     cmd_vel_out_topic: "cmd_vel"
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.2
-    source_timeout: 1.0
+    source_timeout: 5.0  # TEST: artırıldı
     base_shift_correction: True
     stop_pub_timeout: 2.0
     # Polygons represent zone around the robot for "stop", "slowdown" and "limit" action types,
@@ -344,10 +344,10 @@ collision_monitor:
       topic: "/lidar_left_1/scan"
       min_height: 0.05
       max_height: 2.0
-      enabled: True
+      enabled: False  # TEST: disabled
     scan2:
       type: "scan"
       topic: "/lidar_right_1/scan"
       min_height: 0.05
       max_height: 2.0
-      enabled: True
+      enabled: False  # TEST: disabled
