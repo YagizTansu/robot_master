@@ -1,10 +1,10 @@
 bt_navigator:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /odometry/local
+    odom_topic: /fgo/odometry
     bt_loop_duration: 10
     default_server_timeout: 20
     wait_for_service_timeout: 1000
@@ -45,14 +45,12 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     controller_frequency: 20.0
     # CRITICAL: must match the actual odom publisher topic.
-    # Default is 'odom', but this robot publishes to '/odometry'.
-    # Without this, controller always sees velocity=0, DWA window is stuck at
-    # [0, acc*control_dt] = [0, 0.125 m/s] and robot never exceeds ~0.1 m/s.
-    odom_topic: "/odometry/local"
+    # FGO publishes optimized odometry to /fgo/odometry.
+    odom_topic: "/fgo/odometry"
     transform_tolerance: 0.5
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
@@ -124,13 +122,13 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      use_sim_time: false
+      use_sim_time: true
       enable_stamped_cmd_vel: false
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: map
       robot_base_frame: base_link
-      use_sim_time: false
+      use_sim_time: true
       rolling_window: true
       width: 10
       height: 10
@@ -185,13 +183,13 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      use_sim_time: false
+      use_sim_time: true
       enable_stamped_cmd_vel: false
       update_frequency: 1.0  # Çok düşük frekans - minimal kullanım
       publish_frequency: 1.0  # Çok düşük frekans - minimal kullanım
       global_frame: map
       robot_base_frame: base_link
-      use_sim_time: false
+      use_sim_time: true
       footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
       resolution: 0.06
       track_unknown_space: true
@@ -237,10 +235,10 @@ global_costmap:
 
 planner_server:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     #expected_planner_frequency: 20.0
-    use_sim_time: false
+    use_sim_time: true
     planner_plugins: ["GraphPlanner"]
     
     # Graph-based planner - Node ve edge'lerden oluşan graph ile path planning
@@ -254,7 +252,7 @@ planner_server:
 
 smoother_server:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     smoother_plugins: ["simple_smoother"]
     simple_smoother:
@@ -265,7 +263,7 @@ smoother_server:
 
 behavior_server:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     local_costmap_topic: local_costmap/costmap_raw
     global_costmap_topic: global_costmap/costmap_raw
@@ -294,11 +292,11 @@ behavior_server:
 
 robot_state_publisher:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
 
 velocity_smoother:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     smoothing_frequency: 20.0
     scale_velocities: False
@@ -308,14 +306,13 @@ velocity_smoother:
     min_velocity: [-0.5, 0.0, -1.0]
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
-    odom_topic: "/odometry/local"
-    odom_duration: 0.1
+    odom_topic: "/fgo/odometry"
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
 
 collision_monitor:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     enable_stamped_cmd_vel: false
     base_frame_id: "base_link"
     odom_frame_id: "map"

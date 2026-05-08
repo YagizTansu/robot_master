@@ -14,7 +14,7 @@ def generate_launch_description():
     # Package directories
     robot_navigation_dir = get_package_share_directory('robot_navigation')
     robot_database_dir   = get_package_share_directory('robot_database')
-    robot_ekf_loc_dir    = get_package_share_directory('robot_ekf_localization')
+    fgo_dir              = get_package_share_directory('factor_graph_optimization')
 
     try:
         robot_slam_dir = get_package_share_directory('robot_slam')
@@ -27,10 +27,10 @@ def generate_launch_description():
         vda5050_adapter_dir = None
 
     # Launch argument: simulation vs real robot
-    use_sim_time = LaunchConfiguration("use_sim_time", default="false")
+    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     ld.add_action(DeclareLaunchArgument(
         "use_sim_time",
-        default_value="false",
+        default_value="true",
         description="Use simulation clock (true for Gazebo, false for real robot)",
     ))
 
@@ -140,10 +140,10 @@ def generate_launch_description():
     else:
         vda5050_launch = None
 
-    # ── EKF Localization (EKF local + EKF global + AMCL) ─────────────────────
+    # ── FGO Localization (map→odom TF + odom→base_link TF) ───────────────────
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(robot_ekf_loc_dir, 'launch', 'localization.launch.py')
+            os.path.join(fgo_dir, 'launch', 'fgo.launch.py')
         ),
         launch_arguments={'use_sim_time': use_sim_time}.items(),
     )

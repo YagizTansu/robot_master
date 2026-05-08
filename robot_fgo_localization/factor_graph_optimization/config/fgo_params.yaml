@@ -10,13 +10,13 @@ fgo_node:
     # ── Sensor Toggles ──────────────────────────────────────
     sensors:
       enable_odom:  true
-      enable_imu:   true
+      enable_imu:   false   # IMU devre dışı — sadece odom + lidar kullanılıyor
       enable_lidar: true
       enable_gps:   false   # set to true when GPS hardware is present
 
     # ── Topic Names ─────────────────────────────────────────
     topics:
-      odom_topic:             "/tricycle_controller/odom"  # doğrudan ros2_controllers çıktısı
+      odom_topic:             "/odom_kinco"  # kinco_bridge / sim_kinco_bridge tarafından yayınlanan odom topic
       imu_topic:              "/imu/data"       # ros_gz_bridge: gz → /imu/data
       scan_match_pose_topic:  "/scan_match_pose"
       initial_pose_topic:     "/initialpose"
