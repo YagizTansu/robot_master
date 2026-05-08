@@ -57,6 +57,27 @@ POSITION_SIDE = 360 * STEERING_GEAR / 4   # motor degrees for 90 deg actual
 MAX_ANGLE     = POSITION_ZERO + POSITION_SIDE
 MIN_ANGLE     = POSITION_ZERO - POSITION_SIDE
 
+# Odometry covariance matrices (6x6, row-major, 36 elements)
+# Kullanılmayan eksenler (z, roll, pitch) için 1e9 → EKF o kanalı ignore eder.
+# pose: [x, y, z, roll, pitch, yaw]
+ODOM_POSE_COV = [
+    0.05, 0.0,  0.0,  0.0,  0.0,  0.0,
+    0.0,  0.05, 0.0,  0.0,  0.0,  0.0,
+    0.0,  0.0,  1e9,  0.0,  0.0,  0.0,
+    0.0,  0.0,  0.0,  1e9,  0.0,  0.0,
+    0.0,  0.0,  0.0,  0.0,  1e9,  0.0,
+    0.0,  0.0,  0.0,  0.0,  0.0,  0.1,
+]
+# twist: [vx, vy, vz, vroll, vpitch, vyaw]
+ODOM_TWIST_COV = [
+    0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+    0.0,  1e9,  0.0,  0.0,  0.0,  0.0,
+    0.0,  0.0,  1e9,  0.0,  0.0,  0.0,
+    0.0,  0.0,  0.0,  1e9,  0.0,  0.0,
+    0.0,  0.0,  0.0,  0.0,  1e9,  0.0,
+    0.0,  0.0,  0.0,  0.0,  0.0,  0.05,
+]
+
 # Serial read delays — at 38400 baud, 10 bytes ~ 2.6 ms.
 # 5 ms gives comfortable margin without killing throughput.
 SERIAL_SLEEP  = 0.003   # s — after write, before read
@@ -802,6 +823,9 @@ def main():
         odom.twist.twist.linear.x  = linear_velocity
         odom.twist.twist.linear.y  = 0.0
         odom.twist.twist.angular.z = angular_velocity
+
+        odom.pose.covariance  = ODOM_POSE_COV
+        odom.twist.covariance = ODOM_TWIST_COV
 
         odom_pub.publish(odom)
 
