@@ -262,6 +262,9 @@ smoother_server:
       tolerance: 1.0e-10
       max_its: 1000
       do_refinement: true
+      refinement_num: 5    # default 2 — daha fazla refinement geçişi
+      w_smooth: 0.6        # default 0.3 — smoothness ağırlığı (↑ daha smooth)
+      w_data: 0.1          # default 0.2 — orijinal path'e bağlılık (↓ daha özgür)
 
 behavior_server:
   ros__parameters:
