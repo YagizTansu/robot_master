@@ -10,6 +10,14 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def get_filter_config():
+    return os.path.join(
+        get_package_share_directory('rplidar_ros'),
+        'config',
+        'scan_angle_filter.yaml'
+    )
+
+
 def generate_launch_description():
     channel_type = LaunchConfiguration('channel_type', default='udp')
     udp_ip = LaunchConfiguration('udp_ip', default='192.168.11.2')
@@ -68,7 +76,18 @@ def generate_launch_description():
                          'inverted': inverted,
                          'angle_compensate': angle_compensate,
                          'scan_mode': scan_mode}],
-            remappings=[('/scan', '/lidar_fork_1/scan')],
+            remappings=[('/scan', '/lidar_fork_1/scan_raw')],
+            output='screen'),
+
+        Node(
+            package='laser_filters',
+            executable='scan_to_scan_filter_chain',
+            name='scan_angle_filter',
+            parameters=[get_filter_config()],
+            remappings=[
+                ('scan', '/lidar_fork_1/scan_raw'),
+                ('scan_filtered', '/lidar_fork_1/scan'),
+            ],
             output='screen'),
     ])
 
