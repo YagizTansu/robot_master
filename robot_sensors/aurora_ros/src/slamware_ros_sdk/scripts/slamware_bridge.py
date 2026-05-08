@@ -191,21 +191,19 @@ class ROSNode(Node):
 
     def callback_odom(self, msg):
         geo_odom = PoseWithCovarianceStamped()
-        geo_odom.header          = msg.header
-        geo_odom.pose.pose       = msg.pose.pose
-        geo_odom.pose.covariance = msg.pose.covariance
-
+        geo_odom          = msg
+        geo_odom.header.frame_id = "lidar_top"
         # Step 1: Convert quaternion to euler angles (we only care about yaw)
-        rotation_matrix = quat.quat2mat([geo_odom.pose.pose.orientation.w, 
-                                         geo_odom.pose.pose.orientation.x, 
-                                         geo_odom.pose.pose.orientation.y, 
-                                         geo_odom.pose.pose.orientation.z])
-        _, _, yaw = euler.mat2euler(rotation_matrix)
+        # rotation_matrix = quat.quat2mat([geo_odom.pose.pose.orientation.w, 
+        #                                  geo_odom.pose.pose.orientation.x, 
+        #                                  geo_odom.pose.pose.orientation.y, 
+        #                                  geo_odom.pose.pose.orientation.z])
+        # _, _, yaw = euler.mat2euler(rotation_matrix)
         # Step 2: Calculate new position by moving 0.55 meters forward in the direction of yaw
-        forward_distance = - 0.85  # distance between center of robot and slamware in meters
-        sideway_distance = 0.0  # distance between center of robot and slamware in meters
-        new_x = geo_odom.pose.pose.position.x + forward_distance * math.cos(yaw) - sideway_distance * math.sin(yaw)
-        new_y = geo_odom.pose.pose.position.y + forward_distance * math.sin(yaw) + sideway_distance * math.cos(yaw)
+        # forward_distance = - 0.85  # distance between center of robot and slamware in meters
+        # sideway_distance = 0.0  # distance between center of robot and slamware in meters
+        # new_x = geo_odom.pose.pose.position.x + forward_distance * math.cos(yaw) - sideway_distance * math.sin(yaw)
+        # new_y = geo_odom.pose.pose.position.y + forward_distance * math.sin(yaw) + sideway_distance * math.cos(yaw)
 
         # rotates yaw, disable here if slamware is facing robot front
         # new_orientation = self.rotate_yaw_by_180(yaw)
@@ -214,9 +212,8 @@ class ROSNode(Node):
         # geo_odom.pose.pose.orientation.y = new_orientation[2]
         # geo_odom.pose.pose.orientation.z = new_orientation[3]
 
-        geo_odom.pose.pose.position.x = new_x
-        geo_odom.pose.pose.position.y = new_y
-        geo_odom.header.frame_id = "odom"
+        # geo_odom.pose.pose.position.x = new_x
+        # geo_odom.pose.pose.position.y = new_y
         self.pub_odom_with_cov.publish(geo_odom)
 
     def callback_left_image(self, msg):
