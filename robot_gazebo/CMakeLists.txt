@@ -73,3 +73,10 @@ install(
     scripts/amcl_pose_to_odom.py
   DESTINATION lib/${PROJECT_NAME}
 )
+
+# Slamware simülasyon köprüsü
+install(
+  PROGRAMS
+    scripts/sim_slamware_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+)
