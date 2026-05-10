@@ -45,7 +45,6 @@
 
     <include>
       <uri>model://lab_new</uri>
-      <pose> -0.700000, 46.950001 0 0 0 0</pose>
     </include>
 
   </world>

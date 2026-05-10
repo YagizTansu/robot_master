@@ -168,18 +168,6 @@ class KincoDriveNode(Node):
         traction_msg.data = [self._current_wheel_radps]
         self._traction_pub.publish(traction_msg)
 
-        # Debug: her 100 tickte bir (2s) durum logu
-        self._loop_count += 1
-        if self._loop_count % 100 == 0:
-            at_90_flag = abs(abs(self._current_steering) - math.pi / 2) < self._STEERING_READY_TOL
-            self.get_logger().info(
-                f'STATUS | steer_cur={math.degrees(self._current_steering):.1f}° '
-                f'steer_cmd={math.degrees(self._slewed_steering):.1f}° '
-                f'steer_target={math.degrees(self._target_steering):.1f}° | '
-                f'traction={self._current_wheel_radps:.3f} rad/s | '
-                f'rotate={self._rotate_in_place} at_90={at_90_flag}')
-
-
 def main():
     rclpy.init()
     node = KincoDriveNode()
