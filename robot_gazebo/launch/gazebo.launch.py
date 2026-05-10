@@ -61,8 +61,8 @@ def generate_launch_description():
         arguments=[
             '-name', 'boa_new_urdf',
             '-topic', 'robot_description',
-            '-x', '7.25',
-            '-y', '-29.90',
+            '-x', '5.0',
+            '-y', '-26.0',
             '-z', '0.15',
         ],
         output='screen'
