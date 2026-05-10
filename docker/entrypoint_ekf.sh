@@ -4,7 +4,7 @@
 # Container: ekf_sim  |  ROS_DOMAIN_ID=1
 #
 # Launch order:
-#   1. robot_bringup.launch.py      — Gazebo + robot state publisher
+#   1. robot_bringup_sim.launch.py  — Gazebo + robot state publisher
 #   2. robot_navigation_amcl_ekf    — Map server + AMCL + EKF
 #   3. localization_benchmark_amcl  — amcl_pose_to_odom + benchmark dashboard
 #   4. RViz with comparison config
@@ -34,7 +34,7 @@ echo "======================================================"
 
 # ── 1. Simulation bringup (Gazebo + robot) ────────────────────────────────────
 echo "[1/4] Launching Gazebo + robot bringup ..."
-ros2 launch robot_bringup robot_bringup.launch.py &
+ros2 launch robot_bringup robot_bringup_sim.launch.py &
 BRINGUP_PID=$!
 
 # Wait for Gazebo to be up (clock topic indicates sim is running)

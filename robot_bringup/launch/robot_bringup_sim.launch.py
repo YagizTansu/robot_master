@@ -6,7 +6,7 @@ import os
 
 
 def generate_launch_description():
-    boa_dir = get_package_share_directory('boa_new_urdf_description')
+    robot_gazebo_dir = get_package_share_directory('robot_gazebo')
     map2gazebo_dir = get_package_share_directory('map2gazebo')
 
     lab_new_world = os.path.join(
@@ -19,7 +19,7 @@ def generate_launch_description():
     # Include gazebo.launch.py with the lab_new world
     robot_warehouse_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(boa_dir, 'launch', 'gazebo.launch.py')
+            os.path.join(robot_gazebo_dir, 'launch', 'gazebo.launch.py')
         ),
         launch_arguments={'world': lab_new_world}.items()
     )

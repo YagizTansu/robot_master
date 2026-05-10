@@ -203,7 +203,7 @@ Default BT: `navigate_w_replanning_simple.xml`
 
 ```bash
 # Full robot bringup (hardware + localization + navigation)
-ros2 launch robot_bringup robot_bringup.launch.py
+ros2 launch robot_bringup robot_bringup_sim.launch.py
 
 # Navigation
 ros2 launch robot_bringup robot_navigation.launch.py

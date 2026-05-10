@@ -4,7 +4,7 @@
 # Container: fgo_sim  |  ROS_DOMAIN_ID=2
 #
 # Launch order:
-#   1. robot_bringup.launch.py      — Gazebo + robot state publisher
+#   1. robot_bringup_sim.launch.py  — Gazebo + robot state publisher
 #   2. robot_navigation.launch.py   — FGO + Map Server + Nav2 + RViz + Database
 #                                     (enable_vda5050:=false — MQTT not needed in sim)
 #   3. localization_benchmark       — FGO benchmark dashboard
@@ -34,7 +34,7 @@ echo "======================================================"
 
 # ── 1. Simulation bringup (Gazebo + robot) ────────────────────────────────────
 echo "[1/3] Launching Gazebo + robot bringup ..."
-ros2 launch robot_bringup robot_bringup.launch.py &
+ros2 launch robot_bringup robot_bringup_sim.launch.py &
 BRINGUP_PID=$!
 
 # Wait for Gazebo clock
