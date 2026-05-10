@@ -56,9 +56,9 @@ class GraphVisualizerNode(Node):
             marker.action = Marker.ADD
             
             # Pozisyon
-            marker.pose.position.x = node['x']
-            marker.pose.position.y = node['y']
-            marker.pose.position.z = node['z'] + 0.2  # Biraz yükselt
+            marker.pose.position.x = float(node['x'])
+            marker.pose.position.y = float(node['y'])
+            marker.pose.position.z = float(node['z']) + 0.2  # Biraz yükselt
             marker.pose.orientation.w = 1.0
             
             # Boyut
@@ -99,9 +99,9 @@ class GraphVisualizerNode(Node):
             text_marker.type = Marker.TEXT_VIEW_FACING
             text_marker.action = Marker.ADD
             
-            text_marker.pose.position.x = node['x']
-            text_marker.pose.position.y = node['y']
-            text_marker.pose.position.z = node['z'] + 0.6  # Text üstte
+            text_marker.pose.position.x = float(node['x'])
+            text_marker.pose.position.y = float(node['y'])
+            text_marker.pose.position.z = float(node['z']) + 0.6  # Text üstte
             text_marker.pose.orientation.w = 1.0
             
             text_marker.text = node['id']
@@ -135,14 +135,14 @@ class GraphVisualizerNode(Node):
             
             # Başlangıç ve bitiş noktaları
             p1 = Point()
-            p1.x = from_node['x']
-            p1.y = from_node['y']
-            p1.z = from_node['z'] + 0.1
+            p1.x = float(from_node['x'])
+            p1.y = float(from_node['y'])
+            p1.z = float(from_node['z']) + 0.1
             
             p2 = Point()
-            p2.x = to_node['x']
-            p2.y = to_node['y']
-            p2.z = to_node['z'] + 0.1
+            p2.x = float(to_node['x'])
+            p2.y = float(to_node['y'])
+            p2.z = float(to_node['z']) + 0.1
             
             marker.points = [p1, p2]
             

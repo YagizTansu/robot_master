@@ -126,10 +126,6 @@ class KincoDriveNode(Node):
         # Traction artık timer loop'ta yayınlanıyor (rotate_in_place bekleme mantığı orada)
         self._target_wheel_radps = (motor_rpm / TRACTION_GEAR) * (2.0 * math.pi / 60.0)
 
-        self.get_logger().info(
-            f'cmd_vel: vx={msg.linear.x:.3f} wz={msg.angular.z:.3f} '
-            f'→ steer_target={math.degrees(steering_angle):.1f}° '
-            f'rpm={motor_rpm:.1f} rotate={rotate_in_place}')
 
     # Steering ±90°'ye ulaştı mı tolerans kontrolü
     _STEERING_READY_TOL = 0.1  # rad (~6°)
