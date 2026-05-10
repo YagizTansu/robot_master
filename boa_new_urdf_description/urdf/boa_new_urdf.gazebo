@@ -81,6 +81,7 @@
   <self_collide>true</self_collide>
   <sensor name="lidar_fork_sensor" type="gpu_lidar">
     <topic>/lidar_fork_1/scan</topic>
+    <gz_frame_id>lidar_fork_1</gz_frame_id>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -122,6 +123,7 @@
   <self_collide>true</self_collide>
   <sensor name="lidar_left_sensor" type="gpu_lidar">
     <topic>/lidar_left_1/scan</topic>
+    <gz_frame_id>lidar_left_1</gz_frame_id>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -163,6 +165,7 @@
   <self_collide>true</self_collide>
   <sensor name="lidar_right_sensor" type="gpu_lidar">
     <topic>/lidar_right_1/scan</topic>
+    <gz_frame_id>lidar_right_1</gz_frame_id>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -204,6 +207,7 @@
   <self_collide>true</self_collide>
   <sensor name="lidar_top_sensor" type="gpu_lidar">
     <topic>/lidar_top/scan</topic>
+    <gz_frame_id>lidar_top</gz_frame_id>
     <update_rate>10</update_rate>
     <lidar>
       <scan>
