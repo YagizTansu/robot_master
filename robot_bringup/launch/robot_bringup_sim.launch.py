@@ -7,14 +7,12 @@ import os
 
 def generate_launch_description():
     robot_gazebo_dir = get_package_share_directory('robot_gazebo')
-    map2gazebo_dir = get_package_share_directory('map2gazebo')
 
     lab_new_world = os.path.join(
-        map2gazebo_dir, 'worlds', 'lab_new.sdf'
+        robot_gazebo_dir, 'worlds', 'lab_new.sdf'
     )
 
-    # Make lab_new model (with the STL mesh) visible to Gazebo
-    map2gazebo_models = os.path.join(map2gazebo_dir, 'models')
+    robot_gazebo_models = os.path.join(robot_gazebo_dir, 'models')
 
     # Include gazebo.launch.py with the lab_new world
     robot_warehouse_launch = IncludeLaunchDescription(
@@ -25,7 +23,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', map2gazebo_models),
+        SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', robot_gazebo_models),
         robot_warehouse_launch,
     ])
 
