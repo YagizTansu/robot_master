@@ -3,7 +3,7 @@ from launch_ros.substitutions import FindPackageShare
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, EnvironmentVariable
 import os
 import xacro
 from ament_index_python.packages import get_package_share_directory
@@ -54,10 +54,17 @@ def generate_launch_description():
     )
 
     # ── Spawn robot into Gazebo ──────────────────────────────────────────────
+    # x/y set to the center of lab_new map (origin=[0.7, -46.95], size=262x682, res=0.05)
     urdf_spawn_node = Node(
         package='ros_gz_sim',
         executable='create',
-        arguments=['-name', 'boa_new_urdf', '-topic', 'robot_description', '-z', '0.15'],
+        arguments=[
+            '-name', 'boa_new_urdf',
+            '-topic', 'robot_description',
+            '-x', '7.25',
+            '-y', '-29.90',
+            '-z', '0.15',
+        ],
         output='screen'
     )
 
@@ -128,9 +135,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_world_arg,
-        # Make warehouse models visible to Gazebo
+        # Make warehouse models visible to Gazebo (append to any pre-existing path)
         SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH',
-                               os.path.join(robot_gazebo_dir, 'models')),
+                               [os.path.join(robot_gazebo_dir, 'models'), ':',
+                                EnvironmentVariable('GZ_SIM_RESOURCE_PATH', default_value='')]),
         robot_state_publisher_node,
         gazebo,
         urdf_spawn_node,

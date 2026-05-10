@@ -55,14 +55,32 @@
   <self_collide>true</self_collide>
 </gazebo>
 
+<!-- Sensor link'lerinin fixed joint'leri Gazebo tarafından merge edilmemeli.
+     preserveFixedJoint=true olmadan tüm sensörler base_footprint'e merge
+     edilerek robotun kendi gövdesini tarar, veri gelmez. -->
+<gazebo reference="lidar_fork_joint">
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+<gazebo reference="lidar_left_joint">
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+<gazebo reference="lidar_right_joint">
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+<gazebo reference="slamware_joint">
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+<gazebo reference="imu_joint">
+  <preserveFixedJoint>true</preserveFixedJoint>
+</gazebo>
+
 <gazebo reference="lidar_fork_1">
   <material>${body_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
   <sensor name="lidar_fork_sensor" type="gpu_lidar">
-    <topic>lidar_fork_1/scan</topic>
-    <gz_frame_id>lidar_fork_1</gz_frame_id>
+    <topic>/lidar_fork_1/scan</topic>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -103,8 +121,7 @@
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
   <sensor name="lidar_left_sensor" type="gpu_lidar">
-    <topic>lidar_left_1/scan</topic>
-    <gz_frame_id>lidar_left_1</gz_frame_id>
+    <topic>/lidar_left_1/scan</topic>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -145,8 +162,7 @@
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
   <sensor name="lidar_right_sensor" type="gpu_lidar">
-    <topic>lidar_right_1/scan</topic>
-    <gz_frame_id>lidar_right_1</gz_frame_id>
+    <topic>/lidar_right_1/scan</topic>
     <update_rate>15</update_rate>
     <lidar>
       <scan>
@@ -187,8 +203,7 @@
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
   <sensor name="lidar_top_sensor" type="gpu_lidar">
-    <topic>lidar_top/scan</topic>
-    <gz_frame_id>lidar_top</gz_frame_id>
+    <topic>/lidar_top/scan</topic>
     <update_rate>10</update_rate>
     <lidar>
       <scan>
@@ -200,11 +215,14 @@
           <max_angle>3.14159265</max_angle>
         </horizontal>
         <vertical>
-          <!-- 16 channel, ±15° vertical FOV (VLP-16 style) -->
-          <samples>16</samples>
+          <!-- 2D lidar (gerçek Aurora gibi tek düzlem) →
+               vertical.samples=1 ile Gazebo gz.msgs.LaserScan yayınlar.
+               samples>1 olursa gz.msgs.PointCloudPacked yayınlanır ve
+               LaserScan bridge üzerinden veri gelmez. -->
+          <samples>1</samples>
           <resolution>1</resolution>
-          <min_angle>-0.26179938</min_angle>
-          <max_angle>0.26179938</max_angle>
+          <min_angle>0</min_angle>
+          <max_angle>0</max_angle>
         </vertical>
       </scan>
       <range>
@@ -226,8 +244,7 @@
 
 <gazebo reference="imu_link">
   <sensor name="imu_sensor" type="imu">
-    <topic>imu/data</topic>
-    <gz_frame_id>imu_link</gz_frame_id>
+    <topic>/imu/data</topic>
     <update_rate>100</update_rate>
     <imu>
       <angular_velocity>

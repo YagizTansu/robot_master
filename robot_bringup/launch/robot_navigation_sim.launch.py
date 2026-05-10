@@ -45,7 +45,6 @@ from launch_ros.actions import Node
 def generate_launch_description():
     ld = LaunchDescription()
 
-    robot_gazebo_dir     = get_package_share_directory('robot_gazebo')
     robot_ekf_loc_dir    = get_package_share_directory('robot_ekf_localization')
     robot_navigation_dir = get_package_share_directory('robot_navigation')
 
@@ -61,14 +60,6 @@ def generate_launch_description():
         default_value='true',
         description='Gazebo simülasyon saatini kullan',
     ))
-
-    # ── Gazebo + ros_gz_bridge + ground_truth_publisher ───────────────────────
-    gazebo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(robot_gazebo_dir, 'launch', 'robot_dynamic_warehouse.launch.py')
-        ),
-        launch_arguments={'use_sim_time': use_sim_time}.items(),
-    )
 
     # ── Slamware-benzeri lokalizasyon (sim) ───────────────────────────────────
     # sim_kinco_bridge + sim_slamware_bridge + EKF(ekf_slamware.yaml) + static TF
@@ -150,8 +141,7 @@ def generate_launch_description():
         output='screen',
     )
 
-    ld.add_action(gazebo_launch)
-    ld.add_action(localization_sim_launch)
+    ld.add_action(localization_sim_launch)  # sim_slamware_bridge + EKF + static TF map→odom
     ld.add_action(custom_navigation_launch)
     ld.add_action(map_server_node)
     ld.add_action(lifecycle_manager_map)

@@ -87,6 +87,10 @@ def generate_launch_description():
         ],
         remappings=[
             ('odometry/filtered', '/odometry/local'),
+            # RViz "2D Pose Estimate" → EKF iç durumunu sıfırla
+            # Gerçek robotda slamware_bridge.py bu komutu alarak Slamware'i
+            # yeniden lokalize eder; simülasyonda doğrudan EKF'e iletiyoruz.
+            ('set_pose', '/initialpose'),
         ],
     )
 

@@ -98,7 +98,12 @@ class MapConverter():
                 mesh.fix_normals()
             meshes.append(mesh)
         mesh = trimesh.util.concatenate(meshes)
-        mesh.remove_duplicate_faces()
+        # Remove duplicate faces (API changed in newer trimesh versions)
+        if hasattr(mesh, 'remove_duplicate_faces'):
+            mesh.remove_duplicate_faces()
+        else:
+            unique_faces = np.unique(np.sort(mesh.faces, axis=1), axis=0)
+            mesh.faces = unique_faces
         # mesh will still have internal faces.  Would be better to get
         # all duplicate faces and remove both of them, since duplicate faces
         # are guaranteed to be internal faces
@@ -124,8 +129,13 @@ if __name__ == "__main__":
         help='Mesh output directory'
     )
 
+    parser.add_argument(
+        '--height', type=float, default=2.0,
+        help='Height of wall boxes in metres (default: 2.0)'
+    )
+
     option = parser.parse_args()
 
-    Converter = MapConverter(option.map_dir, option.export_dir)
+    Converter = MapConverter(option.map_dir, option.export_dir, height=option.height)
     Converter.map_callback()
     print('Conversion Done')

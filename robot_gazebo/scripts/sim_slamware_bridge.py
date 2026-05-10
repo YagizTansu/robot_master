@@ -28,6 +28,7 @@ EKF (ekf_slamware.yaml) her iki ortamda DEĞİŞMEDEN çalışır:
 """
 
 import math
+import time
 
 import numpy as np
 import rclpy
@@ -54,6 +55,13 @@ class SimSlamwareBridge(Node):
         self._nyaw  = self.get_parameter('noise_yaw_std').get_parameter_value().double_value
         self._noisy = self.get_parameter('use_noise').get_parameter_value().bool_value
 
+        # /initialpose alındığında ground truth yerine bu pose kullanılır (saniye)
+        # Slamware'in relocalization süresini taklit eder (~2-3 s)
+        self.declare_parameter('initialpose_lock_sec', 3.0)
+        self._lock_sec   = self.get_parameter('initialpose_lock_sec').get_parameter_value().double_value
+        self._locked_pose: PoseWithCovarianceStamped | None = None
+        self._lock_until: float = 0.0  # monotonic time
+
         # ── Publisher / Subscriber ────────────────────────────────────────────
         self._pub = self.create_publisher(
             PoseWithCovarianceStamped, '/slamware_odom', 10)
@@ -61,14 +69,48 @@ class SimSlamwareBridge(Node):
         self.create_subscription(
             Odometry, '/ground_truth/odom', self._gt_cb, 10)
 
+        # RViz "2D Pose Estimate" → geçici olarak ground truth yerine bu pose yayınla
+        self.create_subscription(
+            PoseWithCovarianceStamped, '/initialpose', self._initialpose_cb, 10)
+
         self.get_logger().info(
             f'sim_slamware_bridge başlatıldı — '
             f'gürültü: {"açık" if self._noisy else "kapalı"} '
             f'(σx={self._nx:.3f} m, σy={self._ny:.3f} m, '
             f'σyaw={math.degrees(self._nyaw):.2f}°)')
 
+    # ── /initialpose callback ──────────────────────────────────────────────────
+    def _initialpose_cb(self, msg: PoseWithCovarianceStamped):
+        """
+        RViz 2D Pose Estimate alındığında:
+        - Gerçek robot: slamware_bridge.py → Slamware relocalization service
+        - Simülasyon: ground truth yerine bu pose'u lock_sec süre yayınla,
+          ardından EKF ground truth ile kendi kendine düzelir.
+        """
+        out = PoseWithCovarianceStamped()
+        out.header.stamp    = self.get_clock().now().to_msg()
+        out.header.frame_id = 'odom'
+        out.pose            = msg.pose  # kullanıcının frame'i map≡odom, doğrudan kullan
+
+        self._locked_pose = out
+        self._lock_until  = time.monotonic() + self._lock_sec
+        self.get_logger().info(
+            f'Initial pose alındı → {self._lock_sec:.1f} s boyunca yayınlanacak '
+            f'(x={msg.pose.pose.position.x:.2f}, y={msg.pose.pose.position.y:.2f})')
+
     # ── Callback ──────────────────────────────────────────────────────────────
     def _gt_cb(self, msg: Odometry):
+        # Eğer /initialpose kilidi aktifse ground truth yerine kullanıcı pose'u yayınla
+        if self._locked_pose is not None and time.monotonic() < self._lock_until:
+            self._locked_pose.header.stamp = msg.header.stamp
+            self._pub.publish(self._locked_pose)
+            return
+
+        # Kilit bitti, ground truth'a dön
+        if self._locked_pose is not None:
+            self._locked_pose = None
+            self.get_logger().info('Initial pose kilidi sona erdi, ground truth devrede.')
+
         out = PoseWithCovarianceStamped()
         out.header.stamp = msg.header.stamp
         # Slamware bridge'le aynı davranış: frame_id = "odom"

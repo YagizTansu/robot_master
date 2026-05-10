@@ -46,6 +46,11 @@ def generate_launch_description():
             "/imu@sensor_msgs/msg/Imu@gz.msgs.IMU",
             "/sick_lidar0/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
             "/sick_lidar1/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
+            # URDF'deki lidar sensörlerini ROS'a köprüle
+            "/lidar_top/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
+            "/lidar_fork_1/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
+            "/lidar_left_1/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
+            "/lidar_right_1/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
             "/kinect/depth@sensor_msgs/msg/Image@gz.msgs.Image",
             "/kinect/color@sensor_msgs/msg/Image@gz.msgs.Image",
             "/kinect/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo",
