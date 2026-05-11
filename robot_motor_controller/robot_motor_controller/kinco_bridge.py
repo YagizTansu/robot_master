@@ -712,133 +712,160 @@ def main():
         '/dev/steering_motor', 38400,
         bytesize=8, parity='N', stopbits=1, timeout=0.05)
 
-    # ── Startup (single-threaded, no lock contention yet) ─────────────────
-    drive_health_monitor(traction_motor)
-    drive_health_monitor(steering_motor)
+    # Flush any stale bytes left from a previous run
+    traction_motor.reset_input_buffer()
+    traction_motor.reset_output_buffer()
+    steering_motor.reset_input_buffer()
+    steering_motor.reset_output_buffer()
 
-    set_operation_mode(traction_motor, speed_control)
-    set_speed(traction_motor, 0)
-    encoder_data_reset(steering_motor)
+    try:
+        # ── Startup (single-threaded, no lock contention yet) ─────────────────
+        drive_health_monitor(traction_motor)
+        drive_health_monitor(steering_motor)
 
-    control_word = 0x103F
-    if HOMING:
-        set_operation_mode(steering_motor, homing_mode)
+        set_operation_mode(traction_motor, speed_control)
+        set_speed(traction_motor, 0)
+        encoder_data_reset(steering_motor)
+
+        control_word = 0x103F
+        if HOMING:
+            set_operation_mode(steering_motor, homing_mode)
+            set_controlword(steering_motor, control_word)
+            check_position_reach(steering_motor, steering_lock)
+
+        set_position_speed(steering_motor, 3000)
+        set_position_accel_decel(steering_motor, 50, 50)
+        set_position_accel_decel(traction_motor,  5, 50)
+
+        set_position(steering_motor, actual_to_motor_deg(0))
         set_controlword(steering_motor, control_word)
+        set_operation_mode(steering_motor, position_control)
         check_position_reach(steering_motor, steering_lock)
 
-    set_position_speed(steering_motor, 3000)
-    set_position_accel_decel(steering_motor, 50, 50)
-    set_position_accel_decel(traction_motor,  5, 50)
+        # ── Launch command thread ──────────────────────────────────────────────
+        cmd_thread = threading.Thread(
+            target=command_thread_fn,
+            args=(traction_motor, steering_motor),
+            daemon=True,
+            name="cmd_thread")
+        cmd_thread.start()
+        _node.get_logger().info("Command thread started at 20 Hz")
 
-    set_position(steering_motor, actual_to_motor_deg(0))
-    set_controlword(steering_motor, control_word)
-    set_operation_mode(steering_motor, position_control)
-    check_position_reach(steering_motor, steering_lock)
+        # ── Odometry loop at 50 Hz ────────────────────────────────────────────
+        pos_x, pos_y, pos_theta = 0.0, 0.0, 0.0
+        last_time = _node.get_clock().now()
+        rate      = _node.create_rate(50)
 
-    # ── Launch command thread ──────────────────────────────────────────────
-    cmd_thread = threading.Thread(
-        target=command_thread_fn,
-        args=(traction_motor, steering_motor),
-        daemon=True,
-        name="cmd_thread")
-    cmd_thread.start()
-    _node.get_logger().info("Command thread started at 20 Hz")
+        _node.get_logger().info("Odometry loop started at 50 Hz")
 
-    # ── Odometry loop at 50 Hz ────────────────────────────────────────────
-    pos_x, pos_y, pos_theta = 0.0, 0.0, 0.0
-    last_time = _node.get_clock().now()
-    rate      = _node.create_rate(50)
+        while rclpy.ok():
+            current_time = _node.get_clock().now()
+            dt = (current_time - last_time).nanoseconds * 1e-9
+            last_time = current_time
 
-    _node.get_logger().info("Odometry loop started at 50 Hz")
+            # ── Read sensors — acquire per-port locks independently ────────────
+            with steering_lock:
+                motor_deg   = read_position(steering_motor)
+            with traction_lock:
+                current_rpm = read_speed(traction_motor)
 
-    while rclpy.ok():
-        current_time = _node.get_clock().now()
-        dt = (current_time - last_time).nanoseconds * 1e-9
-        last_time = current_time
+            if motor_deg is None or current_rpm is None:
+                _node.get_logger().warning("Serial read failed — skipping odom cycle")
+                rate.sleep()
+                continue
 
-        # ── Read sensors — acquire per-port locks independently ────────────
-        with steering_lock:
-            motor_deg   = read_position(steering_motor)
-        with traction_lock:
-            current_rpm = read_speed(traction_motor)
+            # Skip stale dt (e.g. first cycle after long pause)
+            if dt > 0.5:
+                rate.sleep()
+                continue
 
-        if motor_deg is None or current_rpm is None:
-            _node.get_logger().warning("Serial read failed — skipping odom cycle")
+            # ── Ackermann odometry kinematics (kingpin offset düzeltmeli) ─────────────
+            actual_steering_deg = (motor_deg - POSITION_ZERO) / STEERING_GEAR
+            steering_angle      = math.radians(actual_steering_deg)
+
+            # Motor shaft RPM -> wheel surface speed (m/s)
+            wheel_rpm   = current_rpm / TRACTION_GEAR
+            wheel_speed = wheel_rpm * math.pi * WHEEL_DIAMETER / 60.0
+
+            linear_velocity  = wheel_speed * math.cos(steering_angle)
+            angular_velocity = math.tan(steering_angle) * linear_velocity / WHEEL_BASE
+
+            # ── Integrate pose ─────────────────────────────────────────────────
+            pos_x     += linear_velocity * math.cos(pos_theta) * dt
+            pos_y     += linear_velocity * math.sin(pos_theta) * dt
+            pos_theta += angular_velocity * dt
+
+            # ── Quaternion from yaw ────────────────────────────────────────────
+            qz = math.sin(pos_theta / 2.0)
+            qw = math.cos(pos_theta / 2.0)
+
+            # ── TF broadcast ───────────────────────────────────────────────────
+            t = TransformStamped()
+            t.header.stamp    = current_time.to_msg()
+            t.header.frame_id = "odom"
+            t.child_frame_id  = "base_footprint"
+            t.transform.translation.x = pos_x
+            t.transform.translation.y = pos_y
+            t.transform.translation.z = 0.0
+            t.transform.rotation.x = 0.0
+            t.transform.rotation.y = 0.0
+            t.transform.rotation.z = qz
+            t.transform.rotation.w = qw
+            # tf_broadcaster.sendTransform(t)
+
+            # ── Odometry message ───────────────────────────────────────────────
+            odom = Odometry()
+            odom.header.stamp    = current_time.to_msg()
+            odom.header.frame_id = "odom"
+            odom.child_frame_id  = "base_footprint"
+
+            odom.pose.pose.position.x    = pos_x
+            odom.pose.pose.position.y    = pos_y
+            odom.pose.pose.position.z    = 0.0
+            odom.pose.pose.orientation.x = 0.0
+            odom.pose.pose.orientation.y = 0.0
+            odom.pose.pose.orientation.z = qz
+            odom.pose.pose.orientation.w = qw
+
+            odom.twist.twist.linear.x  = linear_velocity
+            odom.twist.twist.linear.y  = 0.0
+            odom.twist.twist.angular.z = angular_velocity
+
+            odom.pose.covariance  = ODOM_POSE_COV
+            odom.twist.covariance = ODOM_TWIST_COV
+
+            odom_pub.publish(odom)
+
             rate.sleep()
-            continue
 
-        # Skip stale dt (e.g. first cycle after long pause)
-        if dt > 0.5:
-            rate.sleep()
-            continue
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # ── Shutdown — always reached, even on Ctrl+C ──────────────────────
+        _node.get_logger().info("Shutting down: stopping motors and closing serial ports")
+        try:
+            with traction_lock:
+                set_speed(traction_motor, 0)
+        except Exception:
+            pass
+        try:
+            with steering_lock:
+                set_position(steering_motor, actual_to_motor_deg(0))
+        except Exception:
+            pass
+        try:
+            traction_motor.flush()
+            traction_motor.close()
+        except Exception:
+            pass
+        try:
+            steering_motor.flush()
+            steering_motor.close()
+        except Exception:
+            pass
 
-        # ── Ackermann odometry kinematics (kingpin offset düzeltmeli) ─────────────
-        actual_steering_deg = (motor_deg - POSITION_ZERO) / STEERING_GEAR
-        steering_angle      = math.radians(actual_steering_deg)
-
-        # Motor shaft RPM -> wheel surface speed (m/s)
-        wheel_rpm   = current_rpm / TRACTION_GEAR
-        wheel_speed = wheel_rpm * math.pi * WHEEL_DIAMETER / 60.0
-
-        linear_velocity  = wheel_speed * math.cos(steering_angle)
-        angular_velocity = math.tan(steering_angle) * linear_velocity / WHEEL_BASE
-
-        # ── Integrate pose ─────────────────────────────────────────────────
-        pos_x     += linear_velocity * math.cos(pos_theta) * dt
-        pos_y     += linear_velocity * math.sin(pos_theta) * dt
-        pos_theta += angular_velocity * dt
-
-        # ── Quaternion from yaw ────────────────────────────────────────────
-        qz = math.sin(pos_theta / 2.0)
-        qw = math.cos(pos_theta / 2.0)
-
-        # ── TF broadcast ───────────────────────────────────────────────────
-        t = TransformStamped()
-        t.header.stamp    = current_time.to_msg()
-        t.header.frame_id = "odom"
-        t.child_frame_id  = "base_footprint"
-        t.transform.translation.x = pos_x
-        t.transform.translation.y = pos_y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = 0.0
-        t.transform.rotation.y = 0.0
-        t.transform.rotation.z = qz
-        t.transform.rotation.w = qw
-        # tf_broadcaster.sendTransform(t)
-
-        # ── Odometry message ───────────────────────────────────────────────
-        odom = Odometry()
-        odom.header.stamp    = current_time.to_msg()
-        odom.header.frame_id = "odom"
-        odom.child_frame_id  = "base_footprint"
-
-        odom.pose.pose.position.x    = pos_x
-        odom.pose.pose.position.y    = pos_y
-        odom.pose.pose.position.z    = 0.0
-        odom.pose.pose.orientation.x = 0.0
-        odom.pose.pose.orientation.y = 0.0
-        odom.pose.pose.orientation.z = qz
-        odom.pose.pose.orientation.w = qw
-
-        odom.twist.twist.linear.x  = linear_velocity
-        odom.twist.twist.linear.y  = 0.0
-        odom.twist.twist.angular.z = angular_velocity
-
-        odom.pose.covariance  = ODOM_POSE_COV
-        odom.twist.covariance = ODOM_TWIST_COV
-
-        odom_pub.publish(odom)
-
-        rate.sleep()
-
-    # ── Shutdown ───────────────────────────────────────────────────────────
-    with traction_lock:
-        set_speed(traction_motor, 0)
-    with steering_lock:
-        set_position(steering_motor, actual_to_motor_deg(0))
-
-    _node.destroy_node()
-    rclpy.shutdown()
+        _node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
