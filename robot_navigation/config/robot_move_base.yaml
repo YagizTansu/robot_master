@@ -69,8 +69,8 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.5  # Daha toleranslı
-      yaw_goal_tolerance: 3.14  # Daha toleranslı
+      xy_goal_tolerance: 0.2  # Daha toleranslı
+      yaw_goal_tolerance: 0.4  # Daha toleranslı
         # DWB parameters
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
