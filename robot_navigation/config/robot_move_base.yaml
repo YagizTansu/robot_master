@@ -92,7 +92,7 @@ controller_server:
       max_linear_vel:  0.3    # m/s — forward max
       min_linear_vel:  0.05   # m/s — forward minimum (keeps motor alive)
       max_reverse_vel: 0.0    # m/s — 0 = no reverse; set > 0 to enable
-      max_angular_vel: 0.3    # rad/s — cap for rotate-in-place wz
+      max_angular_vel: 0.2    # rad/s — cap for rotate-in-place wz
 
       # ── Acceleration / rate limits ───────────────────────────────────────────
       # linear_acc_limit = TRACTION_SLEW_RATE(5.0 rad/s²) × WHEEL_RADIUS(0.109 m)
@@ -106,7 +106,7 @@ controller_server:
       linear_samples:   7
       steering_samples: 11    # odd → includes δ=0 (straight ahead)
       rotate_samples:   7     # rotate-in-place candidates (↑ more options at corners)
-      rotate_max_vel:   0.3   # rad/s — max angular vel for in-place rotation
+      rotate_max_vel:   0.2   # rad/s — max angular vel for in-place rotation
       heading_error_trigger: 0.05  # rad (~3°) — switch to rotation-only mode above this; must be nearly aligned before forward motion
       sim_time:         2.0   # s   — trajectory simulation horizon
       sim_granularity:  0.1   # s   — 20 steps per trajectory
@@ -357,9 +357,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 2.0
+    max_rotational_vel: 0.2
     min_rotational_vel: 0.3  # Düşürüldü: dar açılarda recovery spin kilitlenmesin
-    rotational_acc_lim: 3.2
+    rotational_acc_lim: 0.1
 
 robot_state_publisher:
   ros__parameters:
