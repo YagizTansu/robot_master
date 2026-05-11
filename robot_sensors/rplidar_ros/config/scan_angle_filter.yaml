@@ -1,8 +1,8 @@
 scan_angle_filter:
   ros__parameters:
-    scan_filter_chain:
-      - name: angular_bounds_filter
-        type: laser_filters/LaserScanAngularBoundsFilterInPlace
-        params:
-          lower_angle: -1.0472  # -60 derece (radyan)
-          upper_angle: 1.0472   #  60 derece (radyan)
+    filter1:
+      name: angular_bounds_filter
+      type: laser_filters/LaserScanAngularBoundsFilterInPlace
+      params:
+        lower_angle: -1.0472  # -60 derece (radyan)
+        upper_angle: 1.0472   #  60 derece (radyan)
