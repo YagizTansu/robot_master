@@ -138,10 +138,80 @@ def generate_launch_description():
     )
 
 
+    # ── RPLidar C1 Front-Left ─────────────────────────────────────────────────
+    rplidar_c1_front_l_node = Node(
+        package='rplidar_ros',
+        executable='rplidar_node',
+        name='rplidar_node_front_l',
+        parameters=[{
+            'channel_type': 'serial',
+            'serial_port': '/dev/lidar_front_l',
+            'serial_baudrate': 460800,
+            'frame_id': 'lidar_front_l',
+            'inverted': False,
+            'angle_compensate': True,
+            'scan_mode': 'Standard',
+        }],
+        remappings=[('/scan', '/lidar_front_l/scan_raw')],
+        output='screen',
+    )
+
+    scan_filter_front_l_node = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        name='scan_angle_filter_front_l',
+        parameters=[os.path.join(
+            get_package_share_directory('rplidar_ros'),
+            'config', 'scan_angle_filter.yaml'
+        )],
+        remappings=[
+            ('scan', '/lidar_front_l/scan_raw'),
+            ('scan_filtered', '/lidar_front_l/scan'),
+        ],
+        output='screen',
+    )
+
+    # ── RPLidar C1 Front-Right ────────────────────────────────────────────────
+    rplidar_c1_front_r_node = Node(
+        package='rplidar_ros',
+        executable='rplidar_node',
+        name='rplidar_node_front_r',
+        parameters=[{
+            'channel_type': 'serial',
+            'serial_port': '/dev/lidar_front_r',
+            'serial_baudrate': 460800,
+            'frame_id': 'lidar_front_r',
+            'inverted': False,
+            'angle_compensate': True,
+            'scan_mode': 'Standard',
+        }],
+        remappings=[('/scan', '/lidar_front_r/scan_raw')],
+        output='screen',
+    )
+
+    scan_filter_front_r_node = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        name='scan_angle_filter_front_r',
+        parameters=[os.path.join(
+            get_package_share_directory('rplidar_ros'),
+            'config', 'scan_angle_filter.yaml'
+        )],
+        remappings=[
+            ('scan', '/lidar_front_r/scan_raw'),
+            ('scan_filtered', '/lidar_front_r/scan'),
+        ],
+        output='screen',
+    )
+
     ld.add_action(robot_state_publisher_node)
     ld.add_action(kinco_bridge_node)
     ld.add_action(slamware_launch)
     ld.add_action(scan_relay_node)
     ld.add_action(rplidar_s2e_launch)
+    ld.add_action(rplidar_c1_front_l_node)
+    ld.add_action(scan_filter_front_l_node)
+    ld.add_action(rplidar_c1_front_r_node)
+    ld.add_action(scan_filter_front_r_node)
 
     return ld
