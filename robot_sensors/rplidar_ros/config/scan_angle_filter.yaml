@@ -13,8 +13,8 @@ scan_angle_filter_front_l:
       name: angular_bounds_filter_front_l
       type: laser_filters/LaserScanAngularBoundsFilterInPlace
       params:
-        lower_angle: 0.0  # -60 derece
-        upper_angle: 3.14   #  60 derece
+        lower_angle: -3.14  # -60 derece
+        upper_angle: 0.2   #  60 derece
 
 scan_angle_filter_front_r:
   ros__parameters:

@@ -406,16 +406,16 @@ collision_monitor:
       min_points: 4
       visualize: True
       enabled: True
-    observation_sources: ["scan1"]
+    observation_sources: ["scan1", "scan2"]
     scan1:
       type: "scan"
       topic: "/lidar_front_r/scan"
       min_height: 0.05
       max_height: 2.0
       enabled: True
-    # scan2:
-    #   type: "scan"
-    #   topic: "/lidar_front_l/scan"
-    #   min_height: 0.05
-    #   max_height: 2.0
-    #   enabled: True
+    scan2:
+      type: "scan"
+      topic: "/lidar_front_l/scan"
+      min_height: 0.05
+      max_height: 2.0
+      enabled: True
