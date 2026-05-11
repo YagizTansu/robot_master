@@ -361,22 +361,44 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   double d_max_reach = std::min( max_steering_angle_, d_cur + steering_slew_rate_ * control_dt_);
   double d_min_reach = std::max(-max_steering_angle_, d_cur - steering_slew_rate_ * control_dt_);
 
+  // ── At-XY-goal detection ─────────────────────────────────────────────────
+  // When the robot has reached the goal position but not the goal heading,
+  // suppress all forward sampling. Reasons:
+  //   (a) Any forward motion drives the robot away from the goal position.
+  //   (b) path_alignment scoring favours a forward traj that closes a tiny
+  //       lateral offset (5-15 cm) over rotate-in-place — forward wins the
+  //       cost race even though it is the wrong behaviour.
+  //   (c) The drifting robot may escape XY tolerance, triggering a replan.
+  bool at_xy_goal = false;
+  if (!global_plan_.poses.empty()) {
+    const auto & goal_pose = global_plan_.poses.back();
+    double gx = goal_pose.pose.position.x - pose.pose.position.x;
+    double gy = goal_pose.pose.position.y - pose.pose.position.y;
+    at_xy_goal = (std::sqrt(gx * gx + gy * gy) <= xy_goal_tolerance_);
+    if (at_xy_goal) {
+      RCLCPP_DEBUG(logger_, "At XY goal (dist=%.3f m) — yaw-align mode, forward sampling suppressed",
+        std::sqrt(gx * gx + gy * gy));
+    }
+  }
+
   // ── Sample (v, δ) grid ───────────────────────────────────────────────────
   double v_step = (linear_samples_ > 1)
     ? (v_max_reach - v_min_reach) / (linear_samples_ - 1) : 0.0;
   double d_step = (steering_samples_ > 1)
     ? (d_max_reach - d_min_reach) / (steering_samples_ - 1) : 0.0;
 
-  for (int i = 0; i < linear_samples_; ++i) {
-    double v = v_min_reach + i * v_step;
+  if (!at_xy_goal) {
+    for (int i = 0; i < linear_samples_; ++i) {
+      double v = v_min_reach + i * v_step;
 
-    for (int j = 0; j < steering_samples_; ++j) {
-      double delta = d_min_reach + j * d_step;
+      for (int j = 0; j < steering_samples_; ++j) {
+        double delta = d_min_reach + j * d_step;
 
-      auto traj  = simulateTrajectory(pose, v, delta);
-      traj.cost  = scoreTrajectory(traj);
-      if (std::isfinite(traj.cost)) {
-        trajectories.push_back(traj);
+        auto traj  = simulateTrajectory(pose, v, delta);
+        traj.cost  = scoreTrajectory(traj);
+        if (std::isfinite(traj.cost)) {
+          trajectories.push_back(traj);
+        }
       }
     }
   }
@@ -437,8 +459,15 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   }
 
   bool all_forward_blocked = trajectories.empty();
-  if (heading_error > heading_error_trigger_ || all_forward_blocked) {
-    if (all_forward_blocked) {
+  // Rotate-in-place trigger:
+  //   (a) heading_error_trigger exceeded — normal realignment gate.
+  //       DockingPath sets threshold=3.2>π → NEVER triggers.
+  //   (b) all forward trajectories obstacle-blocked AND NOT at_xy_goal.
+  //       MUST exclude at_xy_goal: forward is intentionally suppressed there,
+  //       so all_forward_blocked is always true — firing the obstacle-recovery
+  //       branch would force unwanted rotation even when yaw is already good.
+  if (heading_error > heading_error_trigger_ || (all_forward_blocked && !at_xy_goal)) {
+    if (all_forward_blocked && !at_xy_goal) {
       RCLCPP_WARN(logger_, "All forward trajectories blocked — forcing rotate-in-place");
     }
     double rot_step = (rotate_samples_ > 1)
