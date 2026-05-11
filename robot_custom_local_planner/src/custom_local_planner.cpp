@@ -162,6 +162,8 @@ void CustomLocalPlanner::configure(
           else if (key == "sim_time")                 sim_time_                 = p.as_double();
           else if (key == "linear_acc_limit")         linear_acc_limit_         = p.as_double();
           else if (key == "steering_slew_rate")       steering_slew_rate_       = p.as_double();
+          else if (key == "sim_granularity")          sim_granularity_          = p.as_double();
+          else if (key == "control_duration")         control_dt_               = p.as_double();
           else if (key == "linear_samples")           linear_samples_           = p.as_int();
           else if (key == "steering_samples")         steering_samples_         = p.as_int();
           else if (key == "rotate_samples")           rotate_samples_           = p.as_int();
@@ -302,7 +304,13 @@ double CustomLocalPlanner::estimateCurrentSteering(
   const geometry_msgs::msg::Twist & velocity) const
 {
   if (std::abs(velocity.linear.x) > 0.05) {
-    double delta = std::atan2(velocity.angular.z * wheelbase_, velocity.linear.x);
+    // Use atan(), NOT atan2().
+    // atan2(wz·L, vx) gives the wrong quadrant when vx < 0 (reverse motion):
+    //   e.g. vx=−0.1, wz=−0.05, L=1.0957  →  true δ≈+0.5 rad,
+    //        atan2(−0.054, −0.1)≈−2.64 rad (clamped to −π/2 — completely wrong).
+    // atan(wz·L / vx) always returns a value in (−π/2, π/2) which is the
+    // correct physical range for a front-wheel steering angle.
+    double delta = std::atan(velocity.angular.z * wheelbase_ / velocity.linear.x);
     return std::max(-max_steering_angle_, std::min(max_steering_angle_, delta));
   }
   return current_steering_angle_;
@@ -339,7 +347,12 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
   // That zero-motion trajectory scores best at corners (path_distance≈0 while
   // forward samples diverge from the turning path), causing the robot to freeze.
   // Floor v_min to min_linear_vel_ so the forward grid always produces motion.
-  if (v_min_reach < min_linear_vel_ && v_max_reach >= min_linear_vel_) {
+  // IMPORTANT: only floor the POSITIVE (forward) part of the window.
+  // Applying this floor unconditionally destroys backward velocities in reverse
+  // modes (e.g. DockingPath with max_reverse_vel > 0): when v_min_reach is
+  // negative the condition was still true, so v_min_reach got clamped to
+  // min_linear_vel_ and all backward speeds were silently eliminated.
+  if (v_min_reach >= 0.0 && v_min_reach < min_linear_vel_ && v_max_reach >= min_linear_vel_) {
     v_min_reach = min_linear_vel_;
   }
 
@@ -630,7 +643,9 @@ double CustomLocalPlanner::calculateGoalDistanceScore(const Trajectory & traj)
 
 double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & traj)
 {
-  if (pruned_plan_.poses.size() < 2 || traj.poses.empty()) {
+  // NOTE: size < 2 guard has been intentionally relaxed to size == 0.
+  // The single-pose case is handled in the else branch below using goal yaw.
+  if (pruned_plan_.poses.empty() || traj.poses.empty()) {
     return 0.0;
   }
 
