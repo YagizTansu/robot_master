@@ -38,21 +38,8 @@ def generate_launch_description():
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
         ),
 
-        # ── path_follower ─────────────────────────────────────────────────────
-        Node(
-            package='pallet_detection_and_docking',
-            executable='path_follower',
-            name='path_follower',
-            output='screen',
-            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
-            parameters=[{
-                'linear_speed':       0.2,
-                'angular_speed':      0.5,
-                'yaw_tolerance':      0.05,
-                'distance_tolerance': 0.05,
-            }],
-            remappings=[
-                ('/cmd_vel', '/cmd_vel_raw'),
-            ],
-        ),
+        # path_follower burada başlatılmıyor.
+        # Docking hareketi nav2 controller_server (DockingPath profili) üzerinden
+        # FollowPath action ile yapılıyor. path_follower aynı cmd_vel'e yazarak
+        # çakışma yaratırdı.
     ])

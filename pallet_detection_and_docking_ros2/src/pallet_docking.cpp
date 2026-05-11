@@ -234,6 +234,11 @@ private:
         geometry_msgs::msg::Pose initial_pose = current_pose_;
         pose_mutex_.unlock();
 
+        RCLCPP_INFO(this->get_logger(),
+            "[robotMoveForward] START → speed=%.3f m/s  target dist=%.3f m  "
+            "start x=%.3f y=%.3f",
+            speed, distance, initial_pose.position.x, initial_pose.position.y);
+
         double distance_traveled = 0.0;
         bool moving = true;
 
@@ -269,6 +274,15 @@ private:
         cmd.linear.x = 0.0;
         cmd_vel_pub_->publish(cmd);
 
+        {
+            std::lock_guard<std::mutex> lk(pose_mutex_);
+            RCLCPP_INFO(this->get_logger(),
+                "[robotMoveForward] DONE → traveled=%.3f m / target=%.3f m  "
+                "final x=%.3f y=%.3f  success=%s",
+                distance_traveled, distance,
+                current_pose_.position.x, current_pose_.position.y,
+                (!moving ? "YES" : "NO (cancelled)"));
+        }
         return !moving;
     }
 
@@ -280,6 +294,11 @@ private:
         pose_mutex_.lock();
         geometry_msgs::msg::Pose initial_pose = current_pose_;
         pose_mutex_.unlock();
+
+        RCLCPP_INFO(this->get_logger(),
+            "[robotMoveBackward] START → speed=%.3f m/s (reverse)  target dist=%.3f m  "
+            "start x=%.3f y=%.3f",
+            speed, distance, initial_pose.position.x, initial_pose.position.y);
 
         double distance_traveled = 0.0;
         bool moving = true;
@@ -316,6 +335,15 @@ private:
         cmd.linear.x = 0.0;
         cmd_vel_pub_->publish(cmd);
 
+        {
+            std::lock_guard<std::mutex> lk(pose_mutex_);
+            RCLCPP_INFO(this->get_logger(),
+                "[robotMoveBackward] DONE → traveled=%.3f m / target=%.3f m  "
+                "final x=%.3f y=%.3f  success=%s",
+                distance_traveled, distance,
+                current_pose_.position.x, current_pose_.position.y,
+                (!moving ? "YES" : "NO (cancelled)"));
+        }
         return !moving;
     }
 
@@ -776,15 +804,44 @@ private:
 
     void CheckDirection()
     {
+        RCLCPP_INFO(this->get_logger(), "=== [STEP 2] CheckDirection STARTED ===");
+
+        // Average pallet yaw from 10 readings
+        double pallet_yaw_deg = 0.0;
+        {
+            std::vector<double> yaws;
+            for (int i = 0; i < 10; ++i)
+            {
+                geometry_msgs::msg::PoseArray pp = getPalletPoses();
+                yaws.push_back(getYawFromPose(pp.poses[0]));
+            }
+            double sx = 0, sy = 0;
+            for (double y : yaws) { sx += cos(y); sy += sin(y); }
+            pallet_yaw_deg = atan2(sy, sx) * 180.0 / M_PI;
+        }
+        RCLCPP_INFO(this->get_logger(),
+            "[CheckDirection] Pallet yaw (from detection) = %.2f deg  →  Target robot yaw = %.2f deg",
+            pallet_yaw_deg, pallet_yaw_deg + 180.0);
+
         double target_yaw = getAverageTargetYaw();
+        RCLCPP_INFO(this->get_logger(),
+            "[CheckDirection] rotateInPlace target = %.4f rad (%.2f deg)",
+            target_yaw, target_yaw * 180.0 / M_PI);
+
         if (!rotateInPlace(target_yaw, 0.01))
         {
-            RCLCPP_WARN(this->get_logger(), "Failed to align with pallet orientation, but continuing with approach");
+            RCLCPP_WARN(this->get_logger(),
+                "[CheckDirection] WARNING: Alignment incomplete, continuing approach");
         }
         else
         {
-            RCLCPP_INFO(this->get_logger(), "Successfully aligned with pallet orientation");
+            double final_yaw = getAverageCurrentYaw();
+            RCLCPP_INFO(this->get_logger(),
+                "[CheckDirection] SUCCESS — Final robot yaw = %.4f rad (%.2f deg), error = %.4f rad",
+                final_yaw, final_yaw * 180.0 / M_PI,
+                std::abs(std::atan2(std::sin(target_yaw - final_yaw), std::cos(target_yaw - final_yaw))));
         }
+        RCLCPP_INFO(this->get_logger(), "=== [STEP 2] CheckDirection COMPLETED ===");
     }
 
     void CheckDistance()
@@ -890,6 +947,23 @@ private:
      */
     bool sendDockingFollowPath(nav_msgs::msg::Path & path)
     {
+        RCLCPP_INFO(this->get_logger(), "--- [STEP 3.4] sendDockingFollowPath STARTED ---");
+        RCLCPP_INFO(this->get_logger(),
+            "[sendDockingFollowPath] Raw path: %zu points", path.poses.size());
+
+        if (!path.poses.empty()) {
+            const auto & fp = path.poses.front().pose;
+            const auto & lp = path.poses.back().pose;
+            double start_yaw = getYawFromPose(fp);
+            double end_yaw   = getYawFromPose(lp);
+            RCLCPP_INFO(this->get_logger(),
+                "[sendDockingFollowPath] Raw path start → x=%.3f y=%.3f yaw=%.2f deg",
+                fp.position.x, fp.position.y, start_yaw * 180.0 / M_PI);
+            RCLCPP_INFO(this->get_logger(),
+                "[sendDockingFollowPath] Raw path end (pallet yaw) → x=%.3f y=%.3f yaw=%.2f deg",
+                lp.position.x, lp.position.y, end_yaw * 180.0 / M_PI);
+        }
+
         // Densify sparse path: interpolate waypoints every 0.15 m so that the
         // DWA planner always has multiple poses in its pruned-plan window and
         // the heading-alignment / path-alignment scores remain meaningful.
@@ -937,11 +1011,15 @@ private:
             fork_q.setRPY(0.0, 0.0, fork_goal_yaw);
             last_pose.pose.orientation = tf2::toMsg(fork_q);
             dense_path.poses.push_back(last_pose);
+
+            RCLCPP_INFO(this->get_logger(),
+                "[sendDockingFollowPath] Last point yaw flip: pallet_yaw=%.2f deg  →  fork_goal_yaw=%.2f deg",
+                pallet_yaw * 180.0 / M_PI, fork_goal_yaw * 180.0 / M_PI);
         }
 
         RCLCPP_INFO(this->get_logger(),
-            "DockingPath: original %zu poses → densified to %zu poses (step %.2f m), "
-            "goal orientation flipped θ+π (fork toward pallet)",
+            "[sendDockingFollowPath] Dense path: %zu → %zu points (step %.2f m), "
+            "last point yaw = pallet+180° (fork faces pallet)",
             path.poses.size(), dense_path.poses.size(), interp_step);
 
         path_publisher_->publish(dense_path);
@@ -998,10 +1076,20 @@ private:
         }
 
         bool success = result_future.get();
-        if (success)
-            RCLCPP_INFO(this->get_logger(), "DockingPath: goal reached successfully");
-        else
-            RCLCPP_ERROR(this->get_logger(), "DockingPath: failed to reach goal");
+        if (success) {
+            geometry_msgs::msg::Pose final_pose;
+            {
+                std::lock_guard<std::mutex> lock(pose_mutex_);
+                final_pose = current_pose_;
+            }
+            RCLCPP_INFO(this->get_logger(),
+                "[sendDockingFollowPath] SUCCESS — final robot pose: x=%.3f y=%.3f yaw=%.2f deg",
+                final_pose.position.x, final_pose.position.y,
+                getYawFromPose(final_pose) * 180.0 / M_PI);
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "[sendDockingFollowPath] FAILED — DockingPath could not reach goal!");
+        }
+        RCLCPP_INFO(this->get_logger(), "--- [STEP 3.4] sendDockingFollowPath DONE ---");
 
         return success;
     }
@@ -1011,42 +1099,90 @@ private:
      */
     bool executePickPallet()
     {
-        RCLCPP_INFO(this->get_logger(), "Starting pallet picking operation...");
+        RCLCPP_INFO(this->get_logger(), "╔══════════════════════════════════════╗");
+        RCLCPP_INFO(this->get_logger(), "║  [STEP 3] executePickPallet STARTED   ║");
+        RCLCPP_INFO(this->get_logger(), "╚══════════════════════════════════════╝");
         try
         {
             setDynamicParamPathFollower("yaw_tolerance", 0.04);
             setDynamicParamPathFollower("distance_tolerance", 0.04);
 
             geometry_msgs::msg::Pose robot_pose = getAveragePose();
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.1] Robot pose acquired → x=%.3f  y=%.3f  yaw=%.2f deg",
+                robot_pose.position.x, robot_pose.position.y,
+                getYawFromPose(robot_pose) * 180.0 / M_PI);
+
             geometry_msgs::msg::PoseArray pallet_poses = getPalletPoses();
             geometry_msgs::msg::Pose nearest_pallet_pose = pallet_poses.poses[0];
+            double pallet_yaw = getYawFromPose(nearest_pallet_pose);
+            double dist_to_pallet = Utilities::calculateDistance(robot_pose, nearest_pallet_pose);
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.2] Pallet pose acquired → x=%.3f  y=%.3f  yaw=%.2f deg  dist to robot=%.3f m",
+                nearest_pallet_pose.position.x, nearest_pallet_pose.position.y,
+                pallet_yaw * 180.0 / M_PI, dist_to_pallet);
+
+            // Log inside_pallet calculation here (0.80m ahead of pallet)
+            double ip_x = nearest_pallet_pose.position.x - 0.80 * std::cos(pallet_yaw);
+            double ip_y = nearest_pallet_pose.position.y - 0.80 * std::sin(pallet_yaw);
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.3] Path target (inside_pallet, 0.80m ahead) → x=%.3f  y=%.3f  "
+                "target yaw (flipped) = %.2f deg",
+                ip_x, ip_y, (pallet_yaw + M_PI) * 180.0 / M_PI);
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
                 robot_pose, nearest_pallet_pose, 0.80);
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.4] Path created (%zu raw points) → calling sendDockingFollowPath...",
+                path.poses.size());
+
             if (!sendDockingFollowPath(path))
             {
-                RCLCPP_ERROR(this->get_logger(), "DockingPath: pick approach phase failed.");
+                RCLCPP_ERROR(this->get_logger(), "[STEP 3.4] ERROR: DockingPath approach phase failed!");
                 return false;
             }
+            RCLCPP_INFO(this->get_logger(), "[STEP 3.4] DockingPath SUCCESS — robot at target point.");
 
-            RCLCPP_INFO(this->get_logger(), "Path following done, waiting 5 seconds...");
-            rclcpp::sleep_for(std::chrono::seconds(5));
+            // Precise yaw alignment: DWA heading_alignment_weight=0 means the robot
+            // may arrive with up to ±yaw_goal_tolerance (0.10 rad ≈ 6°) of heading error.
+            // Use rotateInPlace to refine to ±0.02 rad (≈1°) before fork insertion.
+            double fork_goal_yaw = pallet_yaw + M_PI;
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.5] Precise alignment → target yaw=%.2f deg  (pallet_yaw + 180°)",
+                fork_goal_yaw * 180.0 / M_PI);
+            rotateInPlace(fork_goal_yaw, 0.02);
+            {
+                std::lock_guard<std::mutex> lk(pose_mutex_);
+                RCLCPP_INFO(this->get_logger(),
+                    "[STEP 3.5] Alignment DONE → final yaw=%.2f deg",
+                    getYawFromPose(current_pose_) * 180.0 / M_PI);
+            }
 
+            RCLCPP_INFO(this->get_logger(), "[STEP 3.6] Waiting 3 seconds (stabilisation)...");
+            rclcpp::sleep_for(std::chrono::seconds(3));
+
+            RCLCPP_INFO(this->get_logger(),
+                "[STEP 3.7] robotMoveBackward starting → speed=0.16 m/s  dist=0.95 m  (fork entering pallet)");
             bool enter_pallet_operations = robotMoveBackward(0.16, 0.95);
             if (!enter_pallet_operations)
             {
-                RCLCPP_ERROR(this->get_logger(), "Error during pallet picking operation.");
+                RCLCPP_ERROR(this->get_logger(), "[STEP 3.7] ERROR: robotMoveBackward failed!");
                 return false;
             }
+            RCLCPP_INFO(this->get_logger(), "[STEP 3.7] robotMoveBackward DONE — fork inside pallet.");
 
+            RCLCPP_INFO(this->get_logger(), "[STEP 3.8] Sending LinearMotor lift command...");
             this->LinearMotorServicePublish(true, 5);
+            RCLCPP_INFO(this->get_logger(), "[STEP 3.8] LinearMotor DONE — pallet lifted.");
 
-            RCLCPP_INFO(this->get_logger(), "Finished pallet picking operation...");
+            RCLCPP_INFO(this->get_logger(), "╔══════════════════════════════════════╗");
+            RCLCPP_INFO(this->get_logger(), "║  [STEP 3] executePickPallet SUCCESS   ║");
+            RCLCPP_INFO(this->get_logger(), "╚══════════════════════════════════════╝");
             return true;
         }
         catch (const std::exception &e)
         {
-            RCLCPP_ERROR(this->get_logger(), "Error during pallet picking operation: %s", e.what());
+            RCLCPP_ERROR(this->get_logger(), "[STEP 3] EXCEPTION: %s", e.what());
             return false;
         }
     }
@@ -1056,16 +1192,19 @@ private:
      */
     bool executeExitPallet()
     {
-        RCLCPP_INFO(this->get_logger(), "Starting pallet exit operation...");
+        RCLCPP_INFO(this->get_logger(), "╔══════════════════════════════════════╗");
+        RCLCPP_INFO(this->get_logger(), "║  [STEP 4] executeExitPallet STARTED   ║");
+        RCLCPP_INFO(this->get_logger(), "╚══════════════════════════════════════╝");
+        RCLCPP_INFO(this->get_logger(),
+            "[STEP 4] robotMoveForward → speed=0.18 m/s  dist=1.25 m  (exiting pallet)");
         bool result = robotMoveForward(0.18, 1.25);
 
-        if (result)
-        {
-            RCLCPP_INFO(this->get_logger(), "Finished pallet exit operation.");
-        }
-        else
-        {
-            RCLCPP_ERROR(this->get_logger(), "Error during pallet exit operation.");
+        if (result) {
+            RCLCPP_INFO(this->get_logger(), "╔═══════════════════════════════════════╗");
+            RCLCPP_INFO(this->get_logger(), "║  [STEP 4] executeExitPallet SUCCESS   ║");
+            RCLCPP_INFO(this->get_logger(), "╚═══════════════════════════════════════╝");
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "[STEP 4] ERROR: executeExitPallet failed!");
         }
         return result;
     }
