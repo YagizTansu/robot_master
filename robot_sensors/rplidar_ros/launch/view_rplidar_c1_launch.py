@@ -20,9 +20,9 @@ def get_filter_config():
 
 def generate_launch_description():
     channel_type =  LaunchConfiguration('channel_type', default='serial')
-    serial_port = LaunchConfiguration('serial_port', default='/dev/lidar_front_l')
+    serial_port = LaunchConfiguration('serial_port', default='/dev/lidar_front_r')
     serial_baudrate = LaunchConfiguration('serial_baudrate', default='460800')
-    frame_id = LaunchConfiguration('frame_id', default='lidar_front_l')
+    frame_id = LaunchConfiguration('frame_id', default='lidar_left_1')
     inverted = LaunchConfiguration('inverted', default='false')
     angle_compensate = LaunchConfiguration('angle_compensate', default='true')
     scan_mode = LaunchConfiguration('scan_mode', default='Standard')
