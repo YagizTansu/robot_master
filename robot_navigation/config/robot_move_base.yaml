@@ -201,7 +201,7 @@ local_costmap:
       width: 10
       height: 10
       resolution: 0.06
-      footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
+      footprint: "[[1.35, 0.40], [1.35, -0.40], [-0.60, -0.40], [-0.60, 0.40]]"
       plugins: ["static_layer", "prohibited_layer", "inflation_layer"]
       
       prohibited_layer:
@@ -258,7 +258,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: false
-      footprint: "[[0.5, 0.45], [0.5, -0.45], [-0.5, -0.45], [-0.5, 0.45]]"
+      footprint: "[[1.35, 0.40], [1.35, -0.40], [-0.60, -0.40], [-0.60, 0.40]]"
       resolution: 0.06
       track_unknown_space: true
       plugins: ["static_layer", "prohibited_layer", "inflation_layer"]
@@ -400,23 +400,22 @@ collision_monitor:
     polygons: ["FootprintApproach"]
     FootprintApproach:
       type: "polygon"
-      action_type: "approach"
-      footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 0.6
-      simulation_time_step: 0.1
-      min_points: 6
-      visualize: False
-      enabled: False  # TEST: disabled
-    observation_sources: ["scan1", "scan2"]
+      action_type: "stop"
+      # Stop zone: 0.5m beyond front (1.35m), 0.15m beyond sides (0.40m), 0.1m beyond back (0.60m)
+      points: "[[1.85, 0.55], [1.85, -0.55], [-0.70, -0.55], [-0.70, 0.55]]"
+      min_points: 4
+      visualize: True
+      enabled: True
+    observation_sources: ["scan1"]
     scan1:
       type: "scan"
-      topic: "/lidar_left_1/scan"
+      topic: "/lidar_front_r/scan"
       min_height: 0.05
       max_height: 2.0
-      enabled: False  # TEST: disabled
-    scan2:
-      type: "scan"
-      topic: "/lidar_right_1/scan"
-      min_height: 0.05
-      max_height: 2.0
-      enabled: False  # TEST: disabled
+      enabled: True
+    # scan2:
+    #   type: "scan"
+    #   topic: "/lidar_front_l/scan"
+    #   min_height: 0.05
+    #   max_height: 2.0
+    #   enabled: True
