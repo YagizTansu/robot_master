@@ -581,6 +581,10 @@ def check_position_reach(motor, lock, timeout_s=60):
     start = time.time()
     while True:
         pkt = upload_command_packet(0x60410010)
+        if latest_cmd is not None:
+            lin_x, ang_z = latest_cmd.linear.x, latest_cmd.angular.z
+        else :
+            lin_x, ang_z = 5, 5
         with lock:
             motor.write(bytes(pkt))
             time.sleep(SERIAL_SLEEP)
@@ -589,7 +593,7 @@ def check_position_reach(motor, lock, timeout_s=60):
         if status_hex is not None:
             reached = check_target_reached(status_int)
             print(f"Status: {status_hex}  Target reached: {bool(reached)}")
-            if reached and status_hex == 'FFFFD437':
+            if (reached and status_hex == 'FFFFD437') or (lin_x == 0 and ang_z == 0):
                 print("Target reached.")
                 break
         else:
