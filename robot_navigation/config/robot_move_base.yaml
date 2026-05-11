@@ -59,8 +59,8 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.8  # Daha toleranslı
     progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["general_goal_checker", "docking_goal_checker"]
+    controller_plugins: ["FollowPath", "DockingPath"]
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
@@ -71,6 +71,14 @@ controller_server:
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.2  # Daha toleranslı
       yaw_goal_tolerance: 0.4  # Daha toleranslı
+
+    docking_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # Tight tolerances: fork insertion requires lateral < 8 cm, yaw < ~6°
+      xy_goal_tolerance: 0.08   # m — DWA with path_distance_weight=200 achieves ~3 cm lateral
+      yaw_goal_tolerance: 0.10  # rad (~6°) — CheckDirection pre-aligns, DWA maintains
+
         # DWB parameters
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
@@ -120,6 +128,64 @@ controller_server:
       yaw_goal_tolerance:  0.3
       transform_tolerance: 0.5
       prune_plan_distance: 2.0   # m  (↓ carrot now 2m away, matches ~sim horizon; goal_distance term now effective)
+
+    # ── DockingPath: fork-first (backward) approach for pallet docking ─────────
+    # Used ONLY via sendDockingFollowPath() in pallet_docking.cpp.
+    # Normal navigation always uses FollowPath above.
+    #
+    # Drive logic:
+    #   1. CheckDirection() pre-aligns robot so fork (rear) faces pallet.
+    #   2. DWA samples backward velocities (max_reverse_vel > 0).
+    #   3. heading_error_trigger > π → rotate-in-place is NEVER triggered.
+    #      Robot drives backward the entire approach.
+    #   4. heading_alignment_weight = 0: during backward motion, path tangent
+    #      (robot→goal = forward direction) is 180° from robot heading.
+    #      If this weight > 0, every backward trajectory scores worst → freeze.
+    #   5. goal_distance_weight = 100: dominant term.
+    #      Backward trajectories reduce distance to inside_pallet → WIN.
+    #      Forward trajectories increase distance → LOSE.
+    DockingPath:
+      plugin: "robot_custom_local_planner::CustomLocalPlanner"
+
+      # ── Ackermann geometry ─────────────────────────────────────────────────
+      wheelbase:          1.0957
+      max_steering_angle: 1.5708
+
+      # ── Velocity limits (docking: slow & fork-first) ──────────────────────
+      max_linear_vel:  0.05   # m/s — forward cap (not used during backward approach)
+      min_linear_vel:  0.03   # m/s — forward floor (only applies in forward mode)
+      max_reverse_vel: 0.10   # m/s — fork-first approach speed (slow, precise)
+      max_angular_vel: 0.15   # rad/s — cap for rotate-in-place (rarely triggered)
+
+      # ── Acceleration / rate limits ────────────────────────────────────────
+      linear_acc_limit:   0.545
+      steering_slew_rate: 1.5
+
+      # ── Trajectory sampling ───────────────────────────────────────────────
+      linear_samples:        7
+      steering_samples:      11
+      rotate_samples:        7
+      rotate_max_vel:        0.15
+      # > π rad: heading_error can never exceed π, so rotate-in-place
+      # is NEVER triggered during the backward approach.
+      heading_error_trigger: 3.2
+      sim_time:              2.0
+      sim_granularity:       0.1
+      control_duration:      0.5
+
+      # ── Cost function weights (backward/fork-first) ───────────────────────
+      path_distance_weight:     200.0   # lateral correction — keep robot on straight line
+      heading_alignment_weight:   0.0   # MUST be 0: path tangent is opposite robot heading
+      goal_distance_weight:     100.0   # dominant — backward traj scores best (closes gap)
+      obstacle_weight:            1.0
+      velocity_reward_weight:     0.5
+      steering_penalty_weight:    0.3
+
+      # ── Tolerances ────────────────────────────────────────────────────────
+      xy_goal_tolerance:   0.08   # m — matches docking_goal_checker
+      yaw_goal_tolerance:  0.10   # rad — matches docking_goal_checker
+      transform_tolerance: 0.5
+      prune_plan_distance: 4.0    # m — must cover entire 0.80m path plus margin
 
 local_costmap:
   local_costmap:
