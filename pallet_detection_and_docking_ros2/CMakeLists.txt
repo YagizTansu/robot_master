@@ -23,6 +23,8 @@ find_package(pcl_ros REQUIRED)
 find_package(robot_interfaces REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(angles REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -69,6 +71,8 @@ ament_target_dependencies(pallet_docking
   robot_interfaces
   rcl_interfaces
   angles
+  nav2_msgs
+  rclcpp_action
 )
 target_link_libraries(pallet_docking
   ${EIGEN3_LIBRARIES}

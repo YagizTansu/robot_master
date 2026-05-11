@@ -26,6 +26,8 @@
 #include <rcl_interfaces/srv/set_parameters.hpp>
 #include <rcl_interfaces/msg/parameter.hpp>
 #include <rcl_interfaces/msg/parameter_type.hpp>
+#include <nav2_msgs/action/follow_path.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 
 /**
  * @brief Class for pallet docking operations and path tracking status management.
@@ -77,6 +79,9 @@ private:
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr cancel_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr pallet_poses_sub_;
 
+    // FollowPath action client (used with the DockingPath controller profile)
+    rclcpp_action::Client<nav2_msgs::action::FollowPath>::SharedPtr follow_path_client_;
+
     // TF2 pose
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -117,6 +122,10 @@ private:
         docking_process_pause_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/path_follower/pause", 1);
         docking_process_cancel_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/path_follower/cancel", 1);
         pub_arrow_ = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 10);
+
+        // FollowPath action client — connects to the DockingPath profile in controller_server
+        follow_path_client_ = rclcpp_action::create_client<nav2_msgs::action::FollowPath>(
+            this, "follow_path", cb_group_);
 
         // Subscribers
         advobot_services_subscriber_ = this->create_subscription<robot_interfaces::msg::Service>(
@@ -212,7 +221,7 @@ private:
         catch (const tf2::TransformException &ex)
         {
             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-                "TF2 map->base_footprint bekleniyor: %s", ex.what());
+                "Waiting for TF2 map->base_footprint: %s", ex.what());
         }
     }
 
@@ -813,8 +822,7 @@ private:
 
                 nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
                     robot_pose, nearest_pallet_pose, target_distance);
-                this->PublishDockingPathProcess(path);
-                this->WaitRobotFinishedToDockingProcess();
+                sendDockingFollowPath(path);
             }
 
             attempt++;
@@ -876,6 +884,129 @@ private:
     }
 
     /**
+     * @brief Sends a path to the controller_server via FollowPath action using the
+     *        "DockingPath" controller profile. Blocks until the goal is reached or fails.
+     * @return true if goal reached successfully, false otherwise.
+     */
+    bool sendDockingFollowPath(nav_msgs::msg::Path & path)
+    {
+        // Densify sparse path: interpolate waypoints every 0.15 m so that the
+        // DWA planner always has multiple poses in its pruned-plan window and
+        // the heading-alignment / path-alignment scores remain meaningful.
+        nav_msgs::msg::Path dense_path;
+        dense_path.header = path.header;
+        const double interp_step = 0.15;
+
+        for (size_t i = 0; i + 1 < path.poses.size(); ++i) {
+            const auto & p0 = path.poses[i];
+            const auto & p1 = path.poses[i + 1];
+            double dx = p1.pose.position.x - p0.pose.position.x;
+            double dy = p1.pose.position.y - p0.pose.position.y;
+            double seg_len = std::sqrt(dx * dx + dy * dy);
+            int steps = std::max(1, static_cast<int>(seg_len / interp_step));
+            // Intermediate waypoints face the direction of travel (A→B)
+            double seg_yaw = std::atan2(dy, dx);
+            tf2::Quaternion q;
+            q.setRPY(0.0, 0.0, seg_yaw);
+            for (int k = 0; k < steps; ++k) {
+                double t = static_cast<double>(k) / static_cast<double>(steps);
+                geometry_msgs::msg::PoseStamped ps;
+                ps.header = p0.header;
+                ps.pose.position.x = p0.pose.position.x + t * dx;
+                ps.pose.position.y = p0.pose.position.y + t * dy;
+                ps.pose.position.z = 0.0;
+                ps.pose.orientation = tf2::toMsg(q);
+                dense_path.poses.push_back(ps);
+            }
+        }
+
+        if (!path.poses.empty()) {
+            // The last pose is the docking stopping point.
+            // The goal orientation must be θ_pallet + π so that the robot
+            // arrives with its FRONT facing AWAY from the pallet and its
+            // fork (rear) pointing TOWARD the pallet.
+            // After the DWA rotates to this heading, robotMoveBackward()
+            // drives the robot (and fork) into the pallet slot correctly.
+            auto last_pose = path.poses.back();
+            tf2::Quaternion pallet_q;
+            tf2::fromMsg(last_pose.pose.orientation, pallet_q);
+            double roll_tmp, pitch_tmp, pallet_yaw;
+            tf2::Matrix3x3(pallet_q).getRPY(roll_tmp, pitch_tmp, pallet_yaw);
+            double fork_goal_yaw = pallet_yaw + M_PI;  // flip 180°
+            tf2::Quaternion fork_q;
+            fork_q.setRPY(0.0, 0.0, fork_goal_yaw);
+            last_pose.pose.orientation = tf2::toMsg(fork_q);
+            dense_path.poses.push_back(last_pose);
+        }
+
+        RCLCPP_INFO(this->get_logger(),
+            "DockingPath: original %zu poses → densified to %zu poses (step %.2f m), "
+            "goal orientation flipped θ+π (fork toward pallet)",
+            path.poses.size(), dense_path.poses.size(), interp_step);
+
+        path_publisher_->publish(dense_path);
+
+        if (!follow_path_client_->wait_for_action_server(std::chrono::seconds(5)))
+        {
+            RCLCPP_ERROR(this->get_logger(), "FollowPath action server not found (5s timeout)");
+            return false;
+        }
+
+        nav2_msgs::action::FollowPath::Goal goal;
+        goal.path              = dense_path;
+        goal.controller_id     = "DockingPath";
+        goal.goal_checker_id   = "docking_goal_checker";
+
+        auto result_promise = std::make_shared<std::promise<bool>>();
+        auto result_future  = result_promise->get_future();
+
+        rclcpp_action::Client<nav2_msgs::action::FollowPath>::SendGoalOptions opts;
+        opts.result_callback =
+            [result_promise](
+                const rclcpp_action::ClientGoalHandle<nav2_msgs::action::FollowPath>::WrappedResult & result)
+            {
+                result_promise->set_value(result.code == rclcpp_action::ResultCode::SUCCEEDED);
+            };
+
+        auto goal_handle_future = follow_path_client_->async_send_goal(goal, opts);
+
+        // Wait until the goal is accepted by the server
+        if (goal_handle_future.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+        {
+            RCLCPP_ERROR(this->get_logger(), "DockingPath: goal not accepted (timeout)");
+            return false;
+        }
+
+        auto goal_handle = goal_handle_future.get();
+        if (!goal_handle)
+        {
+            RCLCPP_ERROR(this->get_logger(), "DockingPath: goal rejected by server");
+            return false;
+        }
+
+        RCLCPP_INFO(this->get_logger(), "DockingPath: goal accepted, following path...");
+
+        // Poll until result arrives or the operation is cancelled
+        while (result_future.wait_for(std::chrono::milliseconds(100)) != std::future_status::ready)
+        {
+            if (cancel_)
+            {
+                follow_path_client_->async_cancel_goal(goal_handle);
+                RCLCPP_WARN(this->get_logger(), "DockingPath: cancelled");
+                return false;
+            }
+        }
+
+        bool success = result_future.get();
+        if (success)
+            RCLCPP_INFO(this->get_logger(), "DockingPath: goal reached successfully");
+        else
+            RCLCPP_ERROR(this->get_logger(), "DockingPath: failed to reach goal");
+
+        return success;
+    }
+
+    /**
      * @brief Executes pallet picking operation.
      */
     bool executePickPallet()
@@ -892,14 +1023,17 @@ private:
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
                 robot_pose, nearest_pallet_pose, 0.80);
-            this->PublishDockingPathProcess(path);
-            this->WaitRobotFinishedToDockingProcess();
+            if (!sendDockingFollowPath(path))
+            {
+                RCLCPP_ERROR(this->get_logger(), "DockingPath: pick approach phase failed.");
+                return false;
+            }
 
             RCLCPP_INFO(this->get_logger(), "Path following done, waiting 5 seconds...");
             rclcpp::sleep_for(std::chrono::seconds(5));
 
-            bool exit_pallet_operations = robotMoveBackward(0.16, 0.95);
-            if (!exit_pallet_operations)
+            bool enter_pallet_operations = robotMoveBackward(0.16, 0.95);
+            if (!enter_pallet_operations)
             {
                 RCLCPP_ERROR(this->get_logger(), "Error during pallet picking operation.");
                 return false;
@@ -949,8 +1083,11 @@ private:
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
                 robot_pose, dropping_station_pose, -0.7);
-            this->PublishDockingPathProcess(path);
-            this->WaitRobotFinishedToDockingProcess();
+            if (!sendDockingFollowPath(path))
+            {
+                RCLCPP_ERROR(this->get_logger(), "DockingPath: drop approach phase failed.");
+                return false;
+            }
 
             if (!rotateInPlace(station_yaw, 0.01))
             {

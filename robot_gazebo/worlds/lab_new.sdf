@@ -47,5 +47,12 @@
       <uri>model://lab_new</uri>
     </include>
 
+    <include>
+      <uri>model://euro_pallet</uri>
+      <name>euro_pallet_0</name>
+      <!-- Near map center — adjust x/y to place it where you want -->
+      <pose>2.80 -26.0 0.0 0 0 0</pose>
+    </include>
+
   </world>
 </sdf>

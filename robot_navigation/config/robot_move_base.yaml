@@ -59,8 +59,8 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.8  # Daha toleranslı
     progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["general_goal_checker", "docking_goal_checker"]
+    controller_plugins: ["FollowPath", "DockingPath"]
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
@@ -69,8 +69,13 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.5  # Daha toleranslı
-      yaw_goal_tolerance: 3.14  # Daha toleranslı
+      xy_goal_tolerance: 0.2
+      yaw_goal_tolerance: 0.3
+    docking_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15   # DWA ile 15 cm içine girmek güvenilir; robotMoveBackward gerisini halleder
+      yaw_goal_tolerance: 0.20  # ~11° yaw toleransı; kesin hizalama robotMoveBackward'dan önce gerekmez
         # DWB parameters
     FollowPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
@@ -108,18 +113,65 @@ controller_server:
       # path_distance == heading_alignment: at corners both pull equally.
       # On straights path_distance dominates (heading error ≈ 0 → heading term ≈ 0).
       # At corners heading_alignment rises → equal competition → robot turns early.
-      path_distance_weight:     300.0   # Penalise deviation from global path  [1/m]  (↑↑ tight lateral on straights)
-      heading_alignment_weight: 250.0   # Align with path tangent direction    [1/rad]  (= path weight → corners turn properly)
-      goal_distance_weight:     24.0   # Pull toward local carrot point       [1/m]
+      path_distance_weight:     400.0   # Penalise deviation from global path  [1/m]  (↑↑ tight lateral on straights)
+      heading_alignment_weight: 100.0   # Align with path tangent direction    [1/rad]  (= path weight → corners turn properly)
+      goal_distance_weight:     16.0   # Pull toward local carrot point       [1/m]
       obstacle_weight:           1.0   # Penalise costmap inflation cost
       velocity_reward_weight:    1.0   # Reward forward speed  (↓↓ can no longer buy lateral deviation)
       steering_penalty_weight:   0.5   # Penalise large δ²  (allow steering freely at corners)
 
       # ── Tolerances ───────────────────────────────────────────────────────────
-      xy_goal_tolerance:   0.5
-      yaw_goal_tolerance:  3.14
+      xy_goal_tolerance:   0.2
+      yaw_goal_tolerance:  0.3
       transform_tolerance: 0.5
       prune_plan_distance: 2.0   # m  (↓ carrot now 2m away, matches ~sim horizon; goal_distance term now effective)
+
+    DockingPath:
+      plugin: "robot_custom_local_planner::CustomLocalPlanner"
+
+      # ── Ackermann geometry ──────────────────────────────────────────────────
+      wheelbase:          1.0957
+      max_steering_angle: 1.5708
+
+      # ── Velocity limits (docking: slow & precise) ─────────────────────────
+      max_linear_vel:  0.12   # m/s — yavaş yaklaşma
+      min_linear_vel:  0.03   # m/s
+      max_reverse_vel: 0.0
+      max_angular_vel: 0.2    # rad/s
+
+      # ── Acceleration / rate limits ───────────────────────────────────────
+      linear_acc_limit:   0.545
+      steering_slew_rate: 1.5
+
+      # ── Trajectory sampling ──────────────────────────────────────────────
+      linear_samples:        7
+      steering_samples:      11
+      rotate_samples:        7
+      rotate_max_vel:        0.2
+      # heading_error_trigger: 0.05 (3°) çok sıkıydı → robot sürekli yerinde dönüyordu.
+      # 2 noktalı path'de carrot yönüne açı neredeyse her zaman 3°'yi aşıyordu → hiç ilerleme yok.
+      # 0.45 rad (~25°): bu açıya kadar forward driving yapar, üstünde döner.
+      heading_error_trigger: 0.45
+      sim_time:              2.0
+      sim_granularity:       0.1
+      control_duration:      0.5
+
+      # ── Cost function weights (docking yaklaşma) ─────────────────────────
+      # Seyrek 2-noktalı path'de 600 path_distance_weight salınıma neden oluyordu.
+      # Goal pull'u artır, path hug'ı azalt → daha yumuşak yaklaşma.
+      path_distance_weight:     200.0
+      heading_alignment_weight:  60.0
+      goal_distance_weight:      60.0
+      obstacle_weight:            1.0
+      velocity_reward_weight:     0.5
+      steering_penalty_weight:    0.3
+
+      # ── Tolerances (tight for docking) ───────────────────────────────────
+      xy_goal_tolerance:   0.15
+      yaw_goal_tolerance:  0.20
+      transform_tolerance: 0.5
+      # prune_plan_distance: 1.5 → 4.0: 0.8m'lik path için her zaman tüm path görünür olsun
+      prune_plan_distance: 4.0
 
 local_costmap:
   local_costmap:

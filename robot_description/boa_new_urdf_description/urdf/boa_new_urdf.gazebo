@@ -89,8 +89,8 @@
           <!-- 120° FOV, 0.5° resolution -->
           <samples>240</samples>
           <resolution>1</resolution>
-          <min_angle>-1.04719755</min_angle>
-          <max_angle>1.04719755</max_angle>
+          <min_angle>-3.14159265</min_angle>
+          <max_angle>3.14159265</max_angle>
         </horizontal>
         <vertical>
           <samples>1</samples>
