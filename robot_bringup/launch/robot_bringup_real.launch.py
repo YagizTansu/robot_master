@@ -148,7 +148,7 @@ def generate_launch_description():
             'serial_port': '/dev/lidar_front_l',
             'serial_baudrate': 460800,
             'frame_id': 'lidar_left_1',
-            'inverted': False,
+            'inverted': True,
             'angle_compensate': True,
             'scan_mode': 'Standard',
         }],
