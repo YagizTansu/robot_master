@@ -397,6 +397,7 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
       // meaningful look-ahead heading — critical at tight corners where the
       // pruned window shrinks to a single near-by pose.
       double robot_hdg = tf2::getYaw(pose.pose.orientation);
+      bool found_lookahead = false;
       for (size_t i = last_closest_idx_; i < global_plan_.poses.size(); ++i) {
         double fdx = global_plan_.poses[i].pose.position.x - pose.pose.position.x;
         double fdy = global_plan_.poses[i].pose.position.y - pose.pose.position.y;
@@ -405,8 +406,19 @@ std::vector<Trajectory> CustomLocalPlanner::generateTrajectories(
           heading_error = std::fabs(std::atan2(
             std::sin(ahead_hdg - robot_hdg),
             std::cos(ahead_hdg - robot_hdg)));
+          found_lookahead = true;
           break;
         }
+      }
+      // At end of global plan: no point ≥1m ahead exists.
+      // Without this fallback, heading_error stays 0.0 → rotate-in-place is
+      // never triggered → robot is forced to drive forward (min_linear_vel
+      // floor) → small circles near the goal instead of spinning in place.
+      if (!found_lookahead && !global_plan_.poses.empty()) {
+        double goal_yaw = tf2::getYaw(global_plan_.poses.back().pose.orientation);
+        heading_error = std::fabs(std::atan2(
+          std::sin(goal_yaw - robot_hdg),
+          std::cos(goal_yaw - robot_hdg)));
       }
     }
   }
@@ -654,8 +666,13 @@ double CustomLocalPlanner::calculateHeadingAlignmentScore(const Trajectory & tra
       b.pose.position.y - a.pose.position.y,
       b.pose.position.x - a.pose.position.x);
   } else {
-    // Single-pose pruned plan — no tangent available; return neutral score.
-    return 0.0;
+    // Single-pose pruned plan — use final goal yaw so rotate-in-place
+    // candidates that end closer to the goal heading score better.
+    if (!global_plan_.poses.empty()) {
+      path_heading = tf2::getYaw(global_plan_.poses.back().pose.orientation);
+    } else {
+      return 0.0;
+    }
   }
 
   // Absolute angular difference in [0, π]
