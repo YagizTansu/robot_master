@@ -1,8 +1,62 @@
-# Cluster parameters (replaces ROS1 dynamic_reconfigure ClusterConfig.cfg)
-# Runtime update: ros2 param set /pallet_detection <param_name> <value>
 
 pallet_detection:
   ros__parameters:
-    cluster_tolerance: 0.40
-    min_pallet_cluster_size: 2
-    max_pallet_cluster_size: 2000
+
+    # ---- TF frame'leri --------------------------------------------------
+    lidar_frame:     "lidar_fork_1"
+    reference_frame: "map"
+
+    # ---- ROI: range + FOV -----------------------------------------------
+    # Palet typically 0.5-2.5m mesafeden tespit edilir.
+    # Çatal yaklaşırken min mesafe çok küçük olabilir, ama < 0.3 yararsız.
+    min_range:   0.05      # m
+    max_range:   30.50      # m
+    fov_min:    -3.1416   # rad (-180°)
+    fov_max:     3.1416   # rad (+180°)
+    # ---- Station-relative arama kutusu (pallet_station_pose etrafında) --
+    # Lokal koordinatlar; station orijinine göre [m]
+    # x: ileri/geri, y: sol/sağ (station yönü)
+    station_box_x_min: -3.0
+    station_box_x_max:  3.0
+    station_box_y_min: -3.0
+    station_box_y_max:  3.0
+
+    # ---- Adaptive Breakpoint Detector ----------------------------------
+    # lambda: en kötü grazing açısı. Düşürürsen daha agresif breakpoint
+    #         (daha çok ama daha küçük cluster). 5°-15° tipik.
+    # sigma_r: LiDAR mesafe gürültüsü std. RPLIDAR S2 için ~12mm.
+    abd_lambda:           0.1745   # rad (10°)
+    abd_sigma_r:          0.012    # m
+    min_cluster_points:   4
+    min_cluster_points:   1
+
+    # ---- Bacak sınıflandırma -------------------------------------------
+    # EUR: corner = 100mm, center = 145mm görünür genişlik.
+    # Tolerance'ı çok daraltma — 1.5m mesafede S2 width hatası ±15-25mm.
+    # Çok genişletme — corner ve center band'leri örtüşmesin.
+    leg_width_tolerance:        0.10   # ±100mm
+    min_leg_points:             1
+    min_leg_points:             3
+    leg_width_absolute_min:     0.05
+    leg_width_absolute_max:     0.20
+    leg_width_absolute_min:     0.03
+    leg_width_absolute_max:     0.25
+    # Köşe-orta nominal merkez mesafesi: 350mm
+    # Köşe-köşe nominal merkez mesafesi: 700mm
+    pattern_distance_tolerance: 0.180   # ±80mm (350±80 ve 700±160)
+    leg_width_tolerance:        0.20   # ±200mm
+    leg_flatness_max:           0.5   # bacak yüzü düz (≤500mm sapma)
+    gap_clear_margin:           0.25    # bacak yüzünün önünde nokta varsa "kapalı"
+
+    # ---- Temporal tutarlılık -------------------------------------------
+    # Son N scan'in M tanesinde tutarlı detection → onayla.
+    # 10Hz scan'de 5/7 = 0.5sn'de onay, makul.
+    temporal_window:       7
+    temporal_required:     5
+    temporal_xy_jitter:    0.050   # m
+    temporal_yaw_jitter:   0.10    # rad (~6°)
+    temporal_timeout_sec:  1.0
+
+    # ---- Diagnostic ----------------------------------------------------
+    # Saha pilotunda kesinlikle true bırak. Performans yükü ihmal edilebilir.
+    publish_diagnostics:   true

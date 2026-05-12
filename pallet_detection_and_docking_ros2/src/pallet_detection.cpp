@@ -1,752 +1,1081 @@
+// ============================================================================
+// pallet_detection.cpp
+// ----------------------------------------------------------------------------
+// EUR (EPAL-1) Palet Algılama Node'u — ROS2 Jazzy
+//
+// Yaklaşım: 2D LiDAR LaserScan üzerinde geometrik şablon eşleştirme.
+//   1. Polygon ROI filtresi (station-relative arama bölgesi)
+//   2. Adaptive Breakpoint Detector (Borges & Aldon, 2004) ile segmentasyon
+//   3. PCA tabanlı doğru fit + cluster karakterizasyonu (width, flatness)
+//   4. EUR bacak adayları sınıflandırma (corner ~100mm, center ~145mm)
+//   5. 3'lü kombinasyon araması: kollineer + doğru aralık + boşluk temizliği
+//   6. Pose çıkarımı (PCA line + LiDAR'a bakan normal)
+//   7. Temporal N-of-M tutarlılık filtresi
+//
+// Sahada hata teşhisi için her aşama ayrı topic'e basılır.
+// ============================================================================
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/kdtree/kdtree.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/search/kdtree.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/segmentation/extract_clusters.h>
-#include <pcl/surface/convex_hull.h>
-#include <visualization_msgs/msg/marker.hpp>
-#include <opencv2/opencv.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/LinearMath/Transform.h>
-#include <tf2/time.h>
-#include <cmath>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 #include <robot_interfaces/msg/pallet_station.hpp>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <vector>
+
+#include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
 
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
-#include <pallet_detection_and_docking/Quaternion.h>
-#include <pcl/filters/statistical_outlier_removal.h>
 
-/**
- * @brief PalletDetection class for pallet detection using LIDAR data
- *
- * This class processes LIDAR scan data to detect pallets using DBSCAN clustering.
- * It filters points within a specified area and identifies potential pallet shapes
- * using convex hull and minimum area rectangle detection.
- */
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <deque>
+#include <limits>
+#include <optional>
+#include <vector>
 
-class PalletDetection : public rclcpp::Node
+namespace pallet_detection {
+
+// ============================================================================
+// EUR (EPAL-1) palet ön yüz geometrisi — derleme zamanı sabitleri
+//
+//   [köşe 100mm][boşluk 227.5mm][orta 145mm][boşluk 227.5mm][köşe 100mm]
+//   |<------------------- 800 mm (ön yüz genişliği) ------------------>|
+//
+//   Bacak merkezleri (sol kenardan): 50, 400, 750 mm
+//   Köşe → orta merkez mesafesi:     350 mm
+//   Köşe → köşe merkez mesafesi:     700 mm
+// ============================================================================
+namespace eur {
+constexpr double FACE_WIDTH                 = 0.800;
+constexpr double CORNER_BLOCK_WIDTH         = 0.100;
+constexpr double CENTER_BLOCK_WIDTH         = 0.145;
+constexpr double CORNER_TO_CENTER_DISTANCE  = 0.350;
+constexpr double CORNER_TO_CORNER_DISTANCE  = 0.700;
+}  // namespace eur
+
+// ============================================================================
+// Yardımcı tipler
+// ============================================================================
+
+/// 2D LiDAR'dan gelen tek bir geçerli nokta (LiDAR frame'inde)
+struct ScanPoint
+{
+    double  x = 0.0;
+    double  y = 0.0;
+    double  range = 0.0;
+    double  angle = 0.0;
+    size_t  scan_index = 0;  // orijinal LaserScan içindeki index — gap testi için
+};
+
+/// Bir tarama segmenti (komşu noktalar). Doğru fit edilmiş ve karakterize edilmiş.
+struct Cluster
+{
+    std::vector<ScanPoint> points;
+
+    Eigen::Vector2d centroid     = Eigen::Vector2d::Zero();
+    Eigen::Vector2d line_dir     = Eigen::Vector2d::UnitX();  // birim, doğru boyunca
+    Eigen::Vector2d line_normal  = Eigen::Vector2d::UnitY();  // birim, doğruya dik
+
+    double width    = 0.0;   // doğru yönündeki projeksiyon uzunluğu
+    double flatness = 0.0;   // doğru normaline maksimum sapma (mutlak)
+    double range_to_centroid = 0.0;
+
+    // Sınıflandırma
+    bool is_corner_candidate = false;
+    bool is_center_candidate = false;
+
+    // İlgili scan indeksleri (boşluk testi için)
+    size_t scan_index_min = 0;
+    size_t scan_index_max = 0;
+};
+
+/// Onaylanmış bir palet algılaması (LiDAR frame'inde)
+struct PalletDetection
+{
+    Eigen::Vector2d position      = Eigen::Vector2d::Zero();
+    double          yaw           = 0.0;   // palet ön yüz normalinin açısı (LiDAR'a bakan)
+    double          score         = 0.0;   // 0..1, eşleşme kalitesi
+    rclcpp::Time    stamp;
+};
+
+// ============================================================================
+// Node sınıfı
+// ============================================================================
+
+class PalletDetectorNode : public rclcpp::Node
 {
 public:
-    PalletDetection()
-    : Node("pallet_detection"),
-      cluster_tolerance(0.25),
-      min_pallet_cluster_size(10),
-      max_pallet_cluster_size(2000)
+    PalletDetectorNode()
+    : Node("pallet_detection")
     {
-        // TF buffer and listener
-        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        declareParameters();
+
+        // TF
+        tf_buffer_   = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        // Subscribers
-        lidar_scan_sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
-            "/lidar_fork_1/scan", 1,
-            std::bind(&PalletDetection::scanCallback, this, std::placeholders::_1));  // Forklift LIDAR topic
+        // Aboneler — orijinal node ile aynı topic'ler
+        scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+            "/lidar_fork_1/scan", rclcpp::SensorDataQoS(),
+            std::bind(&PalletDetectorNode::scanCallback, this, std::placeholders::_1));
 
-        pallet_station_subscriber = this->create_subscription<robot_interfaces::msg::PalletStation>(
+        station_sub_ = this->create_subscription<robot_interfaces::msg::PalletStation>(
             "pallet_station_pose", 1,
-            std::bind(&PalletDetection::handlePalletStationPoseMessage, this, std::placeholders::_1));  // Pallet station pose topic
+            std::bind(&PalletDetectorNode::stationCallback, this, std::placeholders::_1));
 
-        // Publishers
-        pallet_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("convex_hull_marker", 1);                      // Convex hull marker
-        pallet_station_area_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("filtered_lidar_area_marker", 1); // Filtered LIDAR area marker
-        pallet_pose_array_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/pallet_poses", 1);                        // Detected pallet poses
+        // Ana yayıncılar (orijinal arayüzle uyumlu)
+        pose_array_pub_     = this->create_publisher<geometry_msgs::msg::PoseArray>(
+                                    "/pallet_poses", 1);
+        arrow_marker_pub_   = this->create_publisher<visualization_msgs::msg::Marker>(
+                                    "convex_hull_marker", 1);
+        station_area_pub_   = this->create_publisher<visualization_msgs::msg::Marker>(
+                                    "filtered_lidar_area_marker", 1);
 
-        // Declare parameters (replaces dynamic_reconfigure)
-        this->declare_parameter("cluster_tolerance", 0.25);
-        this->declare_parameter("min_pallet_cluster_size", 10);
-        this->declare_parameter("max_pallet_cluster_size", 2000);
+        // Diagnostic yayıncıları (yeni — saha debug için kritik)
+        clusters_pub_       = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                                    "/pallet_detection/clusters", 1);
+        leg_candidates_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                                    "/pallet_detection/leg_candidates", 1);
+        accepted_pattern_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                                    "/pallet_detection/accepted_pattern", 1);
 
         param_callback_handle_ = this->add_on_set_parameters_callback(
-            std::bind(&PalletDetection::parametersCallback, this, std::placeholders::_1));
+            std::bind(&PalletDetectorNode::parametersCallback, this, std::placeholders::_1));
 
-        // Define static polygon points in the map frame
-        pallet_station_area = {
-            createPoint( 0.05, 7.8, 0.0),
-            createPoint( 0.05, 9.4, 0.0),
-            createPoint(-1.45, 9.4, 0.0),
-            createPoint(-1.45, 7.8, 0.0)};
+        // Varsayılan arama polygon'u (station mesajı gelene kadar)
+        search_polygon_ = {
+            makePoint( 4.45, -25.3),
+            makePoint( 4.45, -27.3),
+            makePoint( 2.45, -27.3),
+            makePoint( 2.45, -25.3)
+        };
 
-        RCLCPP_INFO(this->get_logger(), "Pallet Detection Node Started...");
+        RCLCPP_INFO(this->get_logger(),
+            "EUR Pallet Detector aktif — geometrik şablon eşleştirme modu.");
     }
 
 private:
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_scan_sub;                    // LIDAR scan subscriber
-    rclcpp::Subscription<robot_interfaces::msg::PalletStation>::SharedPtr pallet_station_subscriber;    // Pallet station subscriber
+    // ------------------------------------------------------------------------
+    // Parametreler
+    // ------------------------------------------------------------------------
+    struct Params {
+        // Frames
+        std::string lidar_frame      = "lidar_fork_1";
+        std::string reference_frame  = "map";
 
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pallet_marker_pub;               // Convex hull marker publisher
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pallet_station_area_marker_pub;  // Filtered LIDAR area marker publisher
-    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pallet_pose_array_pub_;            // Detected pallet poses publisher
+        // ROI
+        double  min_range            = 0.30;
+        double  max_range            = 3.50;
+        double  fov_min              = -M_PI_2;   // -90°
+        double  fov_max              =  M_PI_2;   //  90°
 
-    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;      // Parameter callback handle
+        // Station-relative bounding box (PalletStation pose etrafında)
+        double  station_box_x_min    = -0.60;
+        double  station_box_x_max    =  0.75;
+        double  station_box_y_min    = -0.65;
+        double  station_box_y_max    =  0.65;
 
-    // Parameters (replaces dynamic_reconfigure) - adjust if pallet dimensions change via ros2 param set
-    float cluster_tolerance;       // DBSCAN clustering tolerance
-    int min_pallet_cluster_size;   // Minimum pallet cluster size
-    int max_pallet_cluster_size;   // Maximum pallet cluster size
+        // Adaptive Breakpoint Detector
+        double  abd_lambda           = 10.0 * M_PI / 180.0;  // worst-case grazing 10°
+        double  abd_sigma_r          = 0.012;                // S2 mesafe gürültüsü ~12mm
+        int     min_cluster_points   = 3;
+        int     max_cluster_points   = 60;
 
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;                              // TF2 buffer
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;                 // TF2 listener
-    std::vector<geometry_msgs::msg::Point> pallet_station_area;               // Pallet station area polygon
+        // Bacak sınıflandırma
+        double  leg_width_tolerance  = 0.030;   // ±30mm
+        double  leg_flatness_max     = 0.015;   // bacak yüzü düz olmalı (≤15mm)
+        int     min_leg_points       = 4;
+        double  leg_width_absolute_min = 0.060;
+        double  leg_width_absolute_max = 0.200;
 
-    /**
-     * @brief Callback function for parameter updates (replaces dynamic_reconfigure)
-     * @param parameters Updated parameters
-     * @return SetParametersResult
-     */
-    rcl_interfaces::msg::SetParametersResult parametersCallback(
-        const std::vector<rclcpp::Parameter> &parameters)
+        // Pattern eşleştirme
+        double  pattern_distance_tolerance = 0.040;  // ±40mm aralık toleransı
+        double  pattern_collinearity_max   = 0.025;  // bacak merkezleri kollineer (≤25mm)
+        bool    require_gap_clear          = true;
+        double  gap_clear_margin           = 0.15;   // bacaktan en az 15cm daha uzakta
+
+        // Temporal filter
+        int     temporal_window      = 7;
+        int     temporal_required    = 5;
+        double  temporal_xy_jitter   = 0.025;   // 25mm
+        double  temporal_yaw_jitter  = 0.05;    // ~3°
+        double  temporal_timeout_sec = 1.0;     // bu süre içinde yenilenmezse historiyi temizle
+
+        // Diagnostic
+        bool    publish_diagnostics  = true;
+    } p_;
+
+    void declareParameters()
     {
-        for (const auto &param : parameters)
-        {
-            if (param.get_name() == "cluster_tolerance")
-            {
-                this->cluster_tolerance = static_cast<float>(param.as_double());
-            }
-            else if (param.get_name() == "min_pallet_cluster_size")
-            {
-                this->min_pallet_cluster_size = static_cast<int>(param.as_int());
-            }
-            else if (param.get_name() == "max_pallet_cluster_size")
-            {
-                this->max_pallet_cluster_size = static_cast<int>(param.as_int());
-            }
-        }
-        rcl_interfaces::msg::SetParametersResult result;
-        result.successful = true;
-        return result;
+        p_.lidar_frame     = this->declare_parameter("lidar_frame", p_.lidar_frame);
+        p_.reference_frame = this->declare_parameter("reference_frame", p_.reference_frame);
+
+        p_.min_range = this->declare_parameter("min_range", p_.min_range);
+        p_.max_range = this->declare_parameter("max_range", p_.max_range);
+        p_.fov_min   = this->declare_parameter("fov_min",   p_.fov_min);
+        p_.fov_max   = this->declare_parameter("fov_max",   p_.fov_max);
+
+        p_.station_box_x_min = this->declare_parameter("station_box_x_min", p_.station_box_x_min);
+        p_.station_box_x_max = this->declare_parameter("station_box_x_max", p_.station_box_x_max);
+        p_.station_box_y_min = this->declare_parameter("station_box_y_min", p_.station_box_y_min);
+        p_.station_box_y_max = this->declare_parameter("station_box_y_max", p_.station_box_y_max);
+
+        p_.abd_lambda         = this->declare_parameter("abd_lambda",         p_.abd_lambda);
+        p_.abd_sigma_r        = this->declare_parameter("abd_sigma_r",        p_.abd_sigma_r);
+        p_.min_cluster_points = this->declare_parameter("min_cluster_points", p_.min_cluster_points);
+        p_.max_cluster_points = this->declare_parameter("max_cluster_points", p_.max_cluster_points);
+
+        p_.leg_width_tolerance     = this->declare_parameter("leg_width_tolerance",     p_.leg_width_tolerance);
+        p_.leg_flatness_max        = this->declare_parameter("leg_flatness_max",        p_.leg_flatness_max);
+        p_.min_leg_points          = this->declare_parameter("min_leg_points",          p_.min_leg_points);
+        p_.leg_width_absolute_min  = this->declare_parameter("leg_width_absolute_min",  p_.leg_width_absolute_min);
+        p_.leg_width_absolute_max  = this->declare_parameter("leg_width_absolute_max",  p_.leg_width_absolute_max);
+
+        p_.pattern_distance_tolerance = this->declare_parameter("pattern_distance_tolerance", p_.pattern_distance_tolerance);
+        p_.pattern_collinearity_max   = this->declare_parameter("pattern_collinearity_max",   p_.pattern_collinearity_max);
+        p_.require_gap_clear          = this->declare_parameter("require_gap_clear",          p_.require_gap_clear);
+        p_.gap_clear_margin           = this->declare_parameter("gap_clear_margin",           p_.gap_clear_margin);
+
+        p_.temporal_window      = this->declare_parameter("temporal_window",      p_.temporal_window);
+        p_.temporal_required    = this->declare_parameter("temporal_required",    p_.temporal_required);
+        p_.temporal_xy_jitter   = this->declare_parameter("temporal_xy_jitter",   p_.temporal_xy_jitter);
+        p_.temporal_yaw_jitter  = this->declare_parameter("temporal_yaw_jitter",  p_.temporal_yaw_jitter);
+        p_.temporal_timeout_sec = this->declare_parameter("temporal_timeout_sec", p_.temporal_timeout_sec);
+
+        p_.publish_diagnostics = this->declare_parameter("publish_diagnostics", p_.publish_diagnostics);
     }
 
-    /**
-     * @brief Handles pallet station pose message and updates the search area polygon
-     * @param msg Incoming PalletStation message
-     */
-    void handlePalletStationPoseMessage(const robot_interfaces::msg::PalletStation::ConstSharedPtr &msg)
+    rcl_interfaces::msg::SetParametersResult parametersCallback(
+        const std::vector<rclcpp::Parameter> & params)
     {
-        // Convert quaternion to rotation matrix
-        tf2::Quaternion quat(msg->station_coor.pose.orientation.x, msg->station_coor.pose.orientation.y,
-                             msg->station_coor.pose.orientation.z, msg->station_coor.pose.orientation.w);
-        tf2::Matrix3x3 rotation_matrix(quat);
+        for (const auto & pr : params) {
+            const auto & n = pr.get_name();
+            if      (n == "min_range")                 p_.min_range = pr.as_double();
+            else if (n == "max_range")                 p_.max_range = pr.as_double();
+            else if (n == "fov_min")                   p_.fov_min   = pr.as_double();
+            else if (n == "fov_max")                   p_.fov_max   = pr.as_double();
+            else if (n == "abd_lambda")                p_.abd_lambda = pr.as_double();
+            else if (n == "abd_sigma_r")               p_.abd_sigma_r = pr.as_double();
+            else if (n == "min_cluster_points")        p_.min_cluster_points = pr.as_int();
+            else if (n == "max_cluster_points")        p_.max_cluster_points = pr.as_int();
+            else if (n == "leg_width_tolerance")       p_.leg_width_tolerance = pr.as_double();
+            else if (n == "leg_flatness_max")          p_.leg_flatness_max    = pr.as_double();
+            else if (n == "min_leg_points")            p_.min_leg_points      = pr.as_int();
+            else if (n == "pattern_distance_tolerance") p_.pattern_distance_tolerance = pr.as_double();
+            else if (n == "pattern_collinearity_max")  p_.pattern_collinearity_max  = pr.as_double();
+            else if (n == "require_gap_clear")         p_.require_gap_clear   = pr.as_bool();
+            else if (n == "gap_clear_margin")          p_.gap_clear_margin    = pr.as_double();
+            else if (n == "temporal_window")           p_.temporal_window     = pr.as_int();
+            else if (n == "temporal_required")         p_.temporal_required   = pr.as_int();
+            else if (n == "temporal_xy_jitter")        p_.temporal_xy_jitter  = pr.as_double();
+            else if (n == "temporal_yaw_jitter")       p_.temporal_yaw_jitter = pr.as_double();
+            else if (n == "publish_diagnostics")       p_.publish_diagnostics = pr.as_bool();
+        }
+        rcl_interfaces::msg::SetParametersResult r;
+        r.successful = true;
+        return r;
+    }
 
-        // Define the local rectangle corners (centered at the origin)
-        std::vector<tf2::Vector3> local_corners = {
-            tf2::Vector3( 0.75,  0.65, 0.0),  // Top-right
-            tf2::Vector3( 0.75, -0.65, 0.0),  // Bottom-right
-            tf2::Vector3(-0.6,  -0.65, 0.0),  // Bottom-left
-            tf2::Vector3(-0.6,   0.65, 0.0)   // Top-left
+    // ------------------------------------------------------------------------
+    // ROS arayüzleri
+    // ------------------------------------------------------------------------
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    rclcpp::Subscription<robot_interfaces::msg::PalletStation>::SharedPtr station_sub_;
+
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr        pose_array_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr      arrow_marker_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr      station_area_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr clusters_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr leg_candidates_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr accepted_pattern_pub_;
+
+    std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
+
+    // State
+    std::vector<geometry_msgs::msg::Point> search_polygon_;  // map frame
+    std::deque<PalletDetection>            history_;
+
+    // ------------------------------------------------------------------------
+    // Yardımcılar
+    // ------------------------------------------------------------------------
+    static geometry_msgs::msg::Point makePoint(double x, double y, double z = 0.0)
+    {
+        geometry_msgs::msg::Point p;
+        p.x = x; p.y = y; p.z = z;
+        return p;
+    }
+
+    static bool pointInPolygon(double x, double y,
+                               const std::vector<geometry_msgs::msg::Point> & poly)
+    {
+        int crossings = 0;
+        const size_t n = poly.size();
+        for (size_t i = 0; i < n; ++i) {
+            const auto & a = poly[i];
+            const auto & b = poly[(i + 1) % n];
+            if (((a.y > y) != (b.y > y)) &&
+                (x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x)) {
+                ++crossings;
+            }
+        }
+        return (crossings & 1);
+    }
+
+    // ------------------------------------------------------------------------
+    // Station pose callback — arama polygon'unu günceller
+    // ------------------------------------------------------------------------
+    void stationCallback(const robot_interfaces::msg::PalletStation::ConstSharedPtr & msg)
+    {
+        tf2::Quaternion q(
+            msg->station_coor.pose.orientation.x,
+            msg->station_coor.pose.orientation.y,
+            msg->station_coor.pose.orientation.z,
+            msg->station_coor.pose.orientation.w);
+        tf2::Matrix3x3 R(q);
+
+        const tf2::Vector3 t(
+            msg->station_coor.pose.position.x,
+            msg->station_coor.pose.position.y,
+            0.0);
+
+        const std::array<tf2::Vector3, 4> local = {
+            tf2::Vector3(p_.station_box_x_max, p_.station_box_y_max, 0.0),
+            tf2::Vector3(p_.station_box_x_max, p_.station_box_y_min, 0.0),
+            tf2::Vector3(p_.station_box_x_min, p_.station_box_y_min, 0.0),
+            tf2::Vector3(p_.station_box_x_min, p_.station_box_y_max, 0.0)
         };
 
-        // Transform local corners to global frame
-        std::vector<tf2::Vector3> pallet_station_area_corners;
-        for (const auto &corner : local_corners)
-        {
-            tf2::Vector3 transformed_corner = rotation_matrix * corner;
-            transformed_corner += tf2::Vector3(msg->station_coor.pose.position.x, msg->station_coor.pose.position.y, 0.0);
-            pallet_station_area_corners.push_back(transformed_corner);
+        std::vector<geometry_msgs::msg::Point> poly;
+        poly.reserve(4);
+        for (const auto & v : local) {
+            tf2::Vector3 w = R * v + t;
+            poly.push_back(makePoint(w.x(), w.y()));
+        }
+        search_polygon_ = std::move(poly);
+    }
+
+    // ------------------------------------------------------------------------
+    // Ana pipeline
+    // ------------------------------------------------------------------------
+    void scanCallback(const sensor_msgs::msg::LaserScan::ConstSharedPtr & scan)
+    {
+        publishStationArea();
+
+        // TF lookup
+        geometry_msgs::msg::TransformStamped tf_lidar_to_map;
+        try {
+            tf_lidar_to_map = tf_buffer_->lookupTransform(
+                p_.reference_frame, p_.lidar_frame, tf2::TimePointZero);
+        } catch (const tf2::TransformException & ex) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "TF lookup failed (%s → %s): %s",
+                p_.lidar_frame.c_str(), p_.reference_frame.c_str(), ex.what());
+            return;
         }
 
-        // Update the pallet station area polygon
-        this->pallet_station_area = {
-            createPoint(pallet_station_area_corners[0].x(), pallet_station_area_corners[0].y(), 0.0),
-            createPoint(pallet_station_area_corners[1].x(), pallet_station_area_corners[1].y(), 0.0),
-            createPoint(pallet_station_area_corners[2].x(), pallet_station_area_corners[2].y(), 0.0),
-            createPoint(pallet_station_area_corners[3].x(), pallet_station_area_corners[3].y(), 0.0)};
+        // 1) ROI'deki noktaları çıkar (LiDAR frame'inde, scan ordering korunmuş)
+        auto roi_points = extractROIPoints(*scan, tf_lidar_to_map);
+        if (roi_points.size() < static_cast<size_t>(p_.min_leg_points * 3)) {
+            RCLCPP_DEBUG(this->get_logger(),
+                "ROI'de yetersiz nokta (%zu)", roi_points.size());
+            clearHistoryIfTimedOut();
+            return;
+        }
+
+        // 2) Adaptive Breakpoint Detector ile segmentasyon
+        auto clusters = clusterAdaptiveBreakpoint(roi_points, scan->angle_increment);
+        if (p_.publish_diagnostics) publishClusters(clusters);
+
+        // 3) Her cluster için doğru fit + width/flatness karakterizasyonu
+        for (auto & c : clusters) characterizeCluster(c);
+
+        // 4) Bacak adayları (corner ~100mm, center ~145mm)
+        auto leg_candidates = filterLegCandidates(clusters);
+        if (p_.publish_diagnostics) publishLegCandidates(leg_candidates);
+
+        if (leg_candidates.size() < 3) {
+            RCLCPP_DEBUG(this->get_logger(),
+                "Yetersiz bacak adayı (%zu)", leg_candidates.size());
+            clearHistoryIfTimedOut();
+            return;
+        }
+
+        // 5) EUR pattern eşleştirme (3 kollineer bacak + doğru aralık + boşluk temiz)
+        auto detections = matchEURPattern(leg_candidates, roi_points);
+        if (detections.empty()) {
+            RCLCPP_DEBUG(this->get_logger(), "EUR pattern eşleşmedi");
+            clearHistoryIfTimedOut();
+            return;
+        }
+
+        // En yüksek skorlu detection'ı al (genelde tek tane olur)
+        auto best = *std::max_element(detections.begin(), detections.end(),
+            [](const PalletDetection & a, const PalletDetection & b){
+                return a.score < b.score;
+            });
+        best.stamp = this->now();
+
+        // 6) Temporal tutarlılık filtresi
+        auto confirmed = temporalFilter(best);
+        if (!confirmed.has_value()) {
+            RCLCPP_DEBUG(this->get_logger(),
+                "Detection aday ama temporal tutarsız (history size=%zu)",
+                history_.size());
+            return;
+        }
+
+        // 7) Yayınla
+        publishDetection(*confirmed);
     }
 
-    /**
-     * @brief Creates a geometry_msgs::msg::Point object
-     * @param x X coordinate
-     * @param y Y coordinate
-     * @param z Z coordinate
-     * @return geometry_msgs::msg::Point object
-     */
-    geometry_msgs::msg::Point createPoint(double x, double y, double z)
+    // ------------------------------------------------------------------------
+    // 1) ROI extraction
+    // ------------------------------------------------------------------------
+    std::vector<ScanPoint> extractROIPoints(
+        const sensor_msgs::msg::LaserScan & scan,
+        const geometry_msgs::msg::TransformStamped & tf_lidar_to_map)
     {
-        geometry_msgs::msg::Point point;
-        point.x = x;
-        point.y = y;
-        point.z = z;
-        return point;
+        std::vector<ScanPoint> out;
+        out.reserve(scan.ranges.size() / 4);
+
+        size_t total_valid = 0;
+        size_t total_in_roi = 0;
+        for (size_t i = 0; i < scan.ranges.size(); ++i) {
+            const float r = scan.ranges[i];
+
+            // Range / geçerlilik
+            if (!std::isfinite(r)) continue;
+            if (r < std::max<double>(scan.range_min, p_.min_range)) continue;
+            if (r > std::min<double>(scan.range_max, p_.max_range)) continue;
+
+            // FOV
+            const double a = scan.angle_min + i * scan.angle_increment;
+            if (a < p_.fov_min || a > p_.fov_max) continue;
+
+            // LiDAR frame'inde (x,y)
+            ScanPoint sp;
+            sp.range = r;
+            sp.angle = a;
+            sp.x = r * std::cos(a);
+            sp.y = r * std::sin(a);
+            sp.scan_index = i;
+
+            // map frame'ine taşı, polygon kontrolü
+            geometry_msgs::msg::PointStamped p_lidar, p_map;
+            p_lidar.header.frame_id = p_.lidar_frame;
+            p_lidar.point.x = sp.x;
+            p_lidar.point.y = sp.y;
+            p_lidar.point.z = 0.0;
+            try {
+                tf2::doTransform(p_lidar, p_map, tf_lidar_to_map);
+            } catch (const tf2::TransformException & ex) {
+                RCLCPP_WARN_ONCE(this->get_logger(), "extractROIPoints: TF dönüşüm hatası: %s", ex.what());
+                continue;
+            }
+
+            ++total_valid;
+
+            // DEBUG: Polygon testi devre dışı, tüm noktalar ROI'ye alınacak
+            // if (!pointInPolygon(p_map.point.x, p_map.point.y, search_polygon_)) continue;
+
+            ++total_in_roi;
+            out.push_back(sp);
+        }
+        RCLCPP_DEBUG(this->get_logger(),
+            "extractROIPoints: toplam nokta=%zu, geçerli=%zu, ROI'de=%zu",
+            scan.ranges.size(), total_valid, total_in_roi);
+        return out;
     }
 
-    /**
-     * @brief Checks if a point is inside a polygon (ray casting algorithm)
-     * @param point Point to check
-     * @param polygon Polygon points
-     * @return True if the point is inside the polygon, false otherwise
-     */
-    bool controlScanPointinStationArea(const geometry_msgs::msg::Point &point, const std::vector<geometry_msgs::msg::Point> &polygon)
+    // ------------------------------------------------------------------------
+    // 2) Adaptive Breakpoint Detector (Borges & Aldon 2004)
+    //    Komşu noktalar arası beklenen maks mesafe:
+    //      d_max(r, Δφ) = r * sin(Δφ) / sin(λ - Δφ) + 3·σ_r
+    //    Bu eşiği aşan komşulukta breakpoint var → yeni cluster.
+    // ------------------------------------------------------------------------
+    std::vector<Cluster> clusterAdaptiveBreakpoint(
+        const std::vector<ScanPoint> & pts, double angle_increment)
     {
-        int n = polygon.size();
-        int crossings = 0;
+        std::vector<Cluster> clusters;
+        if (pts.empty()) return clusters;
 
-        for (int i = 0; i < n; ++i)
-        {
-            const geometry_msgs::msg::Point &p1 = polygon[i];
-            const geometry_msgs::msg::Point &p2 = polygon[(i + 1) % n];
+        const double dphi = std::abs(angle_increment);
+        const double lam  = p_.abd_lambda;
+        const double sin_dphi = std::sin(dphi);
+        const double sin_lam_minus_dphi = std::sin(lam - dphi);
 
-            if (((p1.y > point.y) != (p2.y > point.y)) &&
-                (point.x < (p2.x - p1.x) * (point.y - p1.y) / (p2.y - p1.y) + p1.x))
-            {
-                crossings++;
+        Cluster cur;
+        cur.points.push_back(pts.front());
+
+        for (size_t i = 1; i < pts.size(); ++i) {
+            const auto & a = pts[i - 1];
+            const auto & b = pts[i];
+
+            // Açısal komşuluk: scan index'leri ardışık olmalı
+            const bool angularly_adjacent =
+                (b.scan_index - a.scan_index) <= 2;  // 1-2 boşluğa müsamaha
+
+            const double dx = b.x - a.x;
+            const double dy = b.y - a.y;
+            const double dist = std::sqrt(dx * dx + dy * dy);
+
+            const double r_min = std::min(a.range, b.range);
+            const double d_max = (sin_lam_minus_dphi > 1e-6)
+                                 ? r_min * sin_dphi / sin_lam_minus_dphi + 3.0 * p_.abd_sigma_r
+                                 : 0.05;
+
+            if (!angularly_adjacent || dist > d_max) {
+                // Cluster'ı kapat
+                if (cur.points.size() >= static_cast<size_t>(p_.min_cluster_points) &&
+                    cur.points.size() <= static_cast<size_t>(p_.max_cluster_points)) {
+                    clusters.push_back(std::move(cur));
+                }
+                cur = Cluster{};
+            }
+            cur.points.push_back(b);
+        }
+        if (cur.points.size() >= static_cast<size_t>(p_.min_cluster_points) &&
+            cur.points.size() <= static_cast<size_t>(p_.max_cluster_points)) {
+            clusters.push_back(std::move(cur));
+        }
+        return clusters;
+    }
+
+    // ------------------------------------------------------------------------
+    // 3) Cluster karakterizasyonu — PCA ile doğru, width, flatness
+    // ------------------------------------------------------------------------
+    void characterizeCluster(Cluster & c)
+    {
+        const size_t N = c.points.size();
+        if (N < 2) return;
+
+        // Centroid
+        Eigen::Vector2d mean = Eigen::Vector2d::Zero();
+        for (const auto & p : c.points) mean += Eigen::Vector2d(p.x, p.y);
+        mean /= static_cast<double>(N);
+        c.centroid = mean;
+        c.range_to_centroid = mean.norm();
+
+        // Kovaryans
+        Eigen::Matrix2d cov = Eigen::Matrix2d::Zero();
+        for (const auto & p : c.points) {
+            const Eigen::Vector2d d(p.x - mean.x(), p.y - mean.y());
+            cov += d * d.transpose();
+        }
+        cov /= static_cast<double>(N);
+
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> es(cov);
+        // Büyük özdeğer → doğru yönü; küçük → normal
+        c.line_dir    = es.eigenvectors().col(1).normalized();
+        c.line_normal = es.eigenvectors().col(0).normalized();
+
+        // Width = doğru yönündeki projeksiyon menzili
+        double pmin =  std::numeric_limits<double>::infinity();
+        double pmax = -std::numeric_limits<double>::infinity();
+        double max_perp = 0.0;
+        for (const auto & p : c.points) {
+            const Eigen::Vector2d d(p.x - mean.x(), p.y - mean.y());
+            const double t = d.dot(c.line_dir);
+            const double n = std::abs(d.dot(c.line_normal));
+            pmin = std::min(pmin, t);
+            pmax = std::max(pmax, t);
+            max_perp = std::max(max_perp, n);
+        }
+        c.width    = pmax - pmin;
+        c.flatness = max_perp;
+
+        // Scan index aralığı
+        c.scan_index_min = c.points.front().scan_index;
+        c.scan_index_max = c.points.back().scan_index;
+        for (const auto & p : c.points) {
+            c.scan_index_min = std::min(c.scan_index_min, p.scan_index);
+            c.scan_index_max = std::max(c.scan_index_max, p.scan_index);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4) Bacak aday filtresi
+    // ------------------------------------------------------------------------
+    std::vector<Cluster> filterLegCandidates(const std::vector<Cluster> & clusters)
+    {
+        std::vector<Cluster> out;
+        out.reserve(clusters.size());
+
+        for (auto c : clusters) {
+            bool rejected = false;
+            std::string reason;
+            if (static_cast<int>(c.points.size()) < p_.min_leg_points) {
+                rejected = true;
+                reason += "min_leg_points ";
+            }
+            if (c.width < p_.leg_width_absolute_min) {
+                rejected = true;
+                reason += "width_min ";
+            }
+            if (c.width > p_.leg_width_absolute_max) {
+                rejected = true;
+                reason += "width_max ";
+            }
+            if (c.flatness > p_.leg_flatness_max) {
+                rejected = true;
+                reason += "flatness ";
+            }
+
+            const double tol = p_.leg_width_tolerance;
+            c.is_corner_candidate =
+                std::abs(c.width - eur::CORNER_BLOCK_WIDTH) <= tol;
+            c.is_center_candidate =
+                std::abs(c.width - eur::CENTER_BLOCK_WIDTH) <= tol;
+
+            if (c.is_corner_candidate || c.is_center_candidate) {
+                if (c.points.size() > 0) {
+                    if (!rejected) {
+                        out.push_back(std::move(c));
+                        RCLCPP_DEBUG(rclcpp::get_logger("pallet_detection"),
+                            "Bacak adayı: width=%.3f flatness=%.3f points=%zu [OK]",
+                            c.width, c.flatness, c.points.size());
+                    } else {
+                        RCLCPP_DEBUG(rclcpp::get_logger("pallet_detection"),
+                            "Bacak adayı: width=%.3f flatness=%.3f points=%zu [REJECTED: %s]",
+                            c.width, c.flatness, c.points.size(), reason.c_str());
+                    }
+                } else {
+                    RCLCPP_DEBUG(rclcpp::get_logger("pallet_detection"),
+                        "Cluster width=%.3f flatness=%.3f points=%zu [NOT LEG]",
+                        c.width, c.flatness, c.points.size());
+                }
+            } else {
+                RCLCPP_DEBUG(rclcpp::get_logger("pallet_detection"),
+                    "Cluster width=%.3f flatness=%.3f points=%zu [NOT LEG]",
+                    c.width, c.flatness, c.points.size());
             }
         }
-
-        return (crossings % 2 == 1);
+        return out;
     }
 
-    /**
-     * @brief Processes incoming LIDAR scan data to detect pallets
-     * @param scan_msg Incoming LaserScan message
-     */
-    void scanCallback(const sensor_msgs::msg::LaserScan::ConstSharedPtr &scan_msg)
+    // ------------------------------------------------------------------------
+    // 5) EUR pattern eşleştirme — 3 kollineer bacak araması
+    // ------------------------------------------------------------------------
+    std::vector<PalletDetection> matchEURPattern(
+        const std::vector<Cluster> & legs,
+        const std::vector<ScanPoint> & all_points)
     {
-        publishPalletStationArea(pallet_station_area[0], pallet_station_area[1], pallet_station_area[2], pallet_station_area[3]);
-        try
-        {
-            // Get the transform from lidar_fork_1 to map
-            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform("map", "lidar_fork_1", tf2::TimePointZero);
+        std::vector<PalletDetection> detections;
+        const size_t M = legs.size();
+        if (M < 3) return detections;
 
-            // Prepare a new LaserScan message for filtered data
-            auto filtered_scan = std::make_shared<sensor_msgs::msg::LaserScan>(*scan_msg);
-            filtered_scan->ranges.clear();
+        const double D_nominal = eur::CORNER_TO_CENTER_DISTANCE;
+        const double D_tol     = p_.pattern_distance_tolerance;
 
-            // Iterate through LaserScan ranges
-            for (size_t i = 0; i < scan_msg->ranges.size(); ++i)
-            {
-                double angle = scan_msg->angle_min + i * scan_msg->angle_increment;
-                double range = scan_msg->ranges[i];
+        // Tüm 3'lü kombinasyonlar
+        for (size_t i = 0; i < M; ++i) {
+            if (!legs[i].is_corner_candidate) continue;
+            for (size_t k = i + 1; k < M; ++k) {
+                if (!legs[k].is_corner_candidate) continue;
 
-                // Skip invalid range values
-                if (range < scan_msg->range_min || range > scan_msg->range_max)
-                {
-                    filtered_scan->ranges.push_back(std::numeric_limits<float>::infinity());
+                // Köşe-köşe mesafesi ≈ 700 mm
+                const double d_ik = (legs[i].centroid - legs[k].centroid).norm();
+                if (std::abs(d_ik - eur::CORNER_TO_CORNER_DISTANCE) > 2.0 * D_tol)
                     continue;
+
+                for (size_t j = 0; j < M; ++j) {
+                    if (j == i || j == k) continue;
+                    if (!legs[j].is_center_candidate) continue;
+
+                    const double d_ij = (legs[i].centroid - legs[j].centroid).norm();
+                    const double d_jk = (legs[j].centroid - legs[k].centroid).norm();
+
+                    if (std::abs(d_ij - D_nominal) > D_tol) continue;
+                    if (std::abs(d_jk - D_nominal) > D_tol) continue;
+
+                    // Kollineerlik: j'nin (i,k) doğrusuna dik mesafesi
+                    const Eigen::Vector2d ik = legs[k].centroid - legs[i].centroid;
+                    const Eigen::Vector2d ij = legs[j].centroid - legs[i].centroid;
+                    const double ik_len = ik.norm();
+                    if (ik_len < 1e-6) continue;
+                    const Eigen::Vector2d ik_hat = ik / ik_len;
+                    const Eigen::Vector2d ik_perp(-ik_hat.y(), ik_hat.x());
+                    const double perp = std::abs(ij.dot(ik_perp));
+                    if (perp > p_.pattern_collinearity_max) continue;
+
+                    // Boşluk temizliği
+                    if (p_.require_gap_clear) {
+                        if (!isGapClear(legs[i], legs[j], all_points)) continue;
+                        if (!isGapClear(legs[j], legs[k], all_points)) continue;
+                    }
+
+                    // Skor: birden fazla kritere göre 0..1
+                    double score = 1.0;
+                    score *= 1.0 - std::abs(d_ij - D_nominal) / D_tol * 0.25;
+                    score *= 1.0 - std::abs(d_jk - D_nominal) / D_tol * 0.25;
+                    score *= 1.0 - perp / p_.pattern_collinearity_max * 0.25;
+                    score = std::clamp(score, 0.0, 1.0);
+
+                    // Pose çıkarımı
+                    PalletDetection det = extractPose(legs[i], legs[j], legs[k]);
+                    det.score = score;
+                    detections.push_back(det);
+
+                    if (p_.publish_diagnostics) {
+                        publishAcceptedPattern({legs[i], legs[j], legs[k]}, det);
+                    }
                 }
-
-                // Calculate point in lidar_fork_1 frame
-                geometry_msgs::msg::PointStamped point_in_lidar;
-                point_in_lidar.header.frame_id = "lidar_fork_1";
-                point_in_lidar.point.x = range * cos(angle);
-                point_in_lidar.point.y = range * sin(angle);
-                point_in_lidar.point.z = 0.0;
-
-                // Transform point to map frame
-                geometry_msgs::msg::PointStamped point_in_map;
-                tf2::doTransform(point_in_lidar, point_in_map, transform);
-
-                // Check if the point is within the polygon
-                if (controlScanPointinStationArea(point_in_map.point, pallet_station_area))
-                {
-                    filtered_scan->ranges.push_back(range);
-                }
-                else
-                {
-                    filtered_scan->ranges.push_back(std::numeric_limits<float>::infinity());
-                }
             }
-
-            if (filtered_scan->ranges.empty())
-            {
-                return;
-            }
-
-            auto cloud = convertLaserScanToPointCloud(filtered_scan);
-
-            if (cloud->points.empty())
-            {
-                return;
-            }
-
-            auto pallet_indicies = performDBSCAN(cloud);
-            auto pallet_cloud = createClusteredPointCloud(cloud, pallet_indicies);
         }
-        catch (const tf2::TransformException &ex)
-        {
-            RCLCPP_WARN(this->get_logger(), "Transform failed: %s", ex.what());
-        }
+        return detections;
     }
 
-    /**
-     * @brief Converts LaserScan data to PointCloud data
-     * @param scan_msg Incoming LaserScan message
-     * @return Point cloud data
-     */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr convertLaserScanToPointCloud(const sensor_msgs::msg::LaserScan::ConstSharedPtr &scan_msg)
+    // ------------------------------------------------------------------------
+    // Boşluk temizlik kontrolü
+    //   İki bacak arası scan açılarında, bacak mesafesine yakın (engelleyici)
+    //   bir geri dönüş VAR mı? Varsa: gap dolu → reddet.
+    // ------------------------------------------------------------------------
+    bool isGapClear(const Cluster & a, const Cluster & b,
+                    const std::vector<ScanPoint> & all_points)
     {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        // İki bacağın scan_index aralığı arasındaki noktaları al
+        const size_t lo = std::min(a.scan_index_max, b.scan_index_max);
+        const size_t hi = std::max(a.scan_index_min, b.scan_index_min);
+        // Aslında "boşluk", iki bacağın index'lerinin arasındaki bölge:
+        const size_t gap_lo = std::min(a.scan_index_max, b.scan_index_max);
+        const size_t gap_hi = std::max(a.scan_index_min, b.scan_index_min);
 
-        for (size_t i = 0; i < scan_msg->ranges.size(); ++i)
-        {
-            if (std::isfinite(scan_msg->ranges[i]))
-            {
-                float angle = scan_msg->angle_min + i * scan_msg->angle_increment;
-                pcl::PointXYZ point;
-                point.x = scan_msg->ranges[i] * cos(angle);
-                point.y = scan_msg->ranges[i] * sin(angle);
-                point.z = 0.0;
-                cloud->points.push_back(point);
+        (void)lo; (void)hi;
+
+        if (gap_hi <= gap_lo + 1) return true;  // bacaklar dokunuyor, boşluk yok sayılabilir
+
+        const double leg_range = 0.5 * (a.range_to_centroid + b.range_to_centroid);
+        const double max_allowed_range = leg_range - p_.gap_clear_margin;
+        // Yani gap'te, leg_range'den >= gap_clear_margin daha YAKIN bir nokta varsa,
+        // o nokta bacak yüzünün önünde — gap dolu demek. (palet arkasındaki dönüşler
+        // daha uzakta olur, sorun değil)
+
+        int blocking = 0;
+        for (const auto & p : all_points) {
+            if (p.scan_index <= gap_lo) continue;
+            if (p.scan_index >= gap_hi) continue;
+            if (p.range < max_allowed_range) {
+                ++blocking;
+                if (blocking > 2) return false;  // 1-2 outlier tolere et
             }
         }
-        cloud->width = cloud->points.size();
-        cloud->height = 1;
-        cloud->is_dense = true;
-
-        // Apply Statistical Outlier Removal filter
-        pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);
-
-        if (!cloud->points.empty())
-        {
-            sor.setInputCloud(cloud);
-            sor.setMeanK(50);             // Number of neighbors to analyze
-            sor.setStddevMulThresh(0.1);  // Standard deviation threshold
-            sor.filter(*cloud_filtered);
-
-            return cloud_filtered;
-        }
-        else
-        {
-            return cloud;
-        }
+        return true;
     }
 
-    /**
-     * @brief Performs DBSCAN clustering on point cloud data
-     * @param cloud Input point cloud
-     * @return Vector of point indices representing potential pallet clusters
-     */
-    std::vector<pcl::PointIndices> performDBSCAN(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+    // ------------------------------------------------------------------------
+    // Pose çıkarımı — 3 bacak merkezi üzerinden least-squares
+    // ------------------------------------------------------------------------
+    PalletDetection extractPose(const Cluster & a, const Cluster & b, const Cluster & c)
     {
-        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-        tree->setInputCloud(cloud);
+        PalletDetection det;
 
-        pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-        ec.setClusterTolerance(cluster_tolerance);
-        ec.setMinClusterSize(min_pallet_cluster_size);
-        ec.setMaxClusterSize(max_pallet_cluster_size);
-        ec.setSearchMethod(tree);
-        ec.setInputCloud(cloud);
+        // Merkez: orta bacak konumu (b) tek başına en az gürültülü tahmin,
+        //         ama 3 merkezin ortalaması yaw için daha kararlı.
+        // Pratikte: yaw 3 merkezden line fit, position orta bacaktan.
+        Eigen::Matrix<double, 3, 2> P;
+        P << a.centroid.transpose(),
+             b.centroid.transpose(),
+             c.centroid.transpose();
+        const Eigen::Vector2d mean = P.colwise().mean();
 
-        std::vector<pcl::PointIndices> cluster_indices;
-        ec.extract(cluster_indices);
-
-        int cluster_id = 0;
-        for (const auto &indices : cluster_indices)
-        {
-            findPallet(cloud, indices, cluster_id++);
+        Eigen::Matrix2d cov = Eigen::Matrix2d::Zero();
+        for (int r = 0; r < 3; ++r) {
+            const Eigen::Vector2d d(P(r, 0) - mean.x(), P(r, 1) - mean.y());
+            cov += d * d.transpose();
         }
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> es(cov);
+        const Eigen::Vector2d line_dir = es.eigenvectors().col(1).normalized();
 
-        return cluster_indices;
+        // Palet ön yüz normali: line_dir'e dik, LiDAR (origin) yönüne bakan
+        Eigen::Vector2d normal(-line_dir.y(), line_dir.x());
+        // Origin yönü = -mean (LiDAR origin'de, palet mean'de)
+        if (normal.dot(-mean) < 0.0) normal = -normal;
+
+        det.position = mean;
+        det.yaw = std::atan2(normal.y(), normal.x());
+        return det;
     }
 
-    /**
-     * @brief Creates a point cloud from the cluster indices
-     * @param cloud Input point cloud
-     * @param cluster_indices Vector of point indices representing potential pallet clusters
-     * @return Clustered point cloud
-     */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr createClusteredPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const std::vector<pcl::PointIndices> &cluster_indices)
+    // ------------------------------------------------------------------------
+    // 6) Temporal tutarlılık filtresi (N-of-M)
+    // ------------------------------------------------------------------------
+    std::optional<PalletDetection> temporalFilter(const PalletDetection & d)
     {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr clustered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-        for (const auto &indices : cluster_indices)
-        {
-            pcl::PointCloud<pcl::PointXYZ>::Ptr clustered_cloud2(new pcl::PointCloud<pcl::PointXYZ>);
+        const auto now = this->now();
+        // Çok eski geçmişi at
+        while (!history_.empty() &&
+               (now - history_.front().stamp).seconds() > p_.temporal_timeout_sec) {
+            history_.pop_front();
+        }
+        history_.push_back(d);
+        while (static_cast<int>(history_.size()) > p_.temporal_window) {
+            history_.pop_front();
+        }
 
-            for (const auto &idx : indices.indices)
-            {
-                pcl::PointXYZ point;
-                point.x = cloud->points[idx].x;
-                point.y = cloud->points[idx].y;
-                point.z = cloud->points[idx].z;
-                clustered_cloud->points.push_back(point);
-                clustered_cloud2->points.push_back(point);
+        // Mevcut detection ile uyumlu olan kaç geçmiş detection var?
+        Eigen::Vector2d sum_pos = Eigen::Vector2d::Zero();
+        double sum_sin = 0.0, sum_cos = 0.0;
+        int consistent = 0;
+
+        for (const auto & h : history_) {
+            const double dxy = (h.position - d.position).norm();
+            const double dyaw = std::atan2(
+                std::sin(h.yaw - d.yaw), std::cos(h.yaw - d.yaw));
+            if (dxy <= p_.temporal_xy_jitter &&
+                std::abs(dyaw) <= p_.temporal_yaw_jitter) {
+                sum_pos += h.position;
+                sum_sin += std::sin(h.yaw);
+                sum_cos += std::cos(h.yaw);
+                ++consistent;
             }
         }
 
-        clustered_cloud->width = clustered_cloud->points.size();
-        clustered_cloud->height = 1;
-        clustered_cloud->is_dense = true;
+        if (consistent < p_.temporal_required) return std::nullopt;
 
-        return clustered_cloud;
+        // Smoothed pose
+        PalletDetection out = d;
+        out.position = sum_pos / static_cast<double>(consistent);
+        out.yaw      = std::atan2(sum_sin, sum_cos);
+        out.score    = d.score *
+            (static_cast<double>(consistent) /
+             static_cast<double>(p_.temporal_window));
+        return out;
     }
 
-    /**
-     * @brief Extracts the points of a single cluster
-     * @param cloud Input point cloud
-     * @param cluster_indices Point indices of the cluster
-     * @return Point cloud of the cluster
-     */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr extractClusterPoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const pcl::PointIndices &cluster_indices)
+    void clearHistoryIfTimedOut()
     {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_points(new pcl::PointCloud<pcl::PointXYZ>);
-        for (const auto &idx : cluster_indices.indices)
-        {
-            cluster_points->points.push_back(cloud->points[idx]);
+        if (history_.empty()) return;
+        const auto now = this->now();
+        if ((now - history_.back().stamp).seconds() > p_.temporal_timeout_sec) {
+            history_.clear();
         }
-        return cluster_points;
     }
 
-    /**
-     * @brief Computes the convex hull of the cluster points
-     * @param cluster_points Input cluster point cloud
-     * @return Convex hull cloud
-     */
-    pcl::PointCloud<pcl::PointXYZ> computeConvexHull(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cluster_points)
+    // ------------------------------------------------------------------------
+    // 7) Yayınlama — orijinal arayüze sadık
+    // ------------------------------------------------------------------------
+    void publishDetection(const PalletDetection & d)
     {
-        pcl::ConvexHull<pcl::PointXYZ> chull;
-        pcl::PointCloud<pcl::PointXYZ> hull_cloud;
-        chull.setInputCloud(cluster_points);
-        chull.reconstruct(hull_cloud);
-        return hull_cloud;
-    }
+        // LiDAR frame'inde PoseStamped hazırla
+        tf2::Quaternion q;
+        q.setRPY(0, 0, d.yaw);
+        geometry_msgs::msg::PoseStamped in_lidar;
+        in_lidar.header.frame_id = p_.lidar_frame;
+        in_lidar.header.stamp = rclcpp::Time(0);
+        in_lidar.pose.position.x = d.position.x();
+        in_lidar.pose.position.y = d.position.y();
+        in_lidar.pose.position.z = 0.0;
+        in_lidar.pose.orientation.x = q.x();
+        in_lidar.pose.orientation.y = q.y();
+        in_lidar.pose.orientation.z = q.z();
+        in_lidar.pose.orientation.w = q.w();
 
-    /**
-     * @brief Computes the minimum area rectangle of the cluster points
-     * @param hull_cloud Convex hull cloud
-     * @param rect_points Array of four rectangle corner points (output)
-     */
-    void computeMinAreaRectangle(const pcl::PointCloud<pcl::PointXYZ> &hull_cloud, cv::Point2f rect_points[4])
-    {
-        std::vector<cv::Point2f> points;
-        for (const auto &point : hull_cloud.points)
-        {
-            points.emplace_back(point.x, point.y);
-        }
-
-        cv::RotatedRect minRect = cv::minAreaRect(points);
-        minRect.points(rect_points);
-    }
-
-    /**
-     * @brief Calculates yaw angle between two points
-     * @param p1 First point
-     * @param p2 Second point
-     * @return Yaw angle in radians
-     */
-    double calculateYaw(const cv::Point2f &p1, const cv::Point2f &p2)
-    {
-        // Calculate the differences in the x and y coordinates
-        float dx = p2.x - p1.x;
-        float dy = p2.y - p1.y;
-
-        // Use atan2 to compute the angle in radians
-        double yaw = std::atan2(dy, dx) + (M_PI / 2);
-        if (yaw < (M_PI / 2))
-        {
-            yaw += M_PI;
-        }
-        return yaw;  // Return the angle in radians
-    }
-
-    /**
-     * @brief Converts euler angles to quaternion
-     * @param roll Roll angle in radians
-     * @param pitch Pitch angle in radians
-     * @param yaw Yaw angle in radians
-     * @return Quaternion
-     */
-    Quaternion eulerToQuaternion(double roll, double pitch, double yaw)
-    {
-        // Calculate half angles
-        double cy = cos(yaw * 0.5);
-        double sy = sin(yaw * 0.5);
-        double cp = cos(pitch * 0.5);
-        double sp = sin(pitch * 0.5);
-        double cr = cos(roll * 0.5);
-        double sr = sin(roll * 0.5);
-
-        Quaternion q;
-        q.w = cr * cp * cy + sr * sp * sy;
-        q.x = sr * cp * cy - cr * sp * sy;
-        q.y = cr * sp * cy + sr * cp * sy;
-        q.z = cr * cp * sy - sr * sp * cy;
-
-        return q;
-    }
-
-    /**
-     * @brief Computes the center points of the rectangle sides and filters by distance range
-     * @param rect_points Array of rectangle corner points
-     * @return Vector of valid center poses
-     */
-    std::vector<geometry_msgs::msg::Pose> computeRectangleCenters(const cv::Point2f rect_points[4])
-    {
-        std::vector<geometry_msgs::msg::Pose> center_points;
-
-        // Calculate the main center point (midpoint of the long side)
-        geometry_msgs::msg::Pose main_center;
-        main_center.position.x = (rect_points[3].x + rect_points[0].x) / 2;
-        main_center.position.y = (rect_points[3].y + rect_points[0].y) / 2;
-        main_center.position.z = 0.0;
-
-        double main_yaw = calculateYaw(rect_points[0], rect_points[3]);
-        Quaternion main_quaternion = eulerToQuaternion(0, 0, main_yaw);
-
-        main_center.orientation.x = main_quaternion.x;
-        main_center.orientation.y = main_quaternion.y;
-        main_center.orientation.z = main_quaternion.z;
-        main_center.orientation.w = main_quaternion.w;
-
-        double dx = rect_points[3].x - rect_points[0].x;
-        double dy = rect_points[3].y - rect_points[0].y;
-        double distance = std::sqrt(dx * dx + dy * dy);
-
-        // Filter by distance range
-        if (distance > 0.6 && distance < 1.0)
-        {
-            center_points.push_back(main_center);
+        // map frame'ine taşı
+        geometry_msgs::msg::PoseStamped in_map;
+        try {
+            tf_buffer_->transform(in_lidar, in_map, p_.reference_frame,
+                                  tf2::durationFromSec(0.2));
+        } catch (const tf2::TransformException & ex) {
+            RCLCPP_WARN(this->get_logger(),
+                "Pose'u map'e taşıyamadım: %s", ex.what());
+            return;
         }
 
-        // Calculate the midpoints of other sides and filter by distance
-        for (size_t i = 0; i < 3; ++i)
-        {
-            geometry_msgs::msg::Pose side_center;
+        // /pallet_poses
+        geometry_msgs::msg::PoseArray pa;
+        pa.header.frame_id = p_.reference_frame;
+        pa.header.stamp = this->now();
+        pa.poses.push_back(in_map.pose);
+        pose_array_pub_->publish(pa);
 
-            double dx = rect_points[i + 1].x - rect_points[i].x;
-            double dy = rect_points[i + 1].y - rect_points[i].y;
-            double distance = std::sqrt(dx * dx + dy * dy);
+        // convex_hull_marker (arrow) — LiDAR frame'inde
+        publishArrowMarker(d);
 
-            side_center.position.x = (rect_points[i].x + rect_points[i + 1].x) / 2;
-            side_center.position.y = (rect_points[i].y + rect_points[i + 1].y) / 2;
-            side_center.position.z = 0.0;
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+            "Palet onaylandı: pos=(%.3f, %.3f) yaw=%.1f° score=%.2f",
+            d.position.x(), d.position.y(), d.yaw * 180.0 / M_PI, d.score);
+    }
 
-            double side_yaw = calculateYaw(rect_points[i], rect_points[i + 1]);
-            Quaternion side_quaternion = eulerToQuaternion(0, 0, side_yaw);
+    void publishArrowMarker(const PalletDetection & d)
+    {
+        visualization_msgs::msg::Marker m;
+        m.header.frame_id = p_.lidar_frame;
+        m.header.stamp = rclcpp::Time(0);
+        m.ns = "pallet_pose";
+        m.id = 0;
+        m.type = visualization_msgs::msg::Marker::ARROW;
+        m.action = visualization_msgs::msg::Marker::ADD;
+        m.scale.x = 0.05; m.scale.y = 0.10; m.scale.z = 0.15;
+        m.color.r = 0.0; m.color.g = 1.0; m.color.b = 1.0; m.color.a = 1.0;
+        m.pose.orientation.w = 1.0;
 
-            side_center.orientation.x = side_quaternion.x;
-            side_center.orientation.y = side_quaternion.y;
-            side_center.orientation.z = side_quaternion.z;
-            side_center.orientation.w = side_quaternion.w;
+        geometry_msgs::msg::Point s, e;
+        s.x = d.position.x(); s.y = d.position.y(); s.z = 0.0;
+        e.x = s.x + 0.5 * std::cos(d.yaw);
+        e.y = s.y + 0.5 * std::sin(d.yaw);
+        e.z = 0.0;
+        m.points.push_back(s);
+        m.points.push_back(e);
+        arrow_marker_pub_->publish(m);
+    }
 
-            // Filter by distance range
-            if (distance > 0.65 && distance < 1.0)
-            {
-                center_points.push_back(side_center);
+    void publishStationArea()
+    {
+        if (search_polygon_.size() < 3) return;
+        visualization_msgs::msg::Marker m;
+        m.header.frame_id = p_.reference_frame;
+        m.header.stamp = this->now();
+        m.ns = "search_area";
+        m.id = 0;
+        m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+        m.action = visualization_msgs::msg::Marker::ADD;
+        m.scale.x = 0.05;
+        m.color.r = 0.0; m.color.g = 1.0; m.color.b = 0.0; m.color.a = 1.0;
+        m.pose.orientation.w = 1.0;
+        for (const auto & p : search_polygon_) m.points.push_back(p);
+        m.points.push_back(search_polygon_.front());
+        station_area_pub_->publish(m);
+    }
+
+    // ------------------------------------------------------------------------
+    // Diagnostic yayıncılar — saha debug için
+    // ------------------------------------------------------------------------
+    void publishClusters(const std::vector<Cluster> & clusters)
+    {
+        visualization_msgs::msg::MarkerArray arr;
+        int id = 0;
+        // Önce eski marker'ları sil
+        visualization_msgs::msg::Marker del;
+        del.header.frame_id = p_.lidar_frame;
+        del.action = visualization_msgs::msg::Marker::DELETEALL;
+        arr.markers.push_back(del);
+
+        for (const auto & c : clusters) {
+            visualization_msgs::msg::Marker m;
+            m.header.frame_id = p_.lidar_frame;
+            m.header.stamp = rclcpp::Time(0);
+            m.ns = "clusters";
+            m.id = id++;
+            m.type = visualization_msgs::msg::Marker::POINTS;
+            m.action = visualization_msgs::msg::Marker::ADD;
+            m.scale.x = 0.03; m.scale.y = 0.03;
+            m.color.r = 0.6; m.color.g = 0.6; m.color.b = 1.0; m.color.a = 1.0;
+            m.pose.orientation.w = 1.0;
+            for (const auto & p : c.points) {
+                geometry_msgs::msg::Point gp;
+                gp.x = p.x; gp.y = p.y; gp.z = 0.0;
+                m.points.push_back(gp);
             }
+            arr.markers.push_back(m);
         }
-
-        return center_points;
+        clusters_pub_->publish(arr);
     }
 
-    /**
-     * @brief Finds the closest point to the origin
-     * @param center_points Vector of center points
-     * @return Closest pose to the origin
-     */
-    geometry_msgs::msg::Pose findClosestPoint(const std::vector<geometry_msgs::msg::Pose> &center_points)
+    void publishLegCandidates(const std::vector<Cluster> & legs)
     {
-        geometry_msgs::msg::Pose closest_pose;
-        double min_distance = std::numeric_limits<double>::infinity();
+        visualization_msgs::msg::MarkerArray arr;
+        int id = 0;
+        visualization_msgs::msg::Marker del;
+        del.header.frame_id = p_.lidar_frame;
+        del.action = visualization_msgs::msg::Marker::DELETEALL;
+        arr.markers.push_back(del);
 
-        for (const auto &pose : center_points)
-        {
-            double distance = std::sqrt(std::pow(pose.position.x, 2) + std::pow(pose.position.y, 2));
-            if (distance < min_distance)
-            {
-                min_distance = distance;
-                closest_pose = pose;
+        for (const auto & c : legs) {
+            visualization_msgs::msg::Marker m;
+            m.header.frame_id = p_.lidar_frame;
+            m.header.stamp = rclcpp::Time(0);
+            m.ns = "leg_candidates";
+            m.id = id++;
+            m.type = visualization_msgs::msg::Marker::SPHERE;
+            m.action = visualization_msgs::msg::Marker::ADD;
+            m.pose.position.x = c.centroid.x();
+            m.pose.position.y = c.centroid.y();
+            m.pose.orientation.w = 1.0;
+            m.scale.x = m.scale.y = m.scale.z = 0.08;
+            // Yeşil: corner, Sarı: center, Turuncu: her ikisi de
+            if (c.is_corner_candidate && c.is_center_candidate) {
+                m.color.r = 1.0; m.color.g = 0.6; m.color.b = 0.0;
+            } else if (c.is_corner_candidate) {
+                m.color.r = 0.0; m.color.g = 1.0; m.color.b = 0.0;
+            } else {
+                m.color.r = 1.0; m.color.g = 1.0; m.color.b = 0.0;
             }
+            m.color.a = 1.0;
+            arr.markers.push_back(m);
         }
-        return closest_pose;
+        leg_candidates_pub_->publish(arr);
     }
 
-    /**
-     * @brief Finds the pallet front point and publishes it
-     * @param cloud Input point cloud
-     * @param pallet_cluster_indices Point indices of the cluster
-     * @param id Cluster ID
-     */
-    void findPallet(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const pcl::PointIndices &pallet_cluster_indices, int id)
+    void publishAcceptedPattern(const std::array<Cluster, 3> & legs,
+                                const PalletDetection & d)
     {
-        auto cluster_points = extractClusterPoints(cloud, pallet_cluster_indices);
-        auto hull_cloud = computeConvexHull(cluster_points);
+        visualization_msgs::msg::MarkerArray arr;
+        int id = 0;
+        visualization_msgs::msg::Marker del;
+        del.header.frame_id = p_.lidar_frame;
+        del.action = visualization_msgs::msg::Marker::DELETEALL;
+        arr.markers.push_back(del);
 
-        cv::Point2f rect_points[4];
-        computeMinAreaRectangle(hull_cloud, rect_points);
-
-        auto center_points = computeRectangleCenters(rect_points);
-        auto closest_pose = findClosestPoint(center_points);
-
-        if (center_points.size() > 0)
-        {
-            publishPalletFront(closest_pose, id);
-            publishRotatedRectangle(rect_points, id);
-            publishPalletPoseArray(closest_pose);
+        // 3 bacak merkezi
+        for (const auto & c : legs) {
+            visualization_msgs::msg::Marker m;
+            m.header.frame_id = p_.lidar_frame;
+            m.header.stamp = rclcpp::Time(0);
+            m.ns = "accepted_legs";
+            m.id = id++;
+            m.type = visualization_msgs::msg::Marker::CYLINDER;
+            m.action = visualization_msgs::msg::Marker::ADD;
+            m.pose.position.x = c.centroid.x();
+            m.pose.position.y = c.centroid.y();
+            m.pose.orientation.w = 1.0;
+            m.scale.x = m.scale.y = std::max(0.05, c.width);
+            m.scale.z = 0.05;
+            m.color.r = 1.0; m.color.g = 0.0; m.color.b = 1.0; m.color.a = 0.7;
+            arr.markers.push_back(m);
         }
-    }
 
-    /**
-     * @brief Transforms pose to map frame and publishes as PoseArray
-     * @param pose Pallet pose in lidar_fork_1 frame
-     */
-    void publishPalletPoseArray(geometry_msgs::msg::Pose pose)
-    {
-        try
-        {
-            // Transform pose to map frame
-            geometry_msgs::msg::PoseStamped input_pose_stamped;
-            input_pose_stamped.header.frame_id = "lidar_fork_1";
-            input_pose_stamped.header.stamp = rclcpp::Time(0);
-            input_pose_stamped.pose = pose;
-
-            geometry_msgs::msg::PoseStamped output_pose_stamped;
-            tf_buffer_->transform(input_pose_stamped, output_pose_stamped, "map", tf2::durationFromSec(1.0));
-
-            // Build and publish PoseArray
-            geometry_msgs::msg::PoseArray pallet_poses;
-            pallet_poses.header.frame_id = "map";
-            pallet_poses.header.stamp = this->now();
-            pallet_poses.poses.push_back(output_pose_stamped.pose);
-
-            pallet_pose_array_pub_->publish(pallet_poses);
-        }
-        catch (const tf2::TransformException &ex)
-        {
-            RCLCPP_WARN(this->get_logger(), "Could not transform pose to map frame: %s", ex.what());
-        }
-    }
-
-    /**
-     * @brief Publishes the pallet front point as an arrow marker in the lidar_fork_1 frame
-     * @param start_pose Start pose of the arrow
-     * @param id Marker ID
-     */
-    void publishPalletFront(geometry_msgs::msg::Pose start_pose, int id)
-    {
-        visualization_msgs::msg::Marker arrow_marker;
-        arrow_marker.header.frame_id = "lidar_fork_1";
-        arrow_marker.header.stamp = rclcpp::Time(0);
-        arrow_marker.ns = "arrow_marker";
-        arrow_marker.id = id * 10;
-        arrow_marker.type = visualization_msgs::msg::Marker::ARROW;
-        arrow_marker.action = visualization_msgs::msg::Marker::ADD;
-        arrow_marker.pose.orientation.w = 1.0;
-
-        // Define arrow scale: shaft diameter and head diameter/length
-        arrow_marker.scale.x = 0.05;  // Shaft diameter
-        arrow_marker.scale.y = 0.1;   // Head diameter
-        arrow_marker.scale.z = 0.15;  // Head length
-
-        // Define arrow color
-        arrow_marker.color.r = 0.0;
-        arrow_marker.color.g = 1.0;
-        arrow_marker.color.b = 1.0;
-        arrow_marker.color.a = 1.0;
-
-        // Define the start and end points of the arrow
-        geometry_msgs::msg::Point start_point;
-        start_point.x = start_pose.position.x;
-        start_point.y = start_pose.position.y;
-        start_point.z = 0.0;
-
-        geometry_msgs::msg::Point end_point;
-        tf2::Quaternion quat(start_pose.orientation.x, start_pose.orientation.y,
-                             start_pose.orientation.z, start_pose.orientation.w);
-
-        double roll, pitch, yaw;
-        tf2::Matrix3x3(quat).getRPY(roll, pitch, yaw);
-
-        // Yön (yaw) doğrultusunda 0.5 metre ilerlet
-        end_point.x = start_point.x + 0.5 * cos(yaw);
-        end_point.y = start_point.y + 0.5 * sin(yaw);
-        end_point.z = 0.0;
-
-        arrow_marker.points.push_back(start_point);
-        arrow_marker.points.push_back(end_point);
-
-        pallet_marker_pub->publish(arrow_marker);
-    }
-
-    /**
-     * @brief Publishes the minimum area rectangle as a line strip marker in the lidar_fork_1 frame
-     * @param rect_points Array of rectangle corner points
-     * @param id Marker ID
-     */
-    void publishRotatedRectangle(const cv::Point2f *rect_points, int id)
-    {
-        visualization_msgs::msg::Marker rect_marker;
-        rect_marker.header.frame_id = "lidar_fork_1";
-        rect_marker.header.stamp = rclcpp::Time(0);
-        rect_marker.ns = "min_rotated_rectangle";
-        rect_marker.id = id;
-        rect_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
-        rect_marker.action = visualization_msgs::msg::Marker::ADD;
-        rect_marker.pose.orientation.w = 1.0;
-        rect_marker.scale.x = 0.02;
-        rect_marker.color.r = 0.0;
-        rect_marker.color.g = 1.0;
-        rect_marker.color.b = 1.0;
-        rect_marker.color.a = 1.0;
-
-        for (int i = 0; i < 4; i++)
-        {
+        // Ön yüz çizgisi (3 bacağı birleştiren)
+        visualization_msgs::msg::Marker line;
+        line.header.frame_id = p_.lidar_frame;
+        line.header.stamp = rclcpp::Time(0);
+        line.ns = "accepted_face";
+        line.id = id++;
+        line.type = visualization_msgs::msg::Marker::LINE_STRIP;
+        line.action = visualization_msgs::msg::Marker::ADD;
+        line.scale.x = 0.02;
+        line.color.r = 1.0; line.color.g = 0.0; line.color.b = 1.0; line.color.a = 1.0;
+        line.pose.orientation.w = 1.0;
+        for (const auto & c : legs) {
             geometry_msgs::msg::Point p;
-            p.x = rect_points[i].x;
-            p.y = rect_points[i].y;
-            p.z = 0.0;
-            rect_marker.points.push_back(p);
+            p.x = c.centroid.x(); p.y = c.centroid.y(); p.z = 0.0;
+            line.points.push_back(p);
         }
-        rect_marker.points.push_back(rect_marker.points.front());
+        arr.markers.push_back(line);
 
-        pallet_marker_pub->publish(rect_marker);
-    }
-
-    /**
-     * @brief Publishes the pallet station area as a line strip marker in the map frame
-     * @param p1 First point of the area
-     * @param p2 Second point of the area
-     * @param p3 Third point of the area
-     * @param p4 Fourth point of the area
-     */
-    void publishPalletStationArea(
-        const geometry_msgs::msg::Point &p1,
-        const geometry_msgs::msg::Point &p2,
-        const geometry_msgs::msg::Point &p3,
-        const geometry_msgs::msg::Point &p4)
-    {
-        visualization_msgs::msg::Marker rectangle_marker;
-        rectangle_marker.header.frame_id = "map";
-        rectangle_marker.header.stamp = this->now();
-        rectangle_marker.ns = "rectangle";
-        rectangle_marker.id = 0;
-        rectangle_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
-        rectangle_marker.action = visualization_msgs::msg::Marker::ADD;
-
-        rectangle_marker.scale.x = 0.05;  // Çizgi kalınlığı
-        rectangle_marker.color.r = 0.0;
-        rectangle_marker.color.g = 1.0;
-        rectangle_marker.color.b = 0.0;
-        rectangle_marker.color.a = 1.0;
-
-        rectangle_marker.points.push_back(p1);
-        rectangle_marker.points.push_back(p2);
-        rectangle_marker.points.push_back(p3);
-        rectangle_marker.points.push_back(p4);
-        rectangle_marker.points.push_back(p1);  // Dikdörtgeni kapatmak için ilk noktaya geri dön
-
-        pallet_station_area_marker_pub->publish(rectangle_marker);
+        (void)d;  // şu an için kullanılmıyor, ileride score text ekleyebiliriz
+        accepted_pattern_pub_->publish(arr);
     }
 };
 
-int main(int argc, char **argv)
+}  // namespace pallet_detection
+
+// ============================================================================
+int main(int argc, char ** argv)
 {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<PalletDetection>();
+    auto node = std::make_shared<pallet_detection::PalletDetectorNode>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

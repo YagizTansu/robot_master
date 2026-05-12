@@ -3,32 +3,32 @@
     "nodes": [
       {
         "id": "node_1",
-        "x": -0.6,
-        "y": -3.76,
+        "x": 3,
+        "y": -43.5,
         "z": 0,
         "type": "waypoint",
         "description": "Node 1"
       },
       {
         "id": "node_2",
-        "x": 0.35,
-        "y": -0.534,
+        "x": 4.0,
+        "y": -39.7,
         "z": 0,
         "type": "waypoint",
         "description": "Node 2"
       },
       {
         "id": "node_2b",
-        "x": 0.35,
-        "y": 3.05,
+        "x": 4,
+        "y": -36.5,
         "z": 0,
         "type": "waypoint",
         "description": "Node 2b"
       },
       {
         "id": "node_3",
-        "x": 1.16,
-        "y": 8,
+        "x": 4.76,
+        "y": -31.24,
         "z": 0,
         "type": "waypoint",
         "description": "Node 3"
