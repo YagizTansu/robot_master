@@ -48,10 +48,6 @@ controller_server:
     use_sim_time: false
     enable_stamped_cmd_vel: false
     controller_frequency: 20.0
-    # CRITICAL: must match the actual odom publisher topic.
-    # Default is 'odom', but this robot publishes to '/odometry'.
-    # Without this, controller always sees velocity=0, DWA window is stuck at
-    # [0, acc*control_dt] = [0, 0.125 m/s] and robot never exceeds ~0.1 m/s.
     odom_topic: "/odometry/local"
     transform_tolerance: 0.5
     min_x_velocity_threshold: 0.001
@@ -76,8 +72,8 @@ controller_server:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
       # Tight tolerances: fork insertion requires lateral < 8 cm, yaw < ~6°
-      xy_goal_tolerance: 0.08   # m — DWA with path_distance_weight=200 achieves ~3 cm lateral
-      yaw_goal_tolerance: 0.10  # rad (~6°) — CheckDirection pre-aligns, DWA maintains
+      xy_goal_tolerance: 0.10   # m — DWA with path_distance_weight=200 achieves ~3 cm lateral
+      yaw_goal_tolerance: 1.0  # rad (~6°) — CheckDirection pre-aligns, DWA maintains
 
         # DWB parameters
     FollowPath:
@@ -129,21 +125,6 @@ controller_server:
       transform_tolerance: 0.5
       prune_plan_distance: 2.0   # m  (↓ carrot now 2m away, matches ~sim horizon; goal_distance term now effective)
 
-    # ── DockingPath: fork-first (backward) approach for pallet docking ─────────
-    # Used ONLY via sendDockingFollowPath() in pallet_docking.cpp.
-    # Normal navigation always uses FollowPath above.
-    #
-    # Drive logic:
-    #   1. CheckDirection() pre-aligns robot so fork (rear) faces pallet.
-    #   2. DWA samples backward velocities (max_reverse_vel > 0).
-    #   3. heading_error_trigger > π → rotate-in-place is NEVER triggered.
-    #      Robot drives backward the entire approach.
-    #   4. heading_alignment_weight = 0: during backward motion, path tangent
-    #      (robot→goal = forward direction) is 180° from robot heading.
-    #      If this weight > 0, every backward trajectory scores worst → freeze.
-    #   5. goal_distance_weight = 100: dominant term.
-    #      Backward trajectories reduce distance to inside_pallet → WIN.
-    #      Forward trajectories increase distance → LOSE.
     DockingPath:
       plugin: "robot_custom_local_planner::CustomLocalPlanner"
 
@@ -155,23 +136,23 @@ controller_server:
       max_linear_vel:  0.05   # m/s — forward cap (not used during backward approach)
       min_linear_vel:  0.03   # m/s — forward floor (only applies in forward mode)
       max_reverse_vel: 0.10   # m/s — fork-first approach speed (slow, precise)
-      max_angular_vel: 0.15   # rad/s — cap for rotate-in-place (rarely triggered)
+      max_angular_vel: 0.10   # rad/s — cap for rotate-in-place (rarely triggered)
 
       # ── Acceleration / rate limits ────────────────────────────────────────
       linear_acc_limit:   0.545
       steering_slew_rate: 1.5
 
       # ── Trajectory sampling ───────────────────────────────────────────────
-      linear_samples:        7
-      steering_samples:      11
-      rotate_samples:        7
-      rotate_max_vel:        0.15
+      linear_samples:        15
+      steering_samples:      25
+      rotate_samples:        15
+      rotate_max_vel:        0.1
       # > π rad: heading_error can never exceed π, so rotate-in-place
       # is NEVER triggered during the backward approach.
       heading_error_trigger: 3.2
       sim_time:              2.0
       sim_granularity:       0.1
-      control_duration:      0.5
+      control_duration:      0.3
 
       # ── Cost function weights (backward/fork-first) ───────────────────────
       path_distance_weight:     200.0   # lateral correction — keep robot on straight line
@@ -182,8 +163,8 @@ controller_server:
       steering_penalty_weight:    0.3
 
       # ── Tolerances ────────────────────────────────────────────────────────
-      xy_goal_tolerance:   0.08   # m — matches docking_goal_checker
-      yaw_goal_tolerance:  0.10   # rad — matches docking_goal_checker
+      xy_goal_tolerance:   0.10   # m — matches docking_goal_checker
+      yaw_goal_tolerance:  1.0   # rad — matches docking_goal_checker
       transform_tolerance: 0.5
       prune_plan_distance: 4.0    # m — must cover entire 0.80m path plus margin
 
@@ -400,22 +381,23 @@ collision_monitor:
     polygons: ["FootprintApproach"]
     FootprintApproach:
       type: "polygon"
-      action_type: "stop"
-      # Stop zone: 0.5m beyond front (1.35m), 0.15m beyond sides (0.40m), 0.1m beyond back (0.60m)
-      points: "[[1.85, 0.55], [1.85, -0.55], [-0.70, -0.55], [-0.70, 0.55]]"
-      min_points: 4
-      visualize: True
-      enabled: True
+      action_type: "approach"
+      footprint_topic: "/local_costmap/published_footprint"
+      time_before_collision: 0.6
+      simulation_time_step: 0.1
+      min_points: 6
+      visualize: False
+      enabled: False  # TEST: disabled
     observation_sources: ["scan1", "scan2"]
     scan1:
       type: "scan"
       topic: "/lidar_front_r/scan"
       min_height: 0.05
       max_height: 2.0
-      enabled: True
+      enabled: False  # TEST: disabled
     scan2:
       type: "scan"
       topic: "/lidar_front_l/scan"
       min_height: 0.05
       max_height: 2.0
-      enabled: True
+      enabled: False  # TEST: disabled

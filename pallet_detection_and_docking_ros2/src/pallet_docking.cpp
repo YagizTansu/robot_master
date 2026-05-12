@@ -828,7 +828,7 @@ private:
             "[CheckDirection] rotateInPlace target = %.4f rad (%.2f deg)",
             target_yaw, target_yaw * 180.0 / M_PI);
 
-        if (!rotateInPlace(target_yaw, 0.01))
+        if (!rotateInPlace(target_yaw, 0.005))
         {
             RCLCPP_WARN(this->get_logger(),
                 "[CheckDirection] WARNING: Alignment incomplete, continuing approach");
@@ -1131,7 +1131,7 @@ private:
                 ip_x, ip_y, (pallet_yaw + M_PI) * 180.0 / M_PI);
 
             nav_msgs::msg::Path path = PathCreateUtilities::calculatePathCurrentPoseToBelowPalletPose(
-                robot_pose, nearest_pallet_pose, 0.80);
+                robot_pose, nearest_pallet_pose, 0.75);
             RCLCPP_INFO(this->get_logger(),
                 "[STEP 3.4] Path created (%zu raw points) → calling sendDockingFollowPath...",
                 path.poses.size());
@@ -1143,20 +1143,21 @@ private:
             }
             RCLCPP_INFO(this->get_logger(), "[STEP 3.4] DockingPath SUCCESS — robot at target point.");
 
-            // Precise yaw alignment: DWA heading_alignment_weight=0 means the robot
-            // may arrive with up to ±yaw_goal_tolerance (0.10 rad ≈ 6°) of heading error.
-            // Use rotateInPlace to refine to ±0.02 rad (≈1°) before fork insertion.
+
+
             double fork_goal_yaw = pallet_yaw + M_PI;
             RCLCPP_INFO(this->get_logger(),
                 "[STEP 3.5] Precise alignment → target yaw=%.2f deg  (pallet_yaw + 180°)",
                 fork_goal_yaw * 180.0 / M_PI);
-            rotateInPlace(fork_goal_yaw, 0.02);
+            rotateInPlace(fork_goal_yaw, 0.005);
             {
                 std::lock_guard<std::mutex> lk(pose_mutex_);
                 RCLCPP_INFO(this->get_logger(),
                     "[STEP 3.5] Alignment DONE → final yaw=%.2f deg",
                     getYawFromPose(current_pose_) * 180.0 / M_PI);
             }
+
+            CheckDirection();
 
             RCLCPP_INFO(this->get_logger(), "[STEP 3.6] Waiting 3 seconds (stabilisation)...");
             rclcpp::sleep_for(std::chrono::seconds(3));

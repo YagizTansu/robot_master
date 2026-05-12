@@ -3,6 +3,6 @@
 
 pallet_detection:
   ros__parameters:
-    cluster_tolerance: 0.25
-    min_pallet_cluster_size: 10
+    cluster_tolerance: 0.40
+    min_pallet_cluster_size: 2
     max_pallet_cluster_size: 2000
