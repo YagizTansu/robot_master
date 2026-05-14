@@ -46,7 +46,13 @@ public:
     : Node("pallet_detection"),
       cluster_tolerance(0.25),
       min_pallet_cluster_size(10),
-      max_pallet_cluster_size(2000)
+      max_pallet_cluster_size(2000),
+      mean_k(50),
+      stddev_mul_thresh(0.1),
+      min_long_side_length(0.6),
+      max_long_side_length(1.0),
+      min_short_side_length(0.65),
+      max_short_side_length(1.0)
     {
         // TF buffer and listener
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -66,10 +72,17 @@ public:
         pallet_station_area_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("filtered_lidar_area_marker", 1); // Filtered LIDAR area marker
         pallet_pose_array_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/pallet_poses", 1);                        // Detected pallet poses
 
+
         // Declare parameters (replaces dynamic_reconfigure)
         this->declare_parameter("cluster_tolerance", 0.25);
         this->declare_parameter("min_pallet_cluster_size", 10);
         this->declare_parameter("max_pallet_cluster_size", 2000);
+        this->declare_parameter("mean_k", 50);
+        this->declare_parameter("stddev_mul_thresh", 0.1);
+        this->declare_parameter("min_long_side_length", 0.6);
+        this->declare_parameter("max_long_side_length", 1.0);
+        this->declare_parameter("min_short_side_length", 0.65);
+        this->declare_parameter("max_short_side_length", 1.0);
 
         param_callback_handle_ = this->add_on_set_parameters_callback(
             std::bind(&PalletDetection::parametersCallback, this, std::placeholders::_1));
@@ -94,10 +107,17 @@ private:
 
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;      // Parameter callback handle
 
+
     // Parameters (replaces dynamic_reconfigure) - adjust if pallet dimensions change via ros2 param set
     float cluster_tolerance;       // DBSCAN clustering tolerance
     int min_pallet_cluster_size;   // Minimum pallet cluster size
     int max_pallet_cluster_size;   // Maximum pallet cluster size
+    int mean_k;                   // SOR mean_k
+    double stddev_mul_thresh;     // SOR stddev_mul_thresh
+    double min_long_side_length;  // Rectangle min long side
+    double max_long_side_length;  // Rectangle max long side
+    double min_short_side_length; // Rectangle min short side
+    double max_short_side_length; // Rectangle max short side
 
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;                              // TF2 buffer
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;                 // TF2 listener
@@ -124,6 +144,30 @@ private:
             else if (param.get_name() == "max_pallet_cluster_size")
             {
                 this->max_pallet_cluster_size = static_cast<int>(param.as_int());
+            }
+            else if (param.get_name() == "mean_k")
+            {
+                this->mean_k = static_cast<int>(param.as_int());
+            }
+            else if (param.get_name() == "stddev_mul_thresh")
+            {
+                this->stddev_mul_thresh = param.as_double();
+            }
+            else if (param.get_name() == "min_long_side_length")
+            {
+                this->min_long_side_length = param.as_double();
+            }
+            else if (param.get_name() == "max_long_side_length")
+            {
+                this->max_long_side_length = param.as_double();
+            }
+            else if (param.get_name() == "min_short_side_length")
+            {
+                this->min_short_side_length = param.as_double();
+            }
+            else if (param.get_name() == "max_short_side_length")
+            {
+                this->max_short_side_length = param.as_double();
             }
         }
         rcl_interfaces::msg::SetParametersResult result;
@@ -313,8 +357,8 @@ private:
         if (!cloud->points.empty())
         {
             sor.setInputCloud(cloud);
-            sor.setMeanK(50);             // Number of neighbors to analyze
-            sor.setStddevMulThresh(0.1);  // Standard deviation threshold
+            sor.setMeanK(mean_k);             // Number of neighbors to analyze
+            sor.setStddevMulThresh(stddev_mul_thresh);  // Standard deviation threshold
             sor.filter(*cloud_filtered);
 
             return cloud_filtered;
@@ -506,13 +550,13 @@ private:
         double dy = rect_points[3].y - rect_points[0].y;
         double distance = std::sqrt(dx * dx + dy * dy);
 
-        // Filter by distance range
-        if (distance > 0.6 && distance < 1.0)
+        // Filter by distance range (long side)
+        if (distance > min_long_side_length && distance < max_long_side_length)
         {
             center_points.push_back(main_center);
         }
 
-        // Calculate the midpoints of other sides and filter by distance
+        // Calculate the midpoints of other sides and filter by distance (short sides)
         for (size_t i = 0; i < 3; ++i)
         {
             geometry_msgs::msg::Pose side_center;
@@ -533,8 +577,8 @@ private:
             side_center.orientation.z = side_quaternion.z;
             side_center.orientation.w = side_quaternion.w;
 
-            // Filter by distance range
-            if (distance > 0.65 && distance < 1.0)
+            // Filter by distance range (short sides)
+            if (distance > min_short_side_length && distance < max_short_side_length)
             {
                 center_points.push_back(side_center);
             }

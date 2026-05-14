@@ -6,3 +6,9 @@ pallet_detection:
     cluster_tolerance: 0.40
     min_pallet_cluster_size: 2
     max_pallet_cluster_size: 2000
+    mean_k: 50
+    stddev_mul_thresh: 0.1
+    min_long_side_length: 0.6
+    max_long_side_length: 1.0
+    min_short_side_length: 0.65
+    max_short_side_length: 1.0
