@@ -67,8 +67,12 @@ fgo_node:
         gyro_sigma:        0.002
 
         # Accelerometer bias random walk (sigma in m/s^3/sqrt(Hz)).
-        # Slower process — keep small.
-        accel_bias_sigma:  0.0001
+        # Slower process — keep small but not too small.
+        # IMPORTANT: if accel_bias_sigma is too small (e.g. 0.0001), the bias
+        # cannot adapt fast enough when gravity direction slowly shifts due to
+        # IMU thermal drift, causing roll/pitch to drift after 10+ minutes.
+        # Recommended: 0.001 for indoor MEMS IMUs on flat-floor robots.
+        accel_bias_sigma:  0.001
 
         # Gyroscope bias random walk (sigma in rad/s^2/sqrt(Hz)).
         # Typical MEMS IMU: 1e-4 to 1e-3. Previously was 1e-6 (too tight).
@@ -265,7 +269,7 @@ trust_weight_bridge:
     # manual_mode: true  → weights come from manual_w_* parameters below.
     #              false → weights come from /transformer/trust_scores topic.
     # Switch at runtime with: ros2 service call /fgo/set_trust_weights std_srvs/srv/SetBool "{data: false}"
-    manual_mode: true
+    manual_mode: false
 
     # ── Manual weights (used when manual_mode = true) ────────────────────────
     # 1.0 = full trust (identical to the original static noise model).

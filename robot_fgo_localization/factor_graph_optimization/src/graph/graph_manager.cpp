@@ -172,8 +172,24 @@ bool GraphManager::step(
   for (const auto & sample : local_odom) {
     const gtsam::Pose3 gtsam_prev    = msgToGtsam(prev_pose);
     const gtsam::Pose3 gtsam_current = msgToGtsam(sample.pose);
-    const gtsam::Pose3 delta         = gtsam_prev.between(gtsam_current);
-    const gtsam::Pose3 estimate      = current_estimate.compose(delta);
+    gtsam::Pose3       delta         = gtsam_prev.between(gtsam_current);
+
+    // ── Planar (ground-robot) constraint ─────────────────────────────────
+    // Zero out z, roll, and pitch components of the odometry delta so that
+    // wheel odometry never introduces out-of-plane motion into the graph.
+    // Only dx, dy, and dyaw are meaningful for a differential/mecanum robot
+    // operating on a flat floor.  This prevents accumulated odom quaternion
+    // drift (z ≠ 0, roll/pitch ≠ 0) from corrupting Pose3 estimates over time.
+    {
+      const double dx   = delta.translation().x();
+      const double dy   = delta.translation().y();
+      const double dyaw = delta.rotation().yaw();
+      delta = gtsam::Pose3(
+        gtsam::Rot3::Rz(dyaw),
+        gtsam::Point3(dx, dy, 0.0));
+    }
+
+    const gtsam::Pose3 estimate = current_estimate.compose(delta);
 
     key_++;
     new_factors_.add(
@@ -351,6 +367,44 @@ bool GraphManager::step(
     addGpsBatch(local_gps, local_odom, batch_start_key, trust.w_gps, logger);
   }
 
+  // ── Planar (ground-robot) prior factors ──────────────────────────────────────
+  // Add a soft PriorFactor<Pose3> for z, roll, and pitch on every new keyframe
+  // produced in this batch.  Only the z/roll/pitch DOFs are constrained — x, y,
+  // and yaw are left with a very large (non-constraining) sigma so the factor
+  // acts purely as a "stay on the ground" anchor.
+  //
+  // WHY: The CombinedImuFactor is a full 3-D factor; after ~10 minutes the
+  // accumulated accelerometer bias causes GTSAM to "tilt" the estimated gravity
+  // direction, which leaks into roll/pitch estimates even though the robot never
+  // leaves the floor.  The odom BetweenFactor already strips z/roll/pitch from
+  // the delta (see above), but the absolute pose can still drift if the IMU is
+  // the only absolute orientation reference.  These priors prevent that drift.
+  {
+    // 6-DOF sigma order in GTSAM Pose3 tangent space: [roll, pitch, yaw, x, y, z]
+    constexpr double kFreedom = 999.0;  // non-constraining for unconstrained DOFs
+    auto planar_noise = gtsam::noiseModel::Diagonal::Sigmas(
+      (gtsam::Vector6() <<
+        cfg_.noise_odom_roll,   // roll  — tight (e.g. 0.001 rad)
+        cfg_.noise_odom_pitch,  // pitch — tight (e.g. 0.001 rad)
+        kFreedom,               // yaw   — free
+        kFreedom,               // x     — free
+        kFreedom,               // y     — free
+        cfg_.noise_odom_z       // z     — tight (e.g. 0.001 m)
+      ).finished());
+
+    // Build a zero-roll/pitch/z reference pose using only the estimated x/y/yaw
+    // of each new keyframe so the prior sits exactly at the ground plane.
+    for (int k = batch_start_key + 1; k <= key_; ++k) {
+      if (!new_values_.exists(X(k))) continue;
+      const gtsam::Pose3 & kf = new_values_.at<gtsam::Pose3>(X(k));
+      const gtsam::Pose3 ground_ref(
+        gtsam::Rot3::Rz(kf.rotation().yaw()),
+        gtsam::Point3(kf.translation().x(), kf.translation().y(), 0.0));
+      new_factors_.add(
+        gtsam::PriorFactor<gtsam::Pose3>(X(k), ground_ref, planar_noise));
+    }
+  }
+
   // ── iSAM2 update ─────────────────────────────────────────────────────────
   try {
     isam2_->update(new_factors_, new_values_);
@@ -396,9 +450,9 @@ bool GraphManager::step(
     if (has_valid_pose_) {
       cfg_.init_x     = optimized_pose_.x();
       cfg_.init_y     = optimized_pose_.y();
-      cfg_.init_z     = optimized_pose_.z();
-      cfg_.init_roll  = optimized_pose_.rotation().roll();
-      cfg_.init_pitch = optimized_pose_.rotation().pitch();
+      cfg_.init_z     = 0.0;  // planar robot: always reinit at z=0
+      cfg_.init_roll  = 0.0;  // planar robot: always reinit at roll=0
+      cfg_.init_pitch = 0.0;  // planar robot: always reinit at pitch=0
       cfg_.init_yaw   = optimized_pose_.rotation().yaw();
       RCLCPP_WARN(logger,
         "[GraphManager] Reinitializing at last known pose (%.2f, %.2f, yaw=%.2f) "
