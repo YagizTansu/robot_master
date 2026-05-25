@@ -30,6 +30,9 @@ reset_node_id       Graph node ID to return to between scenarios
 graph_file          Path to robot_map_graph.json  (for reset goals)
 repeat_cycles       How many full scenario cycles to run   (default: 3)
 cmd_vel_topic       Topic to publish cmd_vel on             (default: /cmd_vel)
+wait_for_traversal  If true, subscribe to /data_collection/status and wait
+                    for {"phase": "COMPLETE"} before starting any scenario.
+                    Used when mode:=both so traversal runs first. (default: false)
 use_sim_time        Use /clock                              (default: true)
 """
 
@@ -203,11 +206,12 @@ def _load_node(graph_file: str, node_id: str) -> Optional[Dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Runner states
-_S_WAIT_NAV2   = "WAIT_NAV2"
-_S_RESETTING   = "RESETTING"
-_S_RUNNING     = "RUNNING"
-_S_STEP_PAUSE  = "STEP_PAUSE"
-_S_DONE        = "DONE"
+_S_WAIT_TRAVERSAL = "WAIT_TRAVERSAL"  # waiting for graph_traversal COMPLETE signal
+_S_WAIT_NAV2      = "WAIT_NAV2"
+_S_RESETTING      = "RESETTING"
+_S_RUNNING        = "RUNNING"
+_S_STEP_PAUSE     = "STEP_PAUSE"
+_S_DONE           = "DONE"
 
 
 class ScenarioRunnerNode(Node):
@@ -216,15 +220,17 @@ class ScenarioRunnerNode(Node):
         super().__init__("scenario_runner")
 
         # ── Parameters ─────────────────────────────────────────────────────
-        self.declare_parameter("reset_node_id",   "node_0_0")
-        self.declare_parameter("graph_file",      "")
-        self.declare_parameter("repeat_cycles",   3)
-        self.declare_parameter("cmd_vel_topic",   "/cmd_vel")
+        self.declare_parameter("reset_node_id",      "node_0_0")
+        self.declare_parameter("graph_file",          "")
+        self.declare_parameter("repeat_cycles",       3)
+        self.declare_parameter("cmd_vel_topic",       "/cmd_vel")
+        self.declare_parameter("wait_for_traversal",  False)
 
-        reset_id        = str(self.get_parameter("reset_node_id").value).strip()
-        graph_file      = str(self.get_parameter("graph_file").value).strip()
-        self._cycles    = int(self.get_parameter("repeat_cycles").value)
-        cmd_vel_topic   = str(self.get_parameter("cmd_vel_topic").value).strip()
+        reset_id              = str(self.get_parameter("reset_node_id").value).strip()
+        graph_file            = str(self.get_parameter("graph_file").value).strip()
+        self._cycles          = int(self.get_parameter("repeat_cycles").value)
+        cmd_vel_topic         = str(self.get_parameter("cmd_vel_topic").value).strip()
+        wait_for_traversal    = bool(self.get_parameter("wait_for_traversal").value)
 
         self._reset_node = _load_node(graph_file, reset_id)
         if self._reset_node is None:
@@ -249,8 +255,24 @@ class ScenarioRunnerNode(Node):
         self._nav_client = ActionClient(self, NavigateToPose, "navigate_to_pose")
 
         # ── Internal state ──────────────────────────────────────────────────
-        self._state = _S_WAIT_NAV2
+        # If wait_for_traversal is set, start in WAIT_TRAVERSAL state and
+        # only transition to WAIT_NAV2 once graph_traversal publishes COMPLETE.
+        self._state = _S_WAIT_TRAVERSAL if wait_for_traversal else _S_WAIT_NAV2
         self._step_deadline: Optional[float] = None   # wall-clock deadline
+
+        # ── Traversal status subscriber (active only when waiting) ──────────
+        if wait_for_traversal:
+            self._traversal_sub = self.create_subscription(
+                String,
+                "/data_collection/status",
+                self._on_traversal_status,
+                10,
+            )
+            self.get_logger().info(
+                "wait_for_traversal=True — waiting for graph_traversal COMPLETE signal…"
+            )
+        else:
+            self._traversal_sub = None
 
         # ── Main control timer (10 Hz) ──────────────────────────────────────
         self._timer = self.create_timer(0.1, self._tick)
@@ -268,9 +290,28 @@ class ScenarioRunnerNode(Node):
 
     # ── Main control loop ─────────────────────────────────────────────────────
 
+    def _on_traversal_status(self, msg: String) -> None:
+        """Callback for /data_collection/status from graph_traversal_node."""
+        try:
+            data = json.loads(msg.data)
+        except (json.JSONDecodeError, KeyError):
+            return
+        if data.get("phase") == "COMPLETE" and self._state == _S_WAIT_TRAVERSAL:
+            self.get_logger().info(
+                "Graph traversal COMPLETE — starting scenario runner now."
+            )
+            self._state = _S_WAIT_NAV2
+            # Unsubscribe — no longer needed
+            if self._traversal_sub is not None:
+                self.destroy_subscription(self._traversal_sub)
+                self._traversal_sub = None
+
     def _tick(self) -> None:
         """Called at 10 Hz — drives the scenario state machine."""
-        if self._state == _S_WAIT_NAV2:
+        if self._state == _S_WAIT_TRAVERSAL:
+            pass  # waiting for graph_traversal COMPLETE via subscription
+
+        elif self._state == _S_WAIT_NAV2:
             self._state_wait_nav2()
 
         elif self._state == _S_RESETTING:
@@ -283,7 +324,7 @@ class ScenarioRunnerNode(Node):
             self._state_step_pause()
 
         elif self._state == _S_DONE:
-            pass  # nothing left to do
+            pass  # shutdown already triggered in _state_running
 
     # ── State handlers ────────────────────────────────────────────────────────
 
@@ -316,10 +357,13 @@ class ScenarioRunnerNode(Node):
                     self._scenario_idx = 0
                     if self._cycle >= self._cycles:
                         self.get_logger().info(
-                            f"All {self._cycles} cycle(s) complete. ScenarioRunner DONE."
+                            f"All {self._cycles} cycle(s) complete. ScenarioRunner DONE.\n"
+                            f"Shutting down data collection."
                         )
                         self._publish_status("DONE")
                         self._state = _S_DONE
+                        # Allow the DONE status to be published before shutting down.
+                        self.create_timer(1.0, self._shutdown)
                         return
                     self.get_logger().info(
                         f"Cycle {self._cycle}/{self._cycles} done — starting next cycle"
@@ -407,6 +451,13 @@ class ScenarioRunnerNode(Node):
             )
         self._state = _S_RUNNING
         self._step_deadline = None
+
+    # ── Shutdown ──────────────────────────────────────────────────────────────
+
+    def _shutdown(self) -> None:
+        """Called 1 s after DONE to give the status message time to publish."""
+        self.get_logger().info("ScenarioRunner: initiating rclpy shutdown.")
+        rclpy.shutdown()
 
     # ── Status publisher ──────────────────────────────────────────────────────
 

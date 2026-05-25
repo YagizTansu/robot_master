@@ -14,8 +14,9 @@ robot to collect training data.  Two modes are available:
       their extremes for better label diversity.
 
   mode:=both
-      Runs graph_traversal first, then scenario runner.
-      Both collect data simultaneously via the feature_extractor.
+      Runs graph_traversal first, then scenario runner **sequentially**.
+      scenario_runner waits for graph_traversal's COMPLETE signal before
+      starting.  Both nodes shut down automatically when all scenarios finish.
 
 Prerequisites (must already be running before this launch):
   - Gazebo simulation         (robot_warehouse.launch.py)
@@ -127,6 +128,14 @@ def generate_launch_description() -> LaunchDescription:
         default_value="/cmd_vel",
         description="cmd_vel topic for scenario runner",
     )
+    declare_wait_for_traversal = DeclareLaunchArgument(
+        "wait_for_traversal",
+        default_value="false",
+        description=(
+            "If true, scenario_runner waits for graph_traversal COMPLETE "
+            "before starting (set automatically for mode:=both)"
+        ),
+    )
 
     # ── Feature extractor (always running) ────────────────────────────────
     _params_yaml = os.path.join(_pkg_share, "config", "feature_extractor_params.yaml")
@@ -197,7 +206,10 @@ def generate_launch_description() -> LaunchDescription:
         executable="scenario_runner",
         name="scenario_runner",
         output="screen",
-        parameters=[_scenario_params],
+        parameters=[{
+            **_scenario_params,
+            "wait_for_traversal": True,  # wait for graph_traversal COMPLETE
+        }],
         condition=IfCondition(EqualsSubstitution(LaunchConfiguration("mode"), "both")),
     )
 
@@ -214,6 +226,7 @@ def generate_launch_description() -> LaunchDescription:
         declare_reset_node,
         declare_cycles,
         declare_cmd_vel,
+        declare_wait_for_traversal,
         # Nodes
         feature_extractor,
         graph_traversal,
