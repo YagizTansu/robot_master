@@ -313,6 +313,14 @@ class TransformerInferenceNode(Node):
             trust_t, _, _ = self._model(x)                       # [1, 4]; yaw discarded
         trust = trust_t.squeeze(0).cpu().tolist()                # [4]
 
+        # GPS is disabled (no GPSFactor in FGO) — always force to 0.
+        # Other weights are clamped to [EPSILON, 1.0] for numerical safety.
+        _EPS = 1e-6
+        trust[0] = max(_EPS, min(1.0, trust[0]))  # encoder
+        trust[1] = max(_EPS, min(1.0, trust[1]))  # imu
+        trust[2] = max(_EPS, min(1.0, trust[2]))  # lidar
+        trust[3] = 0.0                             # gps — disabled
+
         self._last_trust = trust
         self._publish(trust)
 

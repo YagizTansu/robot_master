@@ -31,7 +31,8 @@ Usage:
 
 import os
 import csv
-import curses
+import sys
+import select
 import math
 import time
 import threading
@@ -339,109 +340,29 @@ class LocalizationBenchmark(Node):
 
 # ── Dashboard helpers ─────────────────────────────────────────────────────────
 
-def _colour(value: float, good: float, warn: float) -> int:
-    if math.isnan(value):
-        return curses.color_pair(4)
-    if value <= good:
-        return curses.color_pair(1)   # green
-    if value <= warn:
-        return curses.color_pair(2)   # yellow
-    return curses.color_pair(3)       # red
 
-
-def _bar(value: float, max_val: float, width: int = 16) -> str:
-    if math.isnan(value) or max_val <= 0:
-        return "[" + "?" * width + "]"
-    filled = int(min(value / max_val, 1.0) * width)
-    return "[" + "█" * filled + "░" * (width - filled) + "]"
-
-
-def _draw(stdscr, node: LocalizationBenchmark, stop_event: threading.Event) -> None:
-    curses.curs_set(0)
-    stdscr.nodelay(True)
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_GREEN,  -1)
-    curses.init_pair(2, curses.COLOR_YELLOW, -1)
-    curses.init_pair(3, curses.COLOR_RED,    -1)
-    curses.init_pair(4, curses.COLOR_WHITE,  -1)
-    curses.init_pair(5, curses.COLOR_CYAN,   -1)
-
-    TITLE = curses.A_BOLD | curses.color_pair(5)
-    BOLD  = curses.A_BOLD
-    DIM   = curses.color_pair(4)
-
+# ── Simple terminal dashboard ─────────────────────────────────────────────
+def simple_dashboard(node, stop_event):
+    print("\n--- Localization Benchmark Dashboard ---")
+    print("Q ile çıkış yapabilirsin.\n")
     while not stop_event.is_set():
-        ch = stdscr.getch()
-        if ch in (ord("q"), ord("Q")):
-            stop_event.set()
-            break
+        # Q tuşuna basıldıysa çık
+        if sys.stdin in select.select([sys.stdin], [], [], 1)[0]:
+            ch = sys.stdin.read(1)
+            if ch.lower() == 'q':
+                stop_event.set()
+                break
 
-        stdscr.erase()
-        h, w = stdscr.getmaxyx()
-        box_w = min(58, w - 2)
-        bx    = (w - box_w) // 2
-        by    = max(0, (h - 14) // 2)
-        sep   = "─" * (box_w - 2)
-
-        def put(row, col, txt, attr=curses.A_NORMAL):
-            try:
-                stdscr.addstr(by + row, bx + col, txt, attr)
-            except curses.error:
-                pass
-
-        # border
-        put(0,  0, "╔" + sep + "╗", TITLE)
-        title = f"  BENCHMARK  ─  {node._algo_name}  "
-        put(1,  0, "║" + title.center(box_w - 2) + "║", TITLE)
-        put(2,  0, "╠" + sep + "╣", TITLE)
-
-        # metric rows
-        for row, label, val, unit, dec, gd, wd, mx in [
-            (3, "Position Error", node.pos_err,  "m",  3, _POS_GOOD, _POS_WARN, 0.30),
-            (4, "Yaw Error",      node.yaw_err,  "°",  2, _YAW_GOOD, _YAW_WARN, 10.0),
-            (5, "ATE RMSE",       node.ate_rmse, "m",  4, _ATE_GOOD, _ATE_WARN, 0.30),
-        ]:
-            col_attr = _colour(val, gd, wd)
-            val_str  = f"{'—':>8}" if math.isnan(val) else f"{val:>8.{dec}f}"
-            bar      = _bar(val, mx)
-            put(row, 0, "║", TITLE)
-            put(row, 2, f"{label:<18}", BOLD)
-            put(row, 20, f"{val_str} {unit:<2}", col_attr | BOLD)
-            put(row, 32, f"  {bar}", col_attr)
-            put(row, box_w - 1, "║", TITLE)
-
-        put(6, 0, "╠" + sep + "╣", TITLE)
-
-        # samples + last update
-        put(7, 0, "║", TITLE)
-        put(7, 2, f"Samples : {node._n_samples:>8}", BOLD)
-        put(7, box_w - 1, "║", TITLE)
-
-        put(8, 0, "║", TITLE)
-        if node.last_update > 0.0:
-            age = time.monotonic() - node.last_update
-            age_s   = f"{age:.1f} s ago"
-            age_atr = curses.color_pair(1) if age < 1.0 else \
-                      curses.color_pair(2) if age < 5.0 else \
-                      curses.color_pair(3)
-        else:
-            age_s, age_atr = "waiting for data…", DIM
-        put(8, 2, "Last msg: ", BOLD)
-        put(8, 12, f"{age_s:<{box_w - 15}}", age_atr)
-        put(8, box_w - 1, "║", TITLE)
-
-        put(9,  0, "╠" + sep + "╣", TITLE)
-        put(10, 0, "║", TITLE)
-        put(10, 3,  "● Good ", curses.color_pair(1) | BOLD)
-        put(10, 11, "● Warn ", curses.color_pair(2) | BOLD)
-        put(10, 19, "● Bad  ", curses.color_pair(3) | BOLD)
-        put(10, 30, "press Q to quit", DIM)
-        put(10, box_w - 1, "║", TITLE)
-        put(11, 0, "╚" + sep + "╝", TITLE)
-
-        stdscr.refresh()
-        time.sleep(0.1)   # 10 Hz
+        # Ekranı temizle
+        print("\033c", end="")  # ANSI clear screen
+        print("--- Localization Benchmark Dashboard ---")
+        print(f"Algoritma: {node._algo_name}")
+        print(f"Örnek sayısı: {node._n_samples}")
+        print(f"Pozisyon Hatası: {node.pos_err:.3f} m" if node.pos_err == node.pos_err else "Pozisyon Hatası: --")
+        print(f"Yaw Hatası: {node.yaw_err:.2f}°" if node.yaw_err == node.yaw_err else "Yaw Hatası: --")
+        print(f"ATE RMSE: {node.ate_rmse:.4f} m" if node.ate_rmse == node.ate_rmse else "ATE RMSE: --")
+        print("\nQ ile çıkış yapabilirsin.")
+        time.sleep(1)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -460,7 +381,7 @@ def main(args=None) -> None:
 
     try:
         if node.dashboard:
-            curses.wrapper(_draw, node, stop_event)
+            simple_dashboard(node, stop_event)
         else:
             # Headless: block until Ctrl-C
             spin_thread.join()
