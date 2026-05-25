@@ -10,8 +10,10 @@ Responsibilities
     and apply them.  Stats are saved to a JSON file so the inference node can
     apply the same normalization without re-loading any CSV.
 4.  Build a sliding-window dataset: each sample is a (seq_len × n_features)
-    tensor + scalar labels + pseudo trust-weight labels.
-5.  Compute rule-based pseudo trust-weight labels from raw feature values.
+    tensor + scalar labels + GT trust-weight labels.
+5.  Compute GT trust-weight labels from per-sensor error columns produced by
+    feature_extractor_node (lidar_pos_error, encoder_drift, imu_yaw_error).
+    These are derived from Gazebo ground truth — no hand-crafted thresholds.
 """
 
 import glob
@@ -29,10 +31,11 @@ from .config import (
     FEATURE_COLS,
     LABEL_ERR_COL,
     LABEL_YAW_COL,
-    PSEUDO_FITNESS_THRESHOLD,
-    PSEUDO_ACCEL_THRESHOLD,
-    PSEUDO_JERK_THRESHOLD,
-    PSEUDO_GPS_WEIGHT,
+    LABEL_LIDAR_ERR_COL,
+    LABEL_ENCODER_DRIFT_COL,
+    LABEL_IMU_YAW_ERR_COL,
+    TRUST_POS_SCALE,
+    TRUST_YAW_SCALE,
     TRUST_EPSILON,
     TrainConfig,
 )
@@ -42,37 +45,40 @@ from .config import (
 # Low-level helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _pseudo_trust(df: pd.DataFrame) -> np.ndarray:
+def _gt_trust(df: pd.DataFrame) -> np.ndarray:
     """
-    Compute rule-based pseudo trust-weight labels from raw feature columns.
+    Compute GT trust-weight labels from per-sensor error columns.
+
+    These columns are produced by feature_extractor_node by comparing each
+    sensor's raw measurement to Gazebo ground truth — no hand-crafted thresholds.
 
     Returns an (N, 4) float32 array with columns [w_encoder, w_imu, w_lidar, w_gps].
-    Each weight is clipped to [EPSILON, 1.0].
+    Each weight is clipped to [TRUST_EPSILON, 1.0].
 
-    Rules
-    -----
-    w_lidar   = 1 - clip(fitness_score   / FITNESS_THR,  0, 1)
-    w_imu     = 1 - clip(accel_norm_dev  / ACCEL_THR,    0, 1)
-    w_encoder = 1 - clip(jerk            / JERK_THR,     0, 1)
-    w_gps     = PSEUDO_GPS_WEIGHT  (GPS disabled)
+    Conversion: w = 1 / (1 + error / scale)
+      At error == 0        → w = 1.0   (perfect measurement)
+      At error == scale    → w = 0.5   (moderate trust)
+      At error == 3*scale  → w = 0.25  (low trust)
 
-    NaN in input features → treated as 0 (sensor anomaly unknown → full trust).
+    NaN in input columns (sensor not reporting / drift window not filled yet)
+    is treated as 0 error (full trust) so early-window rows contribute
+    neutrally to training rather than being silently skipped.
     """
     def _safe(series: pd.Series) -> np.ndarray:
         return np.nan_to_num(series.to_numpy(dtype=np.float32), nan=0.0)
 
-    fit   = _safe(df["fitness_score"])
-    accel = _safe(df["accel_norm_dev"])
-    jerk  = _safe(df["jerk"])
+    lidar_err    = _safe(df[LABEL_LIDAR_ERR_COL])
+    encoder_drift = _safe(df[LABEL_ENCODER_DRIFT_COL])
+    imu_yaw_err  = _safe(df[LABEL_IMU_YAW_ERR_COL])
 
-    w_lidar   = 1.0 - np.clip(fit   / PSEUDO_FITNESS_THRESHOLD, 0.0, 1.0)
-    w_imu     = 1.0 - np.clip(accel / PSEUDO_ACCEL_THRESHOLD,   0.0, 1.0)
-    w_encoder = 1.0 - np.clip(jerk  / PSEUDO_JERK_THRESHOLD,    0.0, 1.0)
-    w_gps     = np.full(len(df), PSEUDO_GPS_WEIGHT, dtype=np.float32)
+    w_lidar   = 1.0 / (1.0 + lidar_err    / TRUST_POS_SCALE)
+    w_encoder = 1.0 / (1.0 + encoder_drift / TRUST_POS_SCALE)
+    w_imu     = 1.0 / (1.0 + imu_yaw_err  / TRUST_YAW_SCALE)
+    w_gps     = np.zeros(len(df), dtype=np.float32)   # GPS disabled
 
-    pseudo = np.stack([w_encoder, w_imu, w_lidar, w_gps], axis=1)
-    pseudo = np.clip(pseudo, TRUST_EPSILON, 1.0).astype(np.float32)
-    return pseudo
+    gt = np.stack([w_encoder, w_imu, w_lidar, w_gps], axis=1)
+    gt = np.clip(gt, TRUST_EPSILON, 1.0).astype(np.float32)
+    return gt
 
 
 def load_csv_files(data_dir: str) -> pd.DataFrame:
@@ -248,10 +254,10 @@ def build_datasets(
     """
     df = load_csv_files(cfg.data_dir)
 
-    # ── Drop rows with missing label ────────────────────────────────────────
+    # ── Drop rows with missing FGO error label ─────────────────────────────────────
     before = len(df)
     df = df.dropna(subset=[LABEL_ERR_COL, LABEL_YAW_COL]).reset_index(drop=True)
-    print(f"[Dataset] Dropped {before - len(df)} rows with NaN labels. "
+    print(f"[Dataset] Dropped {before - len(df)} rows with NaN FGO error labels. "
           f"{len(df)} rows remain.")
 
     # ── Fill NaN in features ────────────────────────────────────────────────
@@ -275,16 +281,17 @@ def build_datasets(
     pos_errors = df[LABEL_ERR_COL].to_numpy(dtype=np.float32)
     yaw_errors = df[LABEL_YAW_COL].to_numpy(dtype=np.float32)
 
-    # ── Pseudo trust labels ──────────────────────────────────────────────────
-    # Computed from RAW df (before normalization) so thresholds stay meaningful.
-    pseudo_all = _pseudo_trust(df)
+    # ── GT trust labels ───────────────────────────────────────────────────
+    # Computed from RAW df (before normalization) so scale parameters stay meaningful.
+    # NaN in GT label columns (drift window not yet filled) is treated as 0 error.
+    gt_trust_all = _gt_trust(df)
 
     def _make(arr, idx_start, idx_end):
         ds = TrustWeightDataset(
             features     = arr,
             pos_errors   = pos_errors[idx_start:idx_end],
             yaw_errors   = yaw_errors[idx_start:idx_end],
-            pseudo_trust = pseudo_all[idx_start:idx_end],
+            pseudo_trust = gt_trust_all[idx_start:idx_end],
             timestamps   = timestamps[idx_start:idx_end],
             seq_len      = cfg.seq_len,
             step         = cfg.step,
